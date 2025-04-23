@@ -1,0 +1,94 @@
+@import './preflight.scss';
+@import 'react-toastify/dist/ReactToastify.css';
+
+@font-face {
+  font-family: 'PP Neue Machina Plain';
+  src: url('./assets/fonts/PPNeueMachina-PlainRegular.eot');
+  src: url('./assets/fonts/PPNeueMachina-PlainRegular.eot?#iefix') format('embedded-opentype'),
+  url('./assets/fonts/PPNeueMachina-PlainRegular.woff2') format('woff2'),
+  url('./assets/fonts/PPNeueMachina-PlainRegular.woff') format('woff'),
+  url('./assets/fonts/PPNeueMachina-PlainRegular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PP Neue Machina Plain UltraBold';
+  src: url('./assets/fonts/PPNeueMachina-PlainUltrabold.eot');
+  src: url('./assets/fonts/PPNeueMachina-PlainUltrabold.eot?#iefix') format('embedded-opentype'),
+  url('./assets/fonts/PPNeueMachina-PlainUltrabold.woff2') format('woff2'),
+  url('./assets/fonts/PPNeueMachina-PlainUltrabold.woff') format('woff'),
+  url('./assets/fonts/PPNeueMachina-PlainUltrabold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Neue Machina Bold';
+  src: url('./assets/fonts/NeueMachina-Bold.eot');
+  src: local('Neue Machina Bold'), local('NeueMachina-Bold'),
+  url('./assets/fonts/NeueMachina-Bold.eot?#iefix') format('embedded-opentype'),
+  url('./assets/fonts/NeueMachina-Bold.woff2') format('woff2'),
+  url('./assets/fonts/NeueMachina-Bold.woff') format('woff'),
+  url('./assets/fonts/NeueMachina-Bold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+}
+
+/*@tailwind base;*/
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /*--toastify-text-color-light: #333F48;*/
+}
+
+.font-basic {
+  font-family: 'PP Neue Machina Plain', sans-serif;
+  font-optical-sizing: auto;
+  font-weight: normal;
+  font-style: normal;
+}
+
+.font-neue {
+  font-family: "Neue Machina Bold", sans-serif;
+  font-weight: 800!important;
+}
+
+.font-ultrabold {
+  font-family: "PP Neue Machina Plain UltraBold", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.btn-loading {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  &::before {
+    position: absolute;
+    content: '';
+    display: block;
+    width: 101%;
+    height: 160%;
+    background: linear-gradient(90deg, transparent, red, red, red, red, transparent);
+    /*animation: rotation_481 5000ms infinite linear;*/
+  }
+}
+
+@keyframes rotation_481 {
+  0% {
+    transform: rotateZ(0deg);
+  }
+
+  0% {
+    transform: rotateZ(360deg);
+  }
+}
+
+body {
+  font-family: 'PP Neue Machina Plain', sans-serif;
+}
