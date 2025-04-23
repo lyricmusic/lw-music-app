@@ -93,10 +93,10 @@ export function VideoPlayer3({ isHost = true, roomId }: Props) {
     socket.current.emit('joinRoom', roomId);
 
     socket.current.on('syncTime', (d: any) => {
-      if (isHost) return;                  // Host игнорирует
+      if (isHost) return;
 
       const localTime = curTime.current;
-      const needSeek = Math.abs(d.currentTime - localTime) > 1; // порог 1 с
+      const needSeek = Math.abs(d.currentTime - localTime) > 1;
       const needPlayState = d.isPlaying !== playing.current;
 
       if (needSeek) {
@@ -111,7 +111,10 @@ export function VideoPlayer3({ isHost = true, roomId }: Props) {
       }
     });
 
-    return () => socket.current?.disconnect();
+    // Теперь функция-очистки возвращает void
+    return () => {
+      socket.current?.disconnect();
+    };
   }, [isHost, roomId]);
 
   /* ---------- window message listener ---------- */
