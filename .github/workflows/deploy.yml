@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+env:
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/lyric-music-app
+  SERVICE_NAME: frontend
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -27,7 +31,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/lyric-music-app:latest
+          tags: ${{ env.IMAGE_NAME }}:latest
 
       - name: SSH and deploy with password
         uses: appleboy/ssh-action@v0.1.6
@@ -35,8 +39,6 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
+          envs: SERVICE_NAME
           port: 22
-          script: |
-            cd /opt/lyric-music
-            docker compose pull
-            docker compose up -d
+          script: /opt/lyric-music/deploy.sh ${{ env.SERVICE_NAME }}
