@@ -2,16 +2,19 @@
 FROM node:22.14.0 AS builder
 
 WORKDIR /usr/src/app
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
 
 # Кэширование зависимостей
-COPY package.json package-lock.json ./
-RUN npm install
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # Копируем остальной код
 COPY . .
 
 # Билдим приложение
-RUN npm run build
+RUN pnpm build
 
 # Этап продакшена (на легком nginx-образе)
 FROM nginx:alpine

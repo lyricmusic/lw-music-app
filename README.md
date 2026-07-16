@@ -2,6 +2,24 @@
 
 Комнаты для совместного просмотра и прослушивания музыки. Пользователь входит в аккаунт, выбирает комнату, а YouTube-плеер синхронизирует ролик, воспроизведение, паузу и перемотку между участниками.
 
+## Архитектура
+
+Клиент организован по Feature-Sliced Design:
+
+```text
+src/
+  app/       # провайдеры, глобальные стили и маршрутизация
+  pages/     # страницы приложения
+  widgets/   # крупные самостоятельные UI-блоки
+  features/  # пользовательские действия
+  entities/  # доменные модели и их UI
+  shared/    # Firebase, конфигурация, библиотеки и базовый UI
+```
+
+Публичные маршруты авторизации: `/sign-in` и `/sign-up`. Старый `/register`
+перенаправляет на `/sign-up`. Комнаты доступны по `/rooms` и
+`/rooms/:roomId`.
+
 ## Что уже работает
 
 - Firebase Authentication: регистрация и вход по e-mail/паролю, вход через Google, восстановление сессии и выход.
@@ -18,8 +36,8 @@
 Нужен Node.js 20.19 или новее.
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Для быстрой проверки только YouTube-плеера без входа и Firestore в dev-режиме доступен `http://localhost:5173/__player-smoke`. В production-сборке этого маршрута нет.
@@ -27,8 +45,8 @@ npm run dev
 Проверки перед коммитом:
 
 ```bash
-npm run lint
-npm run build
+pnpm lint
+pnpm build
 ```
 
 ## Применение Firestore Rules
@@ -36,18 +54,18 @@ npm run build
 Код плеера пишет состояние в `rooms/{roomId}/playback/current`. До проверки синхронизации нужно один раз опубликовать актуальный файл `firestore.rules`:
 
 ```bash
-npx firebase-tools login
-npx firebase-tools use lwmusic-ffe83
-npx firebase-tools deploy --only firestore:rules
+pnpm dlx firebase-tools login
+pnpm dlx firebase-tools use lwmusic-ffe83
+pnpm dlx firebase-tools deploy --only firestore:rules
 ```
 
-В репозитории уже указан проект `lwmusic-ffe83`. Web-конфигурация из `src/firebase.ts` используется как fallback; для другого проекта скопируйте `.env.example` в `.env.local` и заполните переменные.
+В репозитории уже указан проект `lwmusic-ffe83`. Web-конфигурация из `src/shared/api/firebase` используется как fallback; для другого проекта скопируйте `.env.example` в `.env.local` и заполните переменные.
 
 В Firebase Console должны быть включены Authentication → Email/Password и, если нужен такой способ входа, Google. Firestore Database должна быть создана.
 
 ## Как проверить синхронизацию локально
 
-1. Запустите `npm run dev` и авторизуйтесь.
+1. Запустите `pnpm dev` и авторизуйтесь.
 2. Откройте одну и ту же комнату в двух окнах. Второе окно удобно открыть в режиме инкогнито или в другом браузере, чтобы при желании войти другой учётной записью.
 3. В первом окне откройте `http://localhost:5173/rooms/demo-room?role=host`.
 4. Во втором — `http://localhost:5173/rooms/demo-room?role=viewer`.

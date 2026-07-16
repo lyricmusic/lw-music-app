@@ -1,25 +1,14 @@
-import { BrowserRouter } from 'react-router-dom'
-
+import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 
-import { App } from './App'
+import { App } from '@/app/App'
 
-import './index.css'
+import '@/app/styles/index.css'
 
 const rootElement: HTMLElement = document.getElementById('root')!
 const root = ReactDOM.createRoot(rootElement)
-const originalConsoleError = console.error;
-console.error = (...args) => {
-  if (args.some(arg => typeof arg === 'string' && arg.includes('Ya.Metrika2 is not a constructor'))) {
-    // Если сообщение содержит указанную строку, не выводим его
-    return;
-  }
-  originalConsoleError(...args);
-};
 root.render(
-  <BrowserRouter
-    future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-  >
+  <StrictMode>
     <App />
-  </BrowserRouter>,
+  </StrictMode>,
 )
