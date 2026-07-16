@@ -1,45 +1,57 @@
-import { useState } from 'react';
-// import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom'
 
-import { VideoPlayer3 } from '@/core/media-zone/VideoPlayer3';
-
-import { Chat } from '@/components/chat/Chat';
-import { UsersList } from '@/components/users/UsersList';
+import { VideoPlayer3 } from '@/core/media-zone/VideoPlayer3'
+import { Button } from '@mui/material'
 
 export function Room() {
-  // const { id } = useParams();            // если нужен id из маршрута
-  const [isHost, setIsHost] = useState<boolean>(true);
+  const { id = 'demo-room' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const isHost = searchParams.get('role') !== 'viewer'
+
+  const setRole = (role: 'host' | 'viewer') => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('role', role)
+    setSearchParams(nextParams, { replace: true })
+  }
 
   return (
-    <div className="flex h-full gap-x-2">
-      {/* левая колонка: список юзеров + чат */}
-      <div className="flex flex-col gap-2 max-w-[320px]">
-        <UsersList />
-        <Chat />
-      </div>
+    <div className="h-full overflow-hidden">
+      <main className="h-full w-full overflow-y-auto rounded-[20px] bg-[#ECEDF2] p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3">
+          <div>
+            <p className="font-neue">Режим локальной проверки</p>
+            <p className="text-xs text-secondary-text">
+              В первом окне выберите ведущего, во втором — слушателя.
+            </p>
+          </div>
 
-      {/* правая колонка: видео + очередь */}
-      <div className="w-full space-y-2">
-        {/* чекбокс‑переключатель роли */}
-        <label className="inline-flex items-center gap-2">
-          <input
-            checked={isHost}
-            onChange={() => setIsHost((prev) => !prev)}
-            type="checkbox"
-          />
-          Я ведущий (Host)
-        </label>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setRole('host')}
+              variant={isHost ? 'contained' : 'outlined'}
+            >
+              Ведущий
+            </Button>
+            <Button
+              onClick={() => setRole('viewer')}
+              variant={isHost ? 'outlined' : 'contained'}
+            >
+              Слушатель
+            </Button>
+          </div>
+        </div>
 
-        {/* сам плеер.
-            key заставляет React пересоздать компонент при смене роли */}
         <VideoPlayer3
           isHost={isHost}
-          key={isHost ? 'host' : 'viewer'}
-          roomId="demo-room"
+          key={`${id}-${isHost ? 'host' : 'viewer'}`}
+          roomId={id}
         />
 
-        <div>ОЧЕРЕДЬ</div>
-      </div>
+        <div className="mt-3 rounded-2xl bg-white p-4 text-sm text-secondary-text">
+          Очередь будет следующим слоем. Сейчас документ комнаты хранит только
+          общее состояние YouTube-плеера.
+        </div>
+      </main>
     </div>
-  );
+  )
 }

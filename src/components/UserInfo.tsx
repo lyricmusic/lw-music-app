@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
+import { useAuth } from '@/contexts/authContext'
 import { auth } from '@/firebase'
-import { useAppSelector } from '@/store'
+import { getAuthErrorMessage } from '@/services/auth'
 import { List, ListItem, ListItemButton } from '@mui/material'
 import { signOut } from 'firebase/auth'
 
@@ -10,23 +12,21 @@ import { MemberIcon } from '@/components/icons/MemberIcon.tsx'
 
 export function UserInfo() {
   const navigate = useNavigate()
-  const user = useAppSelector(state => state.user)
-  console.log('user', user)
+  const { profile, user } = useAuth()
 
   const handleLogout = async () => {
     try {
       await signOut(auth)
       navigate('/')
-      console.log('User signed out')
     } catch (error) {
-      console.error('Error signing out: ', error)
+      toast.error(getAuthErrorMessage(error))
     }
   }
 
   return (
     <div className="absolute z-10 -top-1 -right-1 min-w-[208px] bg-white rounded-2xl overflow-hidden border border-[#D6D7F0]">
       <div className="h-[60px] py-3 pl-5 pr-[68px] bg-hover-brand">
-        <p>{user?.login || 'Не указан'}</p>
+        <p>{profile?.displayName || user?.displayName || 'Не указан'}</p>
         <span>{user?.email}</span>
       </div>
 

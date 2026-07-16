@@ -1,7 +1,10 @@
-import { useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
 import logo from '@/assets/lw.svg'
-import { Button } from '@mui/material'
+import { getAuthErrorMessage, loginWithGoogle } from '@/services/auth'
+import { Button, CircularProgress } from '@mui/material'
 
 import { SignIn } from '@/components/authorization/SignIn.tsx'
 import { SignUp } from '@/components/authorization/SignUp'
@@ -9,19 +12,32 @@ import { GoogleIcon } from '@/components/icons/GoogleIcon.tsx'
 
 export function Authorization() {
   const location = useLocation()
-  console.log('location', location)
+  const navigate = useNavigate()
+  const [googleLoading, setGoogleLoading] = useState(false)
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true)
+    try {
+      await loginWithGoogle()
+      navigate('/rooms', { replace: true })
+    } catch (error) {
+      toast.error(getAuthErrorMessage(error))
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
 
   return (
     <div className="w-[424px] px-10 py-[38px] bg-gray-block rounded-xl m-0.5 flex flex-col justify-between">
       <div>
         <img alt="Логотип" src={logo} />
       </div>
-      {/*<SignUp />*/}
       {location.pathname === '/register' && <SignUp />}
       {location.pathname === '/' && <SignIn />}
 
       <Button
-        disabled={true}
+        disabled={googleLoading}
+        onClick={handleGoogleLogin}
         sx={{
           '&:active': {
             color: '#fff',
@@ -37,8 +53,14 @@ export function Authorization() {
         }}
         variant="outlined"
       >
-        <GoogleIcon className="mr-3" />
-        Войти через google
+        {googleLoading ? (
+          <CircularProgress color="inherit" size={22} />
+        ) : (
+          <>
+            <GoogleIcon className="mr-3" />
+            Войти через Google
+          </>
+        )}
       </Button>
     </div>
   )

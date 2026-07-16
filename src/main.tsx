@@ -1,7 +1,5 @@
-import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 
-import { store } from '@/store'
 import ReactDOM from 'react-dom/client'
 
 import { App } from './App'
@@ -19,9 +17,9 @@ console.error = (...args) => {
   originalConsoleError(...args);
 };
 root.render(
-  <BrowserRouter>
-    <Provider store={store}>
-      <App />
-    </Provider>
+  <BrowserRouter
+    future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+  >
+    <App />
   </BrowserRouter>,
 )

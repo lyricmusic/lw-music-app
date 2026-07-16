@@ -1,5 +1,4 @@
-import React, { useState } from 'react'
-import ReactFileReader from 'react-file-reader'
+import React, { ChangeEvent, useState } from 'react'
 import { toast } from 'react-toastify'
 
 import { Category } from '@/core/rooms/types/Room.ts'
@@ -12,12 +11,12 @@ import { addDoc, collection, updateDoc } from 'firebase/firestore'
 import { MembersIcon } from '@/components/icons/MembersIcon.tsx'
 
 interface FadeProps {
-  children: React.ReactElement
+  children: React.ReactElement<unknown>
   in?: boolean
-  onClick?: any
+  onClick?: React.MouseEventHandler<HTMLElement>
   onEnter?: (node: HTMLElement, isAppearing: boolean) => void
   onExited?: (node: HTMLElement, isAppearing: boolean) => void
-  ownerState?: any
+  ownerState?: unknown
 }
 
 const Fade = React.forwardRef<HTMLDivElement, FadeProps>(
@@ -31,6 +30,7 @@ const Fade = React.forwardRef<HTMLDivElement, FadeProps>(
       ownerState,
       ...other
     } = props
+    void ownerState
     const style = useSpring({
       from: { opacity: 0 },
       onRest: () => {
@@ -47,8 +47,8 @@ const Fade = React.forwardRef<HTMLDivElement, FadeProps>(
     })
 
     return (
-      <animated.div ref={ref} style={style} {...other}>
-        {React.cloneElement(children, { onClick })}
+      <animated.div onClick={onClick} ref={ref} style={style} {...other}>
+        {children}
       </animated.div>
     )
   },
@@ -60,7 +60,7 @@ const style = {
   boxShadow: 24,
   left: '50%',
   padding: '40px',
-  position: 'absolute' as 'absolute',
+  position: 'absolute' as const,
   top: '50%',
   transform: 'translate(-50%, -50%)',
   width: 555,
@@ -119,11 +119,21 @@ export function CreateRoomModal({
     }
   }
 
-  const handleFiles = (files: FileList) => {
-    console.log('files', files)
-    // if (files.base64) {
-    // setUrl(files.base64)
-    // }
+  const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 700_000) {
+      toast.error('Размер обложки не должен превышать 700 КБ')
+      event.target.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') setUrl(reader.result)
+    })
+    reader.readAsDataURL(file)
   }
 
   const categoryOptions: Category[] = [
@@ -223,15 +233,15 @@ export function CreateRoomModal({
                 </div>
 
                 <div className="flex flex-col justify-between">
-                  <ReactFileReader
-                    base64={true}
-                    fileTypes={['.png', '.jpg']}
-                    handleFiles={handleFiles}
-                  >
-                    <Button className="w-full mb-2" variant="outlined">
-                      Загрузить обложку
-                    </Button>
-                  </ReactFileReader>
+                  <Button className="w-full mb-2" component="label" variant="outlined">
+                    Загрузить обложку
+                    <input
+                      accept="image/png,image/jpeg"
+                      hidden
+                      onChange={handleFiles}
+                      type="file"
+                    />
+                  </Button>
 
                   {url && (
                     <Button

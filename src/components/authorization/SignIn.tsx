@@ -1,69 +1,63 @@
-import { useEffect, useState } from 'react'
-import { useDispatch } from 'react-redux'
-import { Link as RouterLink } from 'react-router-dom'
-import { useNavigate } from 'react-router-dom'
+import { FormEvent, useState } from 'react'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
-import { auth } from '@/firebase'
-import { AddUserAction } from '@/store'
-import { Box, Button } from '@mui/material'
-import TextField from '@mui/material/TextField'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { getAuthErrorMessage, loginWithEmail } from '@/services/auth'
+import { Box, Button, CircularProgress, TextField } from '@mui/material'
 
 export function SignIn() {
   const navigate = useNavigate()
-  const dispatch = useDispatch()
-  const [error, setError] = useState(false)
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
-  const handleLogin = () => {
-    if (!email || !password) {
-      setError(true)
-      return
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSubmitted(true)
+
+    if (!email.trim() || !password) return
+
+    setLoading(true)
+    try {
+      await loginWithEmail(email, password)
+      const from = (location.state as { from?: { pathname?: string } } | null)
+        ?.from?.pathname
+      navigate(from && from !== '/' ? from : '/rooms', { replace: true })
+    } catch (error) {
+      toast.error(getAuthErrorMessage(error))
+    } finally {
+      setLoading(false)
     }
-
-    signInWithEmailAndPassword(auth, email, password).then(resp => {
-      console.log('resp', resp)
-      navigate('/rooms')
-      console.log('auth', auth.currentUser)
-    })
   }
-
-  useEffect(() => {
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        console.log('user', user)
-        dispatch({
-          payload: user,
-          type: 'add-user',
-        } satisfies AddUserAction)
-        navigate('/rooms')
-      }
-    })
-  }, [])
 
   return (
     <div>
       <h1 className="text-[38px] font-ultrabold mb-5">Вход</h1>
-      <Box component="form">
+      <Box component="form" noValidate onSubmit={handleLogin}>
         <div className="flex flex-col gap-y-3 mb-6">
           <TextField
-            error={error}
+            autoComplete="email"
+            error={submitted && !email.trim()}
             fullWidth
-            helperText={error ? 'Обязательное поле.' : ''}
+            helperText={
+              submitted && !email.trim() ? 'Обязательное поле.' : ' '
+            }
             label="E-mail"
-            onChange={e => setEmail(e.target.value)}
+            onChange={event => setEmail(event.target.value)}
+            type="email"
             value={email}
             variant="filled"
           />
 
           <TextField
             autoComplete="current-password"
-            error={error}
+            error={submitted && !password}
             fullWidth
-            helperText={error ? 'Обязательное поле.' : ''}
+            helperText={submitted && !password ? 'Обязательное поле.' : ' '}
             label="Пароль"
-            onChange={e => setPassword(e.target.value)}
+            onChange={event => setPassword(event.target.value)}
             type="password"
             value={password}
             variant="filled"
@@ -72,11 +66,11 @@ export function SignIn() {
 
         <Button
           className="w-full font-neue"
-          onClick={handleLogin}
-          type="button"
+          disabled={loading}
+          type="submit"
           variant="contained"
         >
-          Войти
+          {loading ? <CircularProgress color="inherit" size={22} /> : 'Войти'}
         </Button>
 
         <div className="flex justify-center mt-5 gap-x-[10px]">

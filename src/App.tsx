@@ -1,16 +1,17 @@
-import { useEffect } from 'react'
-import { useDispatch } from 'react-redux'
 import { Route, Routes } from 'react-router-dom'
 import { ToastContainer, Zoom } from 'react-toastify'
 
 import { AuthProvider } from '@/contexts/authContext'
-import { auth } from '@/firebase.ts'
-import { AddUserAction } from '@/store'
 import { GlobalStyles } from '@mui/material'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 
 import { MainScreen } from '@/components/MainScreen'
 import { StartScreen } from '@/components/StartScreen'
+import {
+  GuestOnlyRoute,
+  ProtectedRoute,
+} from '@/components/authorization/AuthRoute'
+import { VideoPlayer3 } from '@/core/media-zone/VideoPlayer3'
 
 const theme = createTheme({
   components: {
@@ -174,19 +175,6 @@ const theme = createTheme({
 })
 
 export function App() {
-  const dispatch = useDispatch()
-
-  useEffect(() => {
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        console.log('user', user)
-        dispatch({
-          payload: user,
-          type: 'add-user',
-        } satisfies AddUserAction)
-      }
-    })
-  }, [])
   return (
     <>
       <ThemeProvider theme={theme}>
@@ -206,12 +194,25 @@ export function App() {
         />
         <AuthProvider>
           <Routes>
-            <Route element={<StartScreen />} path="/" />
-            <Route element={<StartScreen />} path="/register" />
-            <Route element={<MainScreen />} path="/*">
-              {/*<Route element={<Room />} path="/rooms/:id" />*/}
-              {/*<Route element={<Rooms />} path="/rooms" />*/}
-              {/* Здесь можно добавить другие маршруты */}
+            {import.meta.env.DEV && (
+              <Route
+                element={
+                  <main className="min-h-screen bg-[#ECEDF2] p-4">
+                    <VideoPlayer3
+                      roomId="browser-smoke-test"
+                      syncEnabled={false}
+                    />
+                  </main>
+                }
+                path="/__player-smoke"
+              />
+            )}
+            <Route element={<GuestOnlyRoute />}>
+              <Route element={<StartScreen />} path="/" />
+              <Route element={<StartScreen />} path="/register" />
+            </Route>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<MainScreen />} path="/*" />
             </Route>
           </Routes>
         </AuthProvider>
