@@ -9,7 +9,7 @@ import { MemberIcon } from '@/shared/ui/icons'
 import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material'
 
 import { UserMenu } from './UserMenu'
-
+// TODO тест удалить
 export function AppHeader() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const roomMatch = useMatch(routes.roomPattern)

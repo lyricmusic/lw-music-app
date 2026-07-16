@@ -47,3 +47,54 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 7
+
+      - name: Notify Telegram
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are not configured; skipping notification."
+            exit 0
+          fi
+
+          case "$JOB_STATUS" in
+            success)
+              icon="✅"
+              title="Build succeeded"
+              ;;
+            failure)
+              icon="❌"
+              title="Build failed"
+              ;;
+            cancelled)
+              icon="⚪"
+              title="Build cancelled"
+              ;;
+            *)
+              icon="ℹ️"
+              title="Build finished: $JOB_STATUS"
+              ;;
+          esac
+
+          short_sha="${GITHUB_SHA::7}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          message=$(printf '%s %s\n\nRepository: %s\nBranch: %s\nCommit: %s\nAuthor: %s\nRun: %s' \
+            "$icon" \
+            "$title" \
+            "$GITHUB_REPOSITORY" \
+            "$GITHUB_REF_NAME" \
+            "$short_sha" \
+            "$GITHUB_ACTOR" \
+            "$run_url")
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            --data-urlencode "disable_web_page_preview=true" \
+            --output /dev/null
