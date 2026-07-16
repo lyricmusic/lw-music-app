@@ -45,6 +45,7 @@ declare namespace YT {
     destroy(): void
     getCurrentTime(): number
     getDuration(): number
+    getIframe(): HTMLIFrameElement
     getPlayerState(): number
     getVideoData(): VideoData
     isMuted(): boolean

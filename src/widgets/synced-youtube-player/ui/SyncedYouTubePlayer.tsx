@@ -52,6 +52,18 @@ interface PlaybackState {
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
 
+function allowAutoplay(player: YT.Player) {
+  const iframe = player.getIframe()
+  const allowedFeatures = iframe.allow
+    .split(';')
+    .map(feature => feature.trim())
+    .filter(Boolean)
+
+  if (!allowedFeatures.some(feature => feature.startsWith('autoplay'))) {
+    iframe.allow = [...allowedFeatures, 'autoplay'].join('; ')
+  }
+}
+
 const queueDialogStyle = {
   backgroundColor: '#D7DBF0',
   borderRadius: '30px',
@@ -133,6 +145,7 @@ export function SyncedYouTubePlayer({
   const playerContainerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<null | YT.Player>(null)
   const lastRemoteStateRef = useRef<null | PlaybackState>(null)
+  const autoplayRecoveryVideoIdRef = useRef<null | string>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
   const writeQueueRef = useRef(Promise.resolve())
 
@@ -281,7 +294,10 @@ export function SyncedYouTubePlayer({
 
   const handlePlayerStateChange = useCallback(
     (event: YT.OnStateChangeEvent) => {
-      if (event.data === YT.PlayerState.PLAYING) setAutoplayBlocked(false)
+      if (event.data === YT.PlayerState.PLAYING) {
+        autoplayRecoveryVideoIdRef.current = null
+        setAutoplayBlocked(false)
+      }
 
       if (event.data === YT.PlayerState.ENDED) {
         const finishedVideoId = event.target.getVideoData().video_id
@@ -289,6 +305,33 @@ export function SyncedYouTubePlayer({
       }
     },
     [clearFinishedPlayback],
+  )
+
+  const handleAutoplayBlocked = useCallback(
+    (event: YT.PlayerEvent) => {
+      // Mobile browsers reject scripted playback with sound. Muting first and
+      // retrying from the current room position keeps video sync automatic.
+      event.target.mute()
+      setMuted(true)
+      setAutoplayBlocked(true)
+
+      const remote = lastRemoteStateRef.current
+      if (
+        !remote ||
+        remote.status !== 'playing' ||
+        autoplayRecoveryVideoIdRef.current === remote.videoId
+      ) {
+        return
+      }
+
+      autoplayRecoveryVideoIdRef.current = remote.videoId
+      window.setTimeout(() => {
+        if (playerRef.current === event.target) {
+          applyRemoteState(lastRemoteStateRef.current ?? remote)
+        }
+      }, 0)
+    },
+    [applyRemoteState],
   )
 
   useEffect(() => {
@@ -300,7 +343,7 @@ export function SyncedYouTubePlayer({
 
         playerRef.current = new window.YT.Player(playerContainerRef.current, {
           events: {
-            onAutoplayBlocked: () => setAutoplayBlocked(true),
+            onAutoplayBlocked: handleAutoplayBlocked,
             onError: event => {
               setError(
                 youtubeErrorMessages[event.data] ??
@@ -308,6 +351,7 @@ export function SyncedYouTubePlayer({
               )
             },
             onReady: event => {
+              allowAutoplay(event.target)
               event.target.mute()
               setMuted(true)
               setPlayerReady(true)
@@ -326,6 +370,7 @@ export function SyncedYouTubePlayer({
             disablekb: 1,
             enablejsapi: 1,
             fs: 0,
+            mute: 1,
             origin: window.location.origin,
             playsinline: 1,
             rel: 0,
@@ -344,7 +389,7 @@ export function SyncedYouTubePlayer({
       playerRef.current?.destroy()
       playerRef.current = null
     }
-  }, [applyRemoteState, handlePlayerStateChange])
+  }, [applyRemoteState, handleAutoplayBlocked, handlePlayerStateChange])
 
   useEffect(() => {
     if (!syncEnabled) {
@@ -527,8 +572,8 @@ export function SyncedYouTubePlayer({
 
           {autoplayBlocked && (
             <Box className="absolute left-4 right-4 top-4 rounded-xl bg-[#FFF3CD] p-3 text-sm text-[#25263E]">
-              Браузер заблокировал автозапуск. Нажмите «Включить звук», чтобы
-              запустить видео.
+              Восстанавливаем беззвучное воспроизведение и синхронизацию с
+              комнатой…
             </Box>
           )}
         </Box>
