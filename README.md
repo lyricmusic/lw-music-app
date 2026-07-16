@@ -27,6 +27,7 @@ src/
 - Защищённые маршруты комнат.
 - YouTube IFrame Player API без отдельного backend и Socket.IO.
 - Синхронизация плеера через snapshot документа Cloud Firestore.
+- Чат комнаты: realtime-подписка на последние 50 сообщений Firestore.
 - Режимы ведущего и слушателя для локальной проверки.
 - Firestore Security Rules для профилей, комнат и состояния плеера.
 - Firebase Hosting rewrite для SPA-маршрутов.
@@ -93,7 +94,20 @@ rooms/{roomId}/playback/current
   changedAt: timestamp
   changedBy: uid
   revision: integer
+
+rooms/{roomId}/messages/{messageId}
+  authorId: uid
+  authorName: string
+  authorPhotoURL: string | null
+  text: string (1–1000 символов)
+  createdAt: timestamp
 ```
+
+Имя и аватар сохраняются в сообщении как снимок профиля на момент отправки.
+Клиент запрашивает документы по `createdAt desc` с `limit(50)`, а перед
+отрисовкой разворачивает их в хронологический порядок. Новые сообщения приходят
+через realtime-подписку `onSnapshot`; отдельный составной индекс для этого
+запроса не нужен.
 
 YouTube-видеопоток через Firebase не передаётся. Каждый браузер загружает ролик напрямую с YouTube, а Firestore хранит только небольшое общее состояние. Для состояния `playing` ожидаемая позиция вычисляется как сохранённая позиция плюс время, прошедшее после серверной метки `changedAt`.
 

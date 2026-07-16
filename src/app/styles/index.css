@@ -125,3 +125,19 @@
 body {
   font-family: 'PP Neue Machina Plain', sans-serif;
 }
+
+.room-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 22.6%, 360px);
+  gap: 4px;
+  height: 100%;
+  min-height: 0;
+}
+
+@media (max-width: 820px) {
+  .room-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(420px, 65vh);
+    overflow-y: auto;
+  }
+}

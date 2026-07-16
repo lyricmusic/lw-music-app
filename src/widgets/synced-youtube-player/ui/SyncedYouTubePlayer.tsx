@@ -13,13 +13,17 @@ import {
   formatPlaybackTime,
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
+import { Button } from '@/shared/ui/button'
+import { TextField } from '@/shared/ui/text-field'
 import {
   Box,
-  Button,
   CircularProgress,
   Fade,
   Modal,
-  TextField,
+  Paper,
+  Tab,
+  Tabs,
+  Typography,
 } from '@mui/material'
 import {
   Timestamp,
@@ -144,6 +148,9 @@ export function SyncedYouTubePlayer({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false)
   const [queueSubmitting, setQueueSubmitting] = useState(false)
   const [queueInputError, setQueueInputError] = useState<null | string>(null)
+  const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
+    'queue',
+  )
   const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
     null,
   )
@@ -224,9 +231,12 @@ export function SyncedYouTubePlayer({
     }
   }, [])
 
-  const handlePlayerStateChange = useCallback((event: YT.OnStateChangeEvent) => {
-    if (event.data === YT.PlayerState.PLAYING) setAutoplayBlocked(false)
-  }, [])
+  const handlePlayerStateChange = useCallback(
+    (event: YT.OnStateChangeEvent) => {
+      if (event.data === YT.PlayerState.PLAYING) setAutoplayBlocked(false)
+    },
+    [],
+  )
 
   useEffect(() => {
     let disposed = false
@@ -408,103 +418,143 @@ export function SyncedYouTubePlayer({
     }
   }
 
-  const syncLabels: Record<SyncStatus, string> = {
-    connected: 'Firestore подключён',
-    connecting: 'Подключаем Firestore…',
-    error: 'Ошибка синхронизации',
-    syncing: 'Сохраняем состояние…',
-  }
   const queueIsEmpty =
     syncStatus === 'connected' && !remoteState && !localQueuedVideoId
+  const hasVideo = Boolean(remoteState || localQueuedVideoId)
 
   return (
-    <section
-      className="rounded-[20px] bg-gray-block p-5"
-      data-testid="video-sync-player"
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-ultrabold">YouTube-синхронизация</h1>
-          <p className="text-sm text-secondary-text">
-            Комната: <span className="font-neue">{roomId}</span>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-white px-3 py-2">
-            {syncEnabled ? syncLabels[syncStatus] : 'Локальный режим'}
-          </span>
-          {remoteState && (
-            <span className="rounded-full bg-white px-3 py-2">
-              Ревизия {remoteState.revision}
-            </span>
+    <Box className="flex h-full min-h-0 flex-col gap-1">
+      <Paper
+        aria-hidden={!hasVideo}
+        className={`${hasVideo ? 'block' : 'hidden'} shrink-0 overflow-hidden`}
+        component="section"
+        data-testid="video-sync-player"
+        elevation={0}
+        sx={{ backgroundColor: '#2A2B47', borderRadius: '20px' }}
+      >
+        <Box className="relative aspect-video w-full overflow-hidden bg-black">
+          {!playerReady && (
+            <Box className="absolute inset-0 z-10 flex items-center justify-center text-white">
+              <CircularProgress color="inherit" />
+            </Box>
           )}
-        </div>
-      </div>
+          <Box
+            className="pointer-events-none h-full w-full"
+            ref={playerContainerRef}
+          />
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
-        {!playerReady && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-white">
-            <CircularProgress color="inherit" />
-          </div>
-        )}
-        <div
-          className="pointer-events-none h-full w-full"
-          ref={playerContainerRef}
-        />
-      </div>
+          <Box className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/80 to-transparent px-5 pb-4 pt-10 text-sm text-white">
+            <Typography component="span" variant="body2">
+              {formatPlaybackTime(currentTime)} / {formatPlaybackTime(duration)}
+            </Typography>
+            <Button
+              disabled={!playerReady}
+              onClick={handleToggleSound}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                  borderColor: '#FFFFFF',
+                },
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                borderColor: 'rgba(255, 255, 255, 0.7)',
+                color: '#FFFFFF',
+                padding: '8px 16px',
+              }}
+              variant="outlined"
+            >
+              {muted ? 'Включить звук' : 'Выключить звук'}
+            </Button>
+          </Box>
 
-      {queueIsEmpty && (
-        <Button
-          disabled={!playerReady}
-          fullWidth
-          onClick={() => setQueueDialogOpen(true)}
+          {autoplayBlocked && (
+            <Box className="absolute left-4 right-4 top-4 rounded-xl bg-[#FFF3CD] p-3 text-sm text-[#25263E]">
+              Браузер заблокировал автозапуск. Нажмите «Включить звук», чтобы
+              запустить видео.
+            </Box>
+          )}
+        </Box>
+      </Paper>
+
+      <Paper
+        className="min-h-[180px] flex-1 overflow-y-auto p-4"
+        component="section"
+        elevation={0}
+        sx={{
+          backgroundColor: '#2A2B47',
+          borderRadius: '20px',
+          color: '#FFFFFF',
+        }}
+      >
+        <Tabs
+          aria-label="Содержимое комнаты"
+          onChange={(_event, value: 'participants' | 'queue') =>
+            setActiveRoomTab(value)
+          }
           sx={{
-            '&:hover': { backgroundColor: '#5D5FD4' },
-            backgroundColor: '#6F70E7',
-            color: '#FFFFFF',
-            fontSize: '18px',
-            marginTop: '16px',
+            minHeight: 0,
+            '& .MuiTab-root': {
+              backgroundColor: '#3F3F59',
+              borderRadius: '12px',
+              color: '#D7DBF0',
+              fontFamily: 'PP Neue Machina Plain UltraBold, sans-serif',
+              fontSize: '20px',
+              minHeight: '48px',
+              minWidth: 0,
+              padding: '8px 16px',
+              textTransform: 'none',
+            },
+            '& .MuiTab-root.Mui-selected': {
+              backgroundColor: '#FFFFFF',
+              color: '#25263E',
+            },
+            '& .MuiTabs-flexContainer': { gap: '8px' },
+            '& .MuiTabs-indicator': { display: 'none' },
           }}
-          variant="contained"
+          value={activeRoomTab}
         >
-          Встать в очередь
-        </Button>
-      )}
+          <Tab label="Очередь" value="queue" />
+          <Tab label="Участники" value="participants" />
+        </Tabs>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-secondary-text">
-          {formatPlaybackTime(currentTime)} / {formatPlaybackTime(duration)}
-          {remoteState && (
-            <span className="ml-3">
-              Эфир: играет
-            </span>
-          )}
-        </div>
+        {activeRoomTab === 'queue' ? (
+          <Box className="mt-4 max-w-[500px]">
+            <Typography className="mb-3 text-[#D7DBF0]">
+              {syncStatus === 'connecting'
+                ? 'Загружаем очередь…'
+                : queueIsEmpty
+                  ? 'Очередь пока пуста'
+                  : 'Видео сейчас воспроизводится'}
+            </Typography>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={!playerReady}
-            onClick={handleToggleSound}
-            variant="outlined"
-          >
-            {muted ? 'Включить звук' : 'Выключить звук'}
-          </Button>
-        </div>
-      </div>
+            {queueIsEmpty && (
+              <Button
+                disabled={!playerReady}
+                onClick={() => setQueueDialogOpen(true)}
+                sx={{
+                  '&:hover': { backgroundColor: '#5D5FD4' },
+                  backgroundColor: '#6F70E7',
+                  color: '#FFFFFF',
+                  fontSize: '16px',
+                  padding: '12px 20px',
+                }}
+                variant="contained"
+              >
+                Встать в очередь
+              </Button>
+            )}
+          </Box>
+        ) : (
+          <Typography className="mt-4 text-[#D7DBF0]">
+            Список участников появится здесь.
+          </Typography>
+        )}
 
-      {autoplayBlocked && (
-        <div className="mt-4 rounded-xl bg-[#FFF3CD] p-3 text-sm">
-          Браузер заблокировал автозапуск. Нажмите «Включить звук», чтобы
-          запустить видео.
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-4 rounded-xl bg-[#FFE3E8] p-3 text-sm text-[#8B2635]">
-          {error}
-        </div>
-      )}
+        {error && (
+          <Box className="mt-4 rounded-xl bg-[#FFE3E8] p-3 text-sm text-[#8B2635]">
+            {error}
+          </Box>
+        )}
+      </Paper>
 
       <Modal
         aria-describedby="queue-dialog-description"
@@ -521,79 +571,99 @@ export function SyncedYouTubePlayer({
         }}
       >
         <Fade in={queueDialogOpen}>
-          <Box component="form" onSubmit={handleJoinQueue} sx={queueDialogStyle}>
-            <button
+          <Box
+            component="form"
+            onSubmit={handleJoinQueue}
+            sx={queueDialogStyle}
+          >
+            <Button
               aria-label="Закрыть окно"
-              className="absolute right-0 top-[-62px] h-12 w-12 border-0 bg-transparent p-0"
               disabled={queueSubmitting}
               onClick={() => setQueueDialogOpen(false)}
-              type="button"
+              sx={{
+                '&:hover': { backgroundColor: 'transparent' },
+                backgroundColor: 'transparent',
+                height: '48px',
+                minWidth: '48px',
+                padding: 0,
+                position: 'absolute',
+                right: 0,
+                top: '-62px',
+                width: '48px',
+              }}
             >
-              <span className="absolute left-0 top-[22px] block h-[4px] w-12 rotate-45 rounded-full bg-white" />
-              <span className="absolute left-0 top-[22px] block h-[4px] w-12 -rotate-45 rounded-full bg-white" />
-            </button>
+              <Box
+                component="span"
+                sx={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '999px',
+                  height: '4px',
+                  left: 0,
+                  position: 'absolute',
+                  top: '22px',
+                  transform: 'rotate(45deg)',
+                  width: '48px',
+                }}
+              />
+              <Box
+                component="span"
+                sx={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '999px',
+                  height: '4px',
+                  left: 0,
+                  position: 'absolute',
+                  top: '22px',
+                  transform: 'rotate(-45deg)',
+                  width: '48px',
+                }}
+              />
+            </Button>
 
-            <h2
+            <Typography
               className="font-ultrabold"
+              component="h2"
               id="queue-dialog-title"
-              style={{ fontSize: '58px', lineHeight: 1.1, marginBottom: 20 }}
+              sx={{ fontSize: '58px', lineHeight: 1.1, marginBottom: '20px' }}
             >
               Добавление в очередь
-            </h2>
-            <p
+            </Typography>
+            <Typography
               id="queue-dialog-description"
-              style={{
+              sx={{
                 color: '#8B8DB3',
                 fontSize: '26px',
                 lineHeight: '39px',
-                marginBottom: 16,
+                marginBottom: '16px',
               }}
             >
               Введите ссылку на видео на YouTube
-            </p>
+            </Typography>
 
             <TextField
               error={Boolean(queueInputError)}
-              fullWidth
               helperText={queueInputError}
-              label="Ссылка на видео"
               onChange={event => {
                 setVideoUrl(event.target.value)
                 if (queueInputError) setQueueInputError(null)
               }}
+              placeholder="Ссылка на видео"
               sx={{
                 marginBottom: '30px',
                 '& .MuiFormHelperText-root': {
-                  marginLeft: '30px',
-                  position: 'absolute',
-                  top: '62px',
+                  marginLeft: '12px',
                 },
-                '& .MuiInputLabel-root': {
-                  color: '#8B8DB3',
-                  fontSize: '24px',
-                  left: '30px',
-                  transform: 'translate(0, 20px) scale(1)',
+                '& .MuiFilledInput-root': {
+                  borderRadius: '16px',
+                  height: '66px',
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#6F70E7' },
-                '& .MuiInputLabel-shrink': {
-                  transform: 'translate(0, -3px) scale(0.75)',
-                },
-                '& .MuiInputBase-input': {
-                  boxSizing: 'border-box',
+                '& .MuiFilledInput-input': {
                   fontSize: '20px',
                   height: '66px',
-                  padding: '20px 30px 12px',
-                },
-                '& .MuiInput-root:after': { borderBottomColor: '#6F70E7' },
-                '& .MuiInput-root:before': {
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.72)',
-                },
-                '& .MuiInput-root:hover:not(.Mui-disabled, .Mui-error):before': {
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.95)',
+                  padding: '0 30px',
                 },
               }}
               value={videoUrl}
-              variant="standard"
             />
 
             <Button
@@ -617,6 +687,6 @@ export function SyncedYouTubePlayer({
           </Box>
         </Fade>
       </Modal>
-    </section>
+    </Box>
   )
 }

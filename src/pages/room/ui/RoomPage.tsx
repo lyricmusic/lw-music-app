@@ -1,17 +1,23 @@
 import { useParams } from 'react-router-dom'
 
 import { useRoomPresence } from '@/entities/room'
+import { RoomChat } from '@/widgets/room-chat'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
+import { Box } from '@mui/material'
 
 export function RoomPage() {
   const { roomId = 'demo-room' } = useParams<{ roomId: string }>()
   useRoomPresence(roomId)
 
   return (
-    <div className="h-full overflow-hidden">
-      <main className="h-full w-full overflow-y-auto rounded-[20px] bg-[#ECEDF2] p-4">
+    <Box
+      className="h-full min-h-0 overflow-hidden bg-[#3F3F59] p-1"
+      component="main"
+    >
+      <Box className="room-content-grid">
         <SyncedYouTubePlayer key={roomId} roomId={roomId} />
-      </main>
-    </div>
+        <RoomChat key={roomId} roomId={roomId} />
+      </Box>
+    </Box>
   )
 }

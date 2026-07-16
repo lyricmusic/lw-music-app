@@ -123,6 +123,39 @@ service cloud.firestore {
         && request.resource.data.videoId.size() == 11;
     }
 
+    function hasValidMessage() {
+      let profile = get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+      return request.resource.data.keys().hasAll([
+          'authorId',
+          'authorName',
+          'authorPhotoURL',
+          'createdAt',
+          'text'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'authorId',
+          'authorName',
+          'authorPhotoURL',
+          'createdAt',
+          'text'
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorName == profile.displayName
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.authorName.size() <= 50
+        && request.resource.data.authorPhotoURL == profile.photoURL
+        && (request.resource.data.authorPhotoURL == null
+          || (request.resource.data.authorPhotoURL is string
+            && request.resource.data.authorPhotoURL.size() <= 2048))
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 1000;
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isOwner(userId)
@@ -164,6 +197,18 @@ service cloud.firestore {
         && hasValidPlaybackState()
         && request.resource.data.revision == resource.data.revision + 1;
       allow delete: if false;
+    }
+
+    match /rooms/{roomId}/messages/{messageId} {
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId));
+      allow create: if isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && hasValidMessage();
+      allow update, delete: if false;
     }
   }
 }
