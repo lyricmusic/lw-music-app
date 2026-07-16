@@ -2,6 +2,7 @@ param(
   [string]$YcPath = 'C:\Users\cools\yandex-cloud\bin\yc.exe',
   [string]$FirebaseProjectId = 'lwmusic-ffe83',
   [string[]]$AllowedOrigins = @(
+    'https://syncly.lyricweb.ru',
     'https://lwmusic-ffe83.web.app',
     'https://lwmusic-ffe83.firebaseapp.com',
     'http://localhost:5173',
