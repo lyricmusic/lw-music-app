@@ -8,12 +8,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        accent: '#B79EFF',
-        'brand-color': '#25263E',
-        'gray-block': '#ECEDF2',
-        'hover-brand': '#E9E2FF',
-        'light-brand': '#8B8DB3',
-        'secondary-text': '#5C5D7E',
+        accent: 'var(--color-accent)',
+        'auth-card': 'var(--color-auth-card)',
+        'auth-muted': 'var(--color-auth-muted)',
+        'brand-color': 'var(--color-brand)',
+        'gray-block': 'var(--color-gray-block)',
+        'hover-brand': 'var(--color-hover-brand)',
+        'light-brand': 'var(--color-light-brand)',
+        'secondary-text': 'var(--color-secondary-text)',
       },
     },
   },

@@ -3,9 +3,11 @@ import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 
 import { routes } from '@/shared/config/routes'
-import { Box, Button, CircularProgress, TextField } from '@mui/material'
+import { TextField } from '@/shared/ui/text-field'
+import { Box, Button, CircularProgress } from '@mui/material'
 
 import { getAuthErrorMessage, signInWithEmail } from '../api/auth'
+import { authSubmitButtonSx } from './authFormStyles'
 
 export function SignInForm() {
   const navigate = useNavigate()
@@ -42,37 +44,38 @@ export function SignInForm() {
 
   return (
     <div>
-      <h1 className="text-[38px] font-ultrabold mb-5">Вход</h1>
+      <h1 className="mb-8 text-[38px] leading-none font-ultrabold">Вход</h1>
       <Box component="form" noValidate onSubmit={handleLogin}>
         <div className="flex flex-col gap-y-3 mb-6">
           <TextField
             autoComplete="email"
             error={submitted && !email.trim()}
-            fullWidth
-            helperText={submitted && !email.trim() ? 'Обязательное поле.' : ' '}
-            label="E-mail"
+            helperText={
+              submitted && !email.trim() ? 'Обязательное поле.' : undefined
+            }
             onChange={event => setEmail(event.target.value)}
+            placeholder="Email"
             type="email"
             value={email}
-            variant="filled"
           />
 
           <TextField
             autoComplete="current-password"
             error={submitted && !password}
-            fullWidth
-            helperText={submitted && !password ? 'Обязательное поле.' : ' '}
-            label="Пароль"
+            helperText={
+              submitted && !password ? 'Обязательное поле.' : undefined
+            }
             onChange={event => setPassword(event.target.value)}
+            placeholder="Пароль"
             type="password"
             value={password}
-            variant="filled"
           />
         </div>
 
         <Button
           className="w-full font-neue"
           disabled={loading}
+          sx={authSubmitButtonSx}
           type="submit"
           variant="contained"
         >
@@ -80,8 +83,8 @@ export function SignInForm() {
         </Button>
 
         <div className="flex justify-center mt-5 gap-x-[10px]">
-          <span className="text-[#A99FAD]">Нет аккаунта?</span>
-          <RouterLink className="text-[#180022] underline" to={routes.signUp}>
+          <span className="text-auth-muted">Нет аккаунта?</span>
+          <RouterLink className="text-white underline" to={routes.signUp}>
             Зарегистрироваться
           </RouterLink>
         </div>

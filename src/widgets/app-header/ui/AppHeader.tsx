@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import logo from '@/assets/lw.svg'
+import logo from '@assets/lw.svg'
 
 import { MemberIcon } from '@/shared/ui/icons'
 

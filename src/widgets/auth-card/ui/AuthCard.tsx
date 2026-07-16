@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 
-import logo from '@/assets/lw.svg'
 import {
   SignInForm,
   SignUpForm,
@@ -12,6 +11,7 @@ import {
 import { routes } from '@/shared/config/routes'
 import { GoogleIcon } from '@/shared/ui/icons'
 import { Button, CircularProgress } from '@mui/material'
+import logo from '@assets/lw.svg'
 
 interface AuthCardProps {
   mode: 'sign-in' | 'sign-up'
@@ -34,9 +34,16 @@ export function AuthCard({ mode }: AuthCardProps) {
   }
 
   return (
-    <div className="w-[424px] px-10 py-[38px] bg-gray-block rounded-xl m-0.5 flex flex-col justify-between">
-      <div>
-        <img alt="Логотип" src={logo} />
+    <div
+      className="m-0.5 flex w-[calc(100%-0.25rem)] max-w-[424px] flex-col justify-between rounded-[20px] bg-auth-card px-6 py-8 text-white min-[480px]:w-[424px] min-[480px]:px-10 min-[480px]:py-[38px]"
+      style={{ backgroundColor: 'var(--color-auth-card, #2A2B47)' }}
+    >
+      <div className="relative h-[52px] w-[167px]">
+        <img className="brightness-0 invert" alt="Логотип" src={logo} />
+        <span
+          aria-hidden="true"
+          className="absolute bottom-[9.5px] right-[10.5px] h-2 w-2 rounded-full bg-accent"
+        />
       </div>
       {mode === 'sign-in' ? <SignInForm /> : <SignUpForm />}
 
@@ -45,16 +52,22 @@ export function AuthCard({ mode }: AuthCardProps) {
         onClick={handleGoogleLogin}
         sx={{
           '&:active': {
-            color: '#fff',
+            color: 'var(--color-auth-text)',
           },
           '&:hover': {
-            backgroundColor: '#180022',
-            borderColor: '#180022',
-            color: '#fff',
+            backgroundColor: 'var(--color-accent)',
+            borderColor: 'var(--color-accent)',
+            color: 'var(--color-auth-card)',
           },
           backgroundColor: 'transparent',
-          border: '1px solid #DFDDDF',
-          color: '#180022',
+          border: '2px solid var(--color-auth-border)',
+          borderRadius: '12px',
+          color: 'var(--color-auth-text)',
+          fontSize: '14px',
+          fontWeight: 800,
+          height: '52px',
+          padding: 0,
+          textTransform: 'uppercase',
         }}
         variant="outlined"
       >

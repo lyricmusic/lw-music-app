@@ -1,8 +1,12 @@
 import { AuthCard } from '@/widgets/auth-card'
+import background from '@assets/background.svg'
 
 export function SignUpPage() {
   return (
-    <main className="flex min-h-screen justify-end bg-[url('@/assets/start-bg.png')] bg-left bg-no-repeat">
+    <main
+      className="flex min-h-screen min-h-dvh justify-end bg-cover bg-center bg-no-repeat lg:bg-left"
+      style={{ backgroundImage: `url(${background})` }}
+    >
       <AuthCard mode="sign-up" />
     </main>
   )

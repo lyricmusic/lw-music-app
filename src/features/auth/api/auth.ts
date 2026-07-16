@@ -34,11 +34,9 @@ async function saveUserProfile(user: User, displayName?: string) {
 }
 
 export async function signUpWithEmail({
-  displayName,
   email,
   password,
 }: {
-  displayName: string
   email: string
   password: string
 }) {
@@ -48,6 +46,7 @@ export async function signUpWithEmail({
     password,
   )
 
+  const displayName = email.trim().split('@')[0]
   await updateProfile(credential.user, { displayName: displayName.trim() })
   await saveUserProfile(credential.user, displayName)
 

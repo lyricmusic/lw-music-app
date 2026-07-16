@@ -3,13 +3,15 @@
 
 @font-face {
   font-family: 'PP Neue Machina Plain';
-  src: url('../../assets/fonts/PPNeueMachina-PlainRegular.eot');
+  src: url('../../../assets/fonts/PPNeueMachina-PlainRegular.eot');
   src:
-    url('../../assets/fonts/PPNeueMachina-PlainRegular.eot?#iefix')
+    url('../../../assets/fonts/PPNeueMachina-PlainRegular.eot?#iefix')
       format('embedded-opentype'),
-    url('../../assets/fonts/PPNeueMachina-PlainRegular.woff2') format('woff2'),
-    url('../../assets/fonts/PPNeueMachina-PlainRegular.woff') format('woff'),
-    url('../../assets/fonts/PPNeueMachina-PlainRegular.ttf') format('truetype');
+    url('../../../assets/fonts/PPNeueMachina-PlainRegular.woff2')
+      format('woff2'),
+    url('../../../assets/fonts/PPNeueMachina-PlainRegular.woff') format('woff'),
+    url('../../../assets/fonts/PPNeueMachina-PlainRegular.ttf')
+      format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -17,13 +19,15 @@
 
 @font-face {
   font-family: 'PP Neue Machina Plain UltraBold';
-  src: url('../../assets/fonts/PPNeueMachina-PlainUltrabold.eot');
+  src: url('../../../assets/fonts/PPNeueMachina-PlainUltrabold.eot');
   src:
-    url('../../assets/fonts/PPNeueMachina-PlainUltrabold.eot?#iefix')
+    url('../../../assets/fonts/PPNeueMachina-PlainUltrabold.eot?#iefix')
       format('embedded-opentype'),
-    url('../../assets/fonts/PPNeueMachina-PlainUltrabold.woff2') format('woff2'),
-    url('../../assets/fonts/PPNeueMachina-PlainUltrabold.woff') format('woff'),
-    url('../../assets/fonts/PPNeueMachina-PlainUltrabold.ttf')
+    url('../../../assets/fonts/PPNeueMachina-PlainUltrabold.woff2')
+      format('woff2'),
+    url('../../../assets/fonts/PPNeueMachina-PlainUltrabold.woff')
+      format('woff'),
+    url('../../../assets/fonts/PPNeueMachina-PlainUltrabold.ttf')
       format('truetype');
   font-weight: bold;
   font-style: normal;
@@ -32,15 +36,15 @@
 
 @font-face {
   font-family: 'Neue Machina Bold';
-  src: url('../../assets/fonts/NeueMachina-Bold.eot');
+  src: url('../../../assets/fonts/NeueMachina-Bold.eot');
   src:
     local('Neue Machina Bold'),
     local('NeueMachina-Bold'),
-    url('../../assets/fonts/NeueMachina-Bold.eot?#iefix')
+    url('../../../assets/fonts/NeueMachina-Bold.eot?#iefix')
       format('embedded-opentype'),
-    url('../../assets/fonts/NeueMachina-Bold.woff2') format('woff2'),
-    url('../../assets/fonts/NeueMachina-Bold.woff') format('woff'),
-    url('../../assets/fonts/NeueMachina-Bold.ttf') format('truetype');
+    url('../../../assets/fonts/NeueMachina-Bold.woff2') format('woff2'),
+    url('../../../assets/fonts/NeueMachina-Bold.woff') format('woff'),
+    url('../../../assets/fonts/NeueMachina-Bold.ttf') format('truetype');
   font-weight: 800;
   font-style: normal;
 }
@@ -50,6 +54,19 @@
 @tailwind utilities;
 
 :root {
+  --color-accent: #b79eff;
+  --color-auth-action: #6f70e7;
+  --color-auth-border: #dfdddf;
+  --color-auth-card: #2a2b47;
+  --color-auth-muted: #8d8bb3;
+  --color-auth-text: #fff;
+  --color-brand: #25263e;
+  --color-gray-block: #ecedf2;
+  --color-hover-brand: #e9e2ff;
+  --color-light-brand: #8b8db3;
+  --color-input-background: #d7dbf0;
+  --color-input-placeholder: #8d8bb3;
+  --color-secondary-text: #5c5d7e;
   /*--toastify-text-color-light: #333F48;*/
 }
 
