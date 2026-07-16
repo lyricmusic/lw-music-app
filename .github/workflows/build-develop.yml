@@ -67,6 +67,7 @@ jobs:
         run: |
           tar -czf dist.tar.gz -C dist .
           cp deploy/release-syncly.sh deploy-release.sh
+          cp deploy/ensure-syncly-https.sh ensure-syncly-https.sh
 
       - name: Upload release to server
         uses: appleboy/scp-action@v1
@@ -75,7 +76,7 @@ jobs:
           username: ${{ env.DEPLOY_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
-          source: dist.tar.gz,deploy-release.sh
+          source: dist.tar.gz,deploy-release.sh,ensure-syncly-https.sh
           target: ${{ env.DEPLOY_PATH }}
           overwrite: true
 
@@ -92,6 +93,7 @@ jobs:
           command_timeout: 2m
           script: |
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/deploy-release.sh"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/ensure-syncly-https.sh"
 
       - name: Notify Telegram
         if: ${{ always() }}
