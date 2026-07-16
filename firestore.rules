@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasValidUserProfile() {
+      return request.resource.data.keys().hasAll([
+          'createdAt',
+          'displayName',
+          'email',
+          'photoURL',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'displayName',
+          'email',
+          'photoURL',
+          'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.email == request.auth.token.email
+        && (request.resource.data.photoURL == null
+          || request.resource.data.photoURL is string)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function hasValidPlaybackState() {
+      return request.resource.data.keys().hasAll([
+          'changedAt',
+          'changedBy',
+          'positionSeconds',
+          'revision',
+          'status',
+          'videoId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'changedAt',
+          'changedBy',
+          'positionSeconds',
+          'revision',
+          'status',
+          'videoId'
+        ])
+        && request.resource.data.changedAt == request.time
+        && request.resource.data.changedBy == request.auth.uid
+        && request.resource.data.positionSeconds is number
+        && request.resource.data.positionSeconds >= 0
+        && request.resource.data.positionSeconds <= 86400
+        && request.resource.data.revision is int
+        && request.resource.data.revision > 0
+        && request.resource.data.status in ['paused', 'playing']
+        && request.resource.data.videoId is string
+        && request.resource.data.videoId.size() == 11;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId)
+        && hasValidUserProfile()
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && hasValidUserProfile()
+        && (request.resource.data.createdAt == resource.data.createdAt
+          || (!('createdAt' in resource.data)
+            && request.resource.data.createdAt == request.time))
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    match /rooms/{roomId}/playback/{stateId} {
+      allow read: if isSignedIn() && stateId == 'current';
+      allow create: if isSignedIn()
+        && stateId == 'current'
+        && hasValidPlaybackState()
+        && request.resource.data.revision == 1;
+      allow update: if isSignedIn()
+        && stateId == 'current'
+        && hasValidPlaybackState()
+        && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
+
+    // Остальные коллекции и запись комнат будут открываться по мере реализации.
+    // Отсутствие разрешающего правила означает deny by default.
+  }
+}
