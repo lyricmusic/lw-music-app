@@ -1,33 +1,104 @@
 import { useState } from 'react'
+import { useMatch } from 'react-router-dom'
 
 import logo from '@assets/lw.svg'
 
+import { useRoomName } from '@/entities/room'
+import { routes } from '@/shared/config/routes'
 import { MemberIcon } from '@/shared/ui/icons'
+import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material'
 
 import { UserMenu } from './UserMenu'
 
 export function AppHeader() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const roomMatch = useMatch(routes.roomPattern)
+  const roomName = useRoomName(roomMatch?.params.roomId)
 
   return (
-    <header className="flex justify-between rounded-[20px] bg-[#ECEDF2] p-4">
-      <div>
-        <img alt="Логотип" src={logo} />
-      </div>
-
-      <div className="relative">
-        <button
-          aria-expanded={isUserMenuOpen}
-          aria-label="Открыть меню пользователя"
-          className="relative z-20 flex items-center justify-center w-[52px] h-[52px] rounded-xl bg-brand-color cursor-pointer"
-          onClick={() => setIsUserMenuOpen(current => !current)}
-          type="button"
+    <AppBar
+      component="header"
+      elevation={0}
+      position="static"
+      sx={{
+        backgroundColor: '#2A2B47',
+        borderRadius: '0 0 20px 20px',
+        boxShadow: 'none',
+        flexShrink: 0,
+        height: '84px',
+      }}
+    >
+      <Toolbar
+        disableGutters
+        sx={{
+          height: '100%',
+          justifyContent: 'space-between',
+          minHeight: '84px !important',
+          padding: 2,
+        }}
+      >
+        <Box
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            gap: 3,
+            minWidth: 0,
+          }}
         >
-          <MemberIcon className="fill-white" />
-        </button>
+          <Box
+            alt="Логотип"
+            component="img"
+            src={logo}
+            sx={{
+              display: 'block',
+              flexShrink: 0,
+              height: '52px',
+              width: '167px',
+            }}
+          />
+          {roomName && (
+            <Typography
+              component="h1"
+              sx={{
+                color: '#FFFFFF',
+                fontFamily: 'Neue Machina Bold, sans-serif',
+                fontSize: '32px',
+                fontWeight: 800,
+                lineHeight: 1.2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {roomName}
+            </Typography>
+          )}
+        </Box>
 
-        {isUserMenuOpen && <UserMenu />}
-      </div>
-    </header>
+        <Box sx={{ flexShrink: 0, position: 'relative' }}>
+          <IconButton
+            aria-expanded={isUserMenuOpen}
+            aria-haspopup="menu"
+            aria-label="Открыть меню пользователя"
+            onClick={() => setIsUserMenuOpen(current => !current)}
+            sx={{
+              '&:hover': { backgroundColor: '#25263E' },
+              backgroundColor: '#25263E',
+              borderRadius: '12px',
+              height: '52px',
+              padding: 0,
+              position: 'relative',
+              width: '52px',
+              zIndex: 20,
+            }}
+            type="button"
+          >
+            <MemberIcon sx={{ color: '#FFFFFF' }} />
+          </IconButton>
+
+          {isUserMenuOpen && <UserMenu />}
+        </Box>
+      </Toolbar>
+    </AppBar>
   )
 }

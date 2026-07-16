@@ -128,16 +128,57 @@ body {
 
 .room-content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(280px, 22.6%, 360px);
+  /* 1104px / 324px in the 1440px-wide layout, excluding the 4px gap. */
+  grid-template-columns:
+    minmax(0, calc(77.3109% - 3.0924px))
+    minmax(0, calc(22.6891% - 0.9076px));
+  grid-template-areas: 'player chat';
+  grid-template-rows: minmax(0, 1fr);
   gap: 4px;
   height: 100%;
   min-height: 0;
 }
 
-@media (max-width: 820px) {
-  .room-content-grid {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(420px, 65vh);
-    overflow-y: auto;
-  }
+.room-player-column,
+.room-chat-column {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.room-player-column {
+  grid-area: player;
+}
+
+.room-chat-column {
+  grid-area: chat;
+}
+
+.room-player-layout {
+  display: grid;
+  grid-template-areas: 'queue';
+  grid-template-rows: minmax(0, 1fr);
+  gap: 4px;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.room-player-layout--with-video {
+  /* 620px / 308px in the 1024px-high layout, excluding the 4px gap. */
+  grid-template-areas:
+    'video'
+    'queue';
+  grid-template-rows:
+    minmax(0, calc(66.8103% - 2.6724px))
+    minmax(0, calc(33.1897% - 1.3276px));
+}
+
+.room-video-panel {
+  grid-area: video;
+}
+
+.room-queue-panel {
+  grid-area: queue;
 }

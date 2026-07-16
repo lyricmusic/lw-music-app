@@ -202,6 +202,54 @@ export function SyncedYouTubePlayer({
     [playbackRef, syncEnabled],
   )
 
+  const clearFinishedPlayback = useCallback(
+    (finishedVideoId: string) => {
+      if (!syncEnabled) {
+        if (lastRemoteStateRef.current?.videoId === finishedVideoId) {
+          lastRemoteStateRef.current = null
+          setRemoteState(null)
+        }
+        setLocalQueuedVideoId(currentVideoId =>
+          currentVideoId === finishedVideoId ? null : currentVideoId,
+        )
+        return Promise.resolve()
+      }
+
+      const user = auth.currentUser
+      if (!user) return Promise.resolve()
+
+      setSyncStatus('syncing')
+      writeQueueRef.current = writeQueueRef.current
+        .then(async () => {
+          await runTransaction(db, async transaction => {
+            const snapshot = await transaction.get(playbackRef)
+            if (
+              !snapshot.exists() ||
+              snapshot.data().videoId !== finishedVideoId
+            ) {
+              return
+            }
+
+            transaction.delete(playbackRef)
+          })
+          setLocalQueuedVideoId(currentVideoId =>
+            currentVideoId === finishedVideoId ? null : currentVideoId,
+          )
+          setSyncStatus('connected')
+        })
+        .catch(reason => {
+          console.error('Не удалось очистить завершённое видео:', reason)
+          setError(
+            'Firestore отклонил очистку завершённого видео. Опубликуйте обновлённые firestore.rules.',
+          )
+          setSyncStatus('error')
+        })
+
+      return writeQueueRef.current
+    },
+    [playbackRef, syncEnabled],
+  )
+
   const applyRemoteState = useCallback((state: PlaybackState) => {
     const player = playerRef.current
     if (!player) return
@@ -234,8 +282,13 @@ export function SyncedYouTubePlayer({
   const handlePlayerStateChange = useCallback(
     (event: YT.OnStateChangeEvent) => {
       if (event.data === YT.PlayerState.PLAYING) setAutoplayBlocked(false)
+
+      if (event.data === YT.PlayerState.ENDED) {
+        const finishedVideoId = event.target.getVideoData().video_id
+        if (finishedVideoId) void clearFinishedPlayback(finishedVideoId)
+      }
     },
-    [],
+    [clearFinishedPlayback],
   )
 
   useEffect(() => {
@@ -423,16 +476,22 @@ export function SyncedYouTubePlayer({
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
 
   return (
-    <Box className="flex h-full min-h-0 flex-col gap-1">
+    <Box
+      className={`room-player-layout ${
+        hasVideo ? 'room-player-layout--with-video' : ''
+      }`}
+    >
       <Paper
         aria-hidden={!hasVideo}
-        className={`${hasVideo ? 'block' : 'hidden'} shrink-0 overflow-hidden`}
+        className={`room-video-panel ${
+          hasVideo ? 'block' : 'hidden'
+        } min-h-0 overflow-hidden`}
         component="section"
         data-testid="video-sync-player"
         elevation={0}
         sx={{ backgroundColor: '#2A2B47', borderRadius: '20px' }}
       >
-        <Box className="relative aspect-video w-full overflow-hidden bg-black">
+        <Box className="relative h-full w-full overflow-hidden bg-black">
           {!playerReady && (
             <Box className="absolute inset-0 z-10 flex items-center justify-center text-white">
               <CircularProgress color="inherit" />
@@ -476,7 +535,7 @@ export function SyncedYouTubePlayer({
       </Paper>
 
       <Paper
-        className="min-h-[180px] flex-1 overflow-y-auto p-4"
+        className="room-queue-panel min-h-0 overflow-y-auto p-4"
         component="section"
         elevation={0}
         sx={{

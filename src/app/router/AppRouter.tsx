@@ -36,7 +36,7 @@ function PageLoadingFallback() {
 
 function AuthenticatedLayout() {
   return (
-    <div className="flex h-screen flex-col justify-between gap-y-[6px] bg-brand-color p-0.5">
+    <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] gap-y-1 bg-brand-color pb-1">
       <AppHeader />
       <div className="h-full min-h-0">
         <Outlet />

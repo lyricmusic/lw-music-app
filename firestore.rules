@@ -196,7 +196,7 @@ service cloud.firestore {
         && stateId == 'current'
         && hasValidPlaybackState()
         && request.resource.data.revision == resource.data.revision + 1;
-      allow delete: if false;
+      allow delete: if isSignedIn() && stateId == 'current';
     }
 
     match /rooms/{roomId}/messages/{messageId} {

@@ -1,4 +1,6 @@
 export { useRooms } from './api/useRooms'
+export { useRoomExists } from './api/useRoomExists'
+export { useRoomName } from './api/useRoomName'
 export { useRoomPresence } from './api/useRoomPresence'
 export type { Category, Room } from './model/types'
 export { RoomListItem } from './ui/RoomListItem'

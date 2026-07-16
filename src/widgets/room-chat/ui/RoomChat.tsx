@@ -164,7 +164,7 @@ export function RoomChat({ roomId }: RoomChatProps) {
 
   return (
     <Paper
-      className="flex min-h-0 flex-col p-5"
+      className="flex h-full min-h-0 w-full flex-col p-5"
       component="aside"
       elevation={0}
       sx={{
