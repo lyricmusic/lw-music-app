@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DEPLOY_FINGERPRINT: SHA256:n0C2piyMut6k3v4ePW5j/ZxCnG6eHUcDdjamMtCZxkU
+  DEPLOY_FINGERPRINT: SHA256:h2kMHh2yj5IWfR7M/nYkvOisclCEI7GRHajEaGIeiJo
   DEPLOY_HOST: 109.172.7.119
   DEPLOY_PATH: /home/coolspectre/lyricweb-deploy
   DEPLOY_USER: coolspectre
