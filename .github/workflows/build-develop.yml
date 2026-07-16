@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,9 +13,15 @@ concurrency:
   group: build-develop-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DEPLOY_FINGERPRINT: SHA256:n0C2piyMut6k3v4ePW5j/ZxCnG6eHUcDdjamMtCZxkU
+  DEPLOY_HOST: 109.172.7.119
+  DEPLOY_PATH: /home/coolspectre/lyricweb-deploy
+  DEPLOY_USER: coolspectre
+
 jobs:
   build:
-    name: Lint and build
+    name: Lint, build and deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -38,7 +45,15 @@ jobs:
         run: pnpm lint
 
       - name: Build
-        run: pnpm build
+        env:
+          VITE_ROOM_COVER_UPLOAD_URL: ${{ secrets.VITE_ROOM_COVER_UPLOAD_URL }}
+        run: |
+          if [ -z "$VITE_ROOM_COVER_UPLOAD_URL" ]; then
+            echo "VITE_ROOM_COVER_UPLOAD_URL is not configured."
+            exit 1
+          fi
+
+          pnpm build
 
       - name: Upload production build
         uses: actions/upload-artifact@v7
@@ -47,6 +62,36 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 7
+
+      - name: Package deployment files
+        run: |
+          tar -czf dist.tar.gz -C dist .
+          cp deploy/release-syncly.sh deploy-release.sh
+
+      - name: Upload release to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
+          source: dist.tar.gz,deploy-release.sh
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: Activate release
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          SUDO_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
+          envs: SUDO_PASSWORD
+          command_timeout: 2m
+          script: |
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/deploy-release.sh"
 
       - name: Notify Telegram
         if: ${{ always() }}
@@ -57,18 +102,18 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "Telegram secrets are not configured; skipping notification."
-            exit 0
+            echo "Telegram secrets are not configured."
+            exit 1
           fi
 
           case "$JOB_STATUS" in
             success)
               icon="✅"
-              title="Build succeeded"
+              title="Build and deploy succeeded"
               ;;
             failure)
               icon="❌"
-              title="Build failed"
+              title="Build or deploy failed"
               ;;
             cancelled)
               icon="⚪"
@@ -91,10 +136,19 @@ jobs:
             "$GITHUB_ACTOR" \
             "$run_url")
 
-          curl --fail --silent --show-error \
-            --request POST \
-            --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            --data-urlencode "disable_web_page_preview=true" \
-            --output /dev/null
+          if ! response=$(curl --silent --show-error \
+              --request POST \
+              --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+              --data-urlencode "text=${message}" \
+              --data-urlencode "disable_web_page_preview=true"); then
+            echo "Telegram request failed before receiving an API response."
+            exit 1
+          fi
+
+          if printf '%s' "$response" | grep --quiet '"ok":true'; then
+            echo "Telegram notification sent successfully."
+          else
+            echo "Telegram API error: $response"
+            exit 1
+          fi
