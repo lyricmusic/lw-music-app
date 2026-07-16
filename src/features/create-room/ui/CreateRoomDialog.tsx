@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
 
 import type { Category } from '@/entities/room'
@@ -14,24 +14,26 @@ import {
 
 import { createRoom } from '../api/createRoom'
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
 const style = {
   backgroundColor: '#ECEDF2',
   borderRadius: '20px',
   boxShadow: 24,
   left: '50%',
+  maxHeight: 'calc(100vh - 32px)',
+  maxWidth: 'calc(100vw - 32px)',
+  overflowY: 'auto',
   padding: '40px',
   position: 'absolute' as const,
   top: '50%',
   transform: 'translate(-50%, -50%)',
-  maxHeight: 'calc(100vh - 32px)',
-  maxWidth: 'calc(100vw - 32px)',
-  overflowY: 'auto',
   width: 555,
 }
 
 interface CreateRoomDialogProps {
   onClose: () => void
-  onRoomCreated: () => void
   open: boolean
 }
 
@@ -42,47 +44,49 @@ const categoryOptions: Category[] = [
   { id: 4, title: 'Космос' },
 ]
 
-export function CreateRoomDialog({
-  onClose,
-  onRoomCreated,
-  open,
-}: CreateRoomDialogProps) {
+export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
   const [roomName, setRoomName] = useState('')
   const [categoryList, setCategoryList] = useState<Category[]>([])
-  const [url, setUrl] = useState('')
+  const [image, setImage] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  useEffect(
+    () => () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
+    },
+    [imagePreviewUrl],
+  )
+
+  const nameHasError = submitted && !roomName.trim()
+  const categoriesHaveError = submitted && categoryList.length === 0
+  const imageHasError = submitted && !image
 
   const handleCreateRoom = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setSubmitted(true)
 
-    if (!roomName.trim() || !categoryList.length) {
-      setError(true)
-      return
-    }
+    if (!roomName.trim() || categoryList.length === 0 || !image) return
 
-    setError(false)
     setLoading(true)
 
     try {
       await createRoom({
         categories: categoryList,
-        image: url,
+        image,
         name: roomName.trim(),
       })
-      onRoomCreated()
+      setRoomName('')
+      setCategoryList([])
+      setImage(null)
+      setImagePreviewUrl(null)
+      setSubmitted(false)
       onClose()
     } catch (error) {
-      if (error instanceof Error) {
-        const isErrorSize = error.message.includes(
-          'The value of property "image"',
-        )
-        toast.error(
-          isErrorSize
-            ? 'Размер обложки не должен превышать 1МБ'
-            : error.message,
-        )
-      }
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось создать комнату.',
+      )
     } finally {
       setLoading(false)
     }
@@ -90,48 +94,57 @@ export function CreateRoomDialog({
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
 
-    if (file.size > 700_000) {
-      toast.error('Размер обложки не должен превышать 700 КБ')
-      event.target.value = ''
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Можно загрузить изображение JPEG, PNG или WebP.')
       return
     }
 
-    const reader = new FileReader()
-    reader.addEventListener('load', () => {
-      if (typeof reader.result === 'string') setUrl(reader.result)
-    })
-    reader.readAsDataURL(file)
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      toast.error('Размер обложки не должен превышать 5 МБ.')
+      return
+    }
+
+    setImage(file)
+    setImagePreviewUrl(URL.createObjectURL(file))
+  }
+
+  const handleRemoveImage = () => {
+    setImage(null)
+    setImagePreviewUrl(null)
   }
 
   return (
     <Modal
-      aria-describedby="spring-modal-description"
-      aria-labelledby="spring-modal-title"
+      aria-describedby="create-room-description"
+      aria-labelledby="create-room-title"
       closeAfterTransition
       onClose={onClose}
       open={open}
     >
       <Fade in={open}>
         <Box component="form" onSubmit={handleCreateRoom} sx={style}>
-          <h2 className="font-ultrabold text-4xl mb-4">Создание комнаты</h2>
-          <div className="flex flex-col mb-6">
-            <div className="mb-6 pb-7 border-b border-white">
-              <span className="text-secondary-text block mb-3">
+          <h2 className="mb-4 text-4xl font-ultrabold" id="create-room-title">
+            Создание комнаты
+          </h2>
+          <div className="mb-6 flex flex-col" id="create-room-description">
+            <div className="mb-6 border-b border-white pb-7">
+              <span className="mb-3 block text-secondary-text">
                 Придумайте название
               </span>
 
               <TextField
-                error={error}
+                disabled={loading}
+                error={nameHasError}
                 fullWidth
-                helperText={error ? 'Обязательное поле.' : ''}
+                helperText={nameHasError ? 'Обязательное поле.' : ''}
+                inputProps={{ maxLength: 80 }}
                 label="Название комнаты"
-                onChange={e => setRoomName(e.target.value)}
+                onChange={event => setRoomName(event.target.value)}
                 sx={{
-                  '&.MuiFilledInput': {
-                    backgroundColor: 'white',
-                  },
+                  '&.MuiFilledInput': { backgroundColor: 'white' },
                   borderRadius: '16px',
                 }}
                 value={roomName}
@@ -139,29 +152,31 @@ export function CreateRoomDialog({
               />
             </div>
 
-            <div className="mb-6 pb-7 border-b border-white">
-              <span className="text-secondary-text block mb-3">
+            <div className="mb-6 border-b border-white pb-7">
+              <span className="mb-3 block text-secondary-text">
                 Выберите категории видео (не более трёх)
               </span>
 
               <Autocomplete
+                disabled={loading}
                 filterSelectedOptions
+                getOptionDisabled={() => categoryList.length >= 3}
                 getOptionLabel={option => option.title}
-                isOptionEqualToValue={(option: Category, value: Category) =>
-                  option.id === value.id
-                }
+                isOptionEqualToValue={(option, value) => option.id === value.id}
                 multiple
                 noOptionsText="Нет категорий"
-                onChange={(_, newValue: Category[]) => {
-                  setCategoryList(newValue)
-                }}
+                onChange={(_, newValue) => setCategoryList(newValue)}
                 options={categoryOptions}
                 renderInput={params => (
                   <TextField
                     {...params}
-                    error={error}
-                    helperText={error ? 'Обязательное поле.' : ''}
-                    label="Название категории"
+                    error={categoriesHaveError}
+                    helperText={
+                      categoriesHaveError
+                        ? 'Выберите хотя бы одну категорию.'
+                        : ''
+                    }
+                    label="Категории комнаты"
                     placeholder="Начните вводить название категории"
                   />
                 )}
@@ -169,21 +184,25 @@ export function CreateRoomDialog({
               />
             </div>
 
-            <div className="mb-6 pb-7 border-b border-white">
-              <span className="text-secondary-text block mb-3">
+            <div className="mb-6 border-b border-white pb-7">
+              <span className="mb-3 block text-secondary-text">
                 Установите обложку
               </span>
 
               <div className="flex">
-                <div className="w-[112px] h-[112px] rounded-[10px] overflow-hidden mr-5 border border-[#D6D7F0]">
-                  {url ? (
+                <div
+                  className={`mr-5 h-[112px] w-[112px] overflow-hidden rounded-[10px] border ${
+                    imageHasError ? 'border-[#D32F2F]' : 'border-[#D6D7F0]'
+                  }`}
+                >
+                  {imagePreviewUrl ? (
                     <img
-                      alt="Avatar Placeholder"
-                      className="w-full h-full object-cover"
-                      src={url}
+                      alt="Предпросмотр обложки комнаты"
+                      className="h-full w-full object-cover"
+                      src={imagePreviewUrl}
                     />
                   ) : (
-                    <div className="h-full flex justify-center items-center bg-white">
+                    <div className="flex h-full items-center justify-center bg-white">
                       <MembersIcon sx={{ width: '32px' }} />
                     </div>
                   )}
@@ -191,24 +210,26 @@ export function CreateRoomDialog({
 
                 <div className="flex flex-col justify-between">
                   <Button
-                    className="w-full mb-2"
+                    className="mb-2 w-full"
                     component="label"
+                    disabled={loading}
                     variant="outlined"
                   >
                     Загрузить обложку
                     <input
-                      accept="image/png,image/jpeg"
+                      accept="image/png,image/jpeg,image/webp"
                       hidden
                       onChange={handleFiles}
                       type="file"
                     />
                   </Button>
 
-                  {url && (
+                  {image && (
                     <Button
                       className="w-full"
                       color="error"
-                      onClick={() => setUrl('')}
+                      disabled={loading}
+                      onClick={handleRemoveImage}
                       variant="outlined"
                     >
                       Удалить
@@ -216,6 +237,11 @@ export function CreateRoomDialog({
                   )}
                 </div>
               </div>
+              {imageHasError && (
+                <span className="mt-2 block text-xs text-[#D32F2F]">
+                  Загрузите обложку комнаты.
+                </span>
+              )}
             </div>
           </div>
 
@@ -225,7 +251,7 @@ export function CreateRoomDialog({
             type="submit"
             variant="contained"
           >
-            Готово
+            {loading ? 'Создаём…' : 'Готово'}
           </Button>
         </Box>
       </Fade>

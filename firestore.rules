@@ -35,6 +35,65 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    function hasValidCategory(category) {
+      return category is map
+        && category.keys().hasAll(['id', 'title'])
+        && category.keys().hasOnly(['id', 'title'])
+        && category.id is int
+        && category.id > 0
+        && category.title is string
+        && category.title.size() > 0
+        && category.title.size() <= 50;
+    }
+
+    function hasValidCategories() {
+      let categories = request.resource.data.categories;
+      return categories is list
+        && categories.size() > 0
+        && categories.size() <= 3
+        && hasValidCategory(categories[0])
+        && (categories.size() < 2 || hasValidCategory(categories[1]))
+        && (categories.size() < 3 || hasValidCategory(categories[2]));
+    }
+
+    function hasValidRoom(roomId) {
+      return request.resource.data.keys().hasAll([
+          'categories',
+          'createdAt',
+          'imagePath',
+          'imageUrl',
+          'name',
+          'ownerId',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'categories',
+          'createdAt',
+          'imagePath',
+          'imageUrl',
+          'name',
+          'ownerId',
+          'updatedAt'
+        ])
+        && hasValidCategories()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.imagePath is string
+        && request.resource.data.imagePath.matches(
+          'room-covers/' + roomId + '/[^/]+'
+        )
+        && request.resource.data.imageUrl is string
+        && request.resource.data.imageUrl.matches(
+          'https://storage.yandexcloud.net/[^/]+/room-covers/'
+            + roomId + '/[^?]+'
+        )
+        && request.resource.data.imageUrl.size() <= 2048
+        && request.resource.data.ownerId is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     function hasValidPlaybackState() {
       return request.resource.data.keys().hasAll([
           'changedAt',
@@ -81,7 +140,17 @@ service cloud.firestore {
 
     match /rooms/{roomId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if false;
+      allow create: if isSignedIn()
+        && hasValidRoom(roomId)
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(resource.data.ownerId)
+        && hasValidRoom(roomId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isOwner(resource.data.ownerId);
     }
 
     match /rooms/{roomId}/playback/{stateId} {
@@ -96,8 +165,5 @@ service cloud.firestore {
         && request.resource.data.revision == resource.data.revision + 1;
       allow delete: if false;
     }
-
-    // Остальные коллекции и запись комнат будут открываться по мере реализации.
-    // Отсутствие разрешающего правила означает deny by default.
   }
 }

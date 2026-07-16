@@ -1,7 +1,9 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
+import { getDatabase } from 'firebase/database'
 import { getFirestore } from 'firebase/firestore'
 
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'lwmusic-ffe83'
 const firebaseConfig = {
   apiKey:
     import.meta.env.VITE_FIREBASE_API_KEY ||
@@ -15,11 +17,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-WFT02H0JDT',
   messagingSenderId:
     import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '930932722562',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'lwmusic-ffe83',
-  storageBucket:
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'lwmusic-ffe83.appspot.com',
+  projectId,
+  databaseURL:
+    import.meta.env.VITE_FIREBASE_DATABASE_URL ||
+    'https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app',
 }
 
 const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const auth = getAuth(app)
+export const realtimeDb = getDatabase(app)

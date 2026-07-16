@@ -13,7 +13,14 @@ import {
   formatPlaybackTime,
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
-import { Button, CircularProgress, TextField } from '@mui/material'
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Fade,
+  Modal,
+  TextField,
+} from '@mui/material'
 import {
   Timestamp,
   doc,
@@ -23,7 +30,6 @@ import {
 } from 'firebase/firestore'
 
 interface SyncedYouTubePlayerProps {
-  isHost?: boolean
   roomId: string
   syncEnabled?: boolean
 }
@@ -40,16 +46,25 @@ interface PlaybackState {
   videoId: string
 }
 
-interface PlaybackAnchor {
-  measuredAt: number
-  positionSeconds: number
-  status: PlaybackStatus
-  videoId: string
-}
-
-const DEFAULT_VIDEO_URL = 'https://www.youtube.com/watch?v=M7lc1UVf-VE'
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
-const MANUAL_SEEK_THRESHOLD_SECONDS = 1.25
+
+const queueDialogStyle = {
+  backgroundColor: '#D7DBF0',
+  borderRadius: '30px',
+  boxShadow: 24,
+  boxSizing: 'border-box',
+  left: '50%',
+  maxWidth: 'calc(100vw - 32px)',
+  padding: '50px 60px 60px',
+  position: 'absolute' as const,
+  top: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: 833,
+  '@media (max-width: 640px)': {
+    borderRadius: '24px',
+    padding: '32px 24px 24px',
+  },
+}
 
 const youtubeErrorMessages: Record<number, string> = {
   2: 'Некорректная ссылка или ID видео.',
@@ -104,7 +119,6 @@ function getExpectedPosition(state: PlaybackState) {
 }
 
 export function SyncedYouTubePlayer({
-  isHost = true,
   roomId,
   syncEnabled = true,
 }: SyncedYouTubePlayerProps) {
@@ -116,13 +130,9 @@ export function SyncedYouTubePlayer({
   const playerRef = useRef<null | YT.Player>(null)
   const lastRemoteStateRef = useRef<null | PlaybackState>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
-  const playbackAnchorRef = useRef<null | PlaybackAnchor>(null)
-  const lastPublishedRef = useRef<
-    null | (PlaybackAnchor & { publishedAt: number })
-  >(null)
   const writeQueueRef = useRef(Promise.resolve())
 
-  const [videoUrl, setVideoUrl] = useState(DEFAULT_VIDEO_URL)
+  const [videoUrl, setVideoUrl] = useState('')
   const [playerReady, setPlayerReady] = useState(false)
   const [muted, setMuted] = useState(true)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -131,6 +141,12 @@ export function SyncedYouTubePlayer({
   const [remoteState, setRemoteState] = useState<null | PlaybackState>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [queueDialogOpen, setQueueDialogOpen] = useState(false)
+  const [queueSubmitting, setQueueSubmitting] = useState(false)
+  const [queueInputError, setQueueInputError] = useState<null | string>(null)
+  const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
+    null,
+  )
 
   const publishPlayback = useCallback(
     (videoId: string, status: PlaybackStatus, rawPosition: number) => {
@@ -145,24 +161,6 @@ export function SyncedYouTubePlayer({
       const positionSeconds = Number.isFinite(rawPosition)
         ? Math.max(0, rawPosition)
         : 0
-      const now = Date.now()
-      const lastPublished = lastPublishedRef.current
-      const duplicate =
-        lastPublished?.videoId === videoId &&
-        lastPublished.status === status &&
-        Math.abs(lastPublished.positionSeconds - positionSeconds) < 0.75 &&
-        now - lastPublished.publishedAt < 1_500
-
-      if (duplicate) return Promise.resolve()
-
-      const anchor: PlaybackAnchor = {
-        measuredAt: now,
-        positionSeconds,
-        status,
-        videoId,
-      }
-      playbackAnchorRef.current = anchor
-      lastPublishedRef.current = { ...anchor, publishedAt: now }
       setSyncStatus('syncing')
 
       writeQueueRef.current = writeQueueRef.current
@@ -207,17 +205,10 @@ export function SyncedYouTubePlayer({
     suppressPlayerEventsUntilRef.current = Date.now() + 1_800
 
     if (videoChanged) {
-      if (state.status === 'playing') {
-        player.loadVideoById({
-          startSeconds: expectedPosition,
-          videoId: state.videoId,
-        })
-      } else {
-        player.cueVideoById({
-          startSeconds: expectedPosition,
-          videoId: state.videoId,
-        })
-      }
+      player.loadVideoById({
+        startSeconds: expectedPosition,
+        videoId: state.videoId,
+      })
     } else {
       const localPosition = player.getCurrentTime()
       if (
@@ -227,53 +218,15 @@ export function SyncedYouTubePlayer({
         player.seekTo(expectedPosition, true)
       }
 
-      if (
-        state.status === 'playing' &&
-        player.getPlayerState() !== YT.PlayerState.PLAYING
-      ) {
+      if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
         player.playVideo()
       }
-
-      if (
-        state.status === 'paused' &&
-        player.getPlayerState() === YT.PlayerState.PLAYING
-      ) {
-        player.pauseVideo()
-      }
-    }
-
-    playbackAnchorRef.current = {
-      measuredAt: Date.now(),
-      positionSeconds: expectedPosition,
-      status: state.status,
-      videoId: state.videoId,
     }
   }, [])
 
-  const handlePlayerStateChange = useCallback(
-    (event: YT.OnStateChangeEvent) => {
-      if (!isHost || Date.now() < suppressPlayerEventsUntilRef.current) return
-
-      const videoId = event.target.getVideoData().video_id
-      if (!videoId) return
-
-      const positionSeconds = event.target.getCurrentTime()
-
-      if (event.data === YT.PlayerState.PLAYING) {
-        setAutoplayBlocked(false)
-        void publishPlayback(videoId, 'playing', positionSeconds)
-      }
-
-      if (event.data === YT.PlayerState.PAUSED) {
-        void publishPlayback(videoId, 'paused', positionSeconds)
-      }
-
-      if (event.data === YT.PlayerState.ENDED) {
-        void publishPlayback(videoId, 'paused', event.target.getDuration())
-      }
-    },
-    [isHost, publishPlayback],
-  )
+  const handlePlayerStateChange = useCallback((event: YT.OnStateChangeEvent) => {
+    if (event.data === YT.PlayerState.PLAYING) setAutoplayBlocked(false)
+  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -299,21 +252,17 @@ export function SyncedYouTubePlayer({
               const remote = lastRemoteStateRef.current
               if (remote) {
                 applyRemoteState(remote)
-              } else {
-                const defaultVideoId = extractYouTubeVideoId(DEFAULT_VIDEO_URL)
-                if (defaultVideoId) {
-                  event.target.cueVideoById({ videoId: defaultVideoId })
-                }
               }
             },
             onStateChange: handlePlayerStateChange,
           },
           height: '100%',
           playerVars: {
-            autoplay: 0,
-            controls: isHost ? 1 : 0,
-            disablekb: isHost ? 0 : 1,
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
             enablejsapi: 1,
+            fs: 0,
             origin: window.location.origin,
             playsinline: 1,
             rel: 0,
@@ -332,7 +281,7 @@ export function SyncedYouTubePlayer({
       playerRef.current?.destroy()
       playerRef.current = null
     }
-  }, [applyRemoteState, handlePlayerStateChange, isHost])
+  }, [applyRemoteState, handlePlayerStateChange])
 
   useEffect(() => {
     if (!syncEnabled) {
@@ -346,6 +295,7 @@ export function SyncedYouTubePlayer({
       playbackRef,
       snapshot => {
         if (!snapshot.exists()) {
+          lastRemoteStateRef.current = null
           setRemoteState(null)
           setSyncStatus('connected')
           return
@@ -360,12 +310,9 @@ export function SyncedYouTubePlayer({
 
         lastRemoteStateRef.current = parsed
         setRemoteState(parsed)
-        setVideoUrl(`https://youtu.be/${parsed.videoId}`)
+        setLocalQueuedVideoId(null)
         setSyncStatus('connected')
-
-        const isOwnHostUpdate =
-          isHost && parsed.changedBy === auth.currentUser?.uid
-        if (!isOwnHostUpdate) applyRemoteState(parsed)
+        applyRemoteState(parsed)
       },
       reason => {
         console.error('Не удалось подписаться на состояние плеера:', reason)
@@ -375,7 +322,7 @@ export function SyncedYouTubePlayer({
         setSyncStatus('error')
       },
     )
-  }, [applyRemoteState, isHost, playbackRef, syncEnabled])
+  }, [applyRemoteState, playbackRef, syncEnabled])
 
   useEffect(() => {
     if (!playerReady) return
@@ -388,77 +335,63 @@ export function SyncedYouTubePlayer({
       setCurrentTime(positionSeconds)
       setDuration(player.getDuration())
 
-      if (!isHost || Date.now() < suppressPlayerEventsUntilRef.current) return
-
-      const playerState = player.getPlayerState()
+      const remote = lastRemoteStateRef.current
       if (
-        playerState !== YT.PlayerState.PLAYING &&
-        playerState !== YT.PlayerState.PAUSED
+        !remote ||
+        remote.status !== 'playing' ||
+        Date.now() < suppressPlayerEventsUntilRef.current
       ) {
         return
       }
 
-      const videoId = player.getVideoData().video_id
-      if (!videoId) return
-
-      const status: PlaybackStatus =
-        playerState === YT.PlayerState.PLAYING ? 'playing' : 'paused'
-      const anchor = playbackAnchorRef.current
-
-      if (!anchor || anchor.videoId !== videoId || anchor.status !== status) {
-        playbackAnchorRef.current = {
-          measuredAt: Date.now(),
-          positionSeconds,
-          status,
-          videoId,
-        }
-        return
-      }
-
-      const expectedPosition =
-        anchor.status === 'playing'
-          ? anchor.positionSeconds + (Date.now() - anchor.measuredAt) / 1000
-          : anchor.positionSeconds
+      const expectedPosition = getExpectedPosition(remote)
 
       if (
         Math.abs(positionSeconds - expectedPosition) >
-        MANUAL_SEEK_THRESHOLD_SECONDS
+        REMOTE_DRIFT_THRESHOLD_SECONDS
       ) {
-        void publishPlayback(videoId, status, positionSeconds)
+        player.seekTo(expectedPosition, true)
+      }
+
+      if (
+        player.getPlayerState() !== YT.PlayerState.PLAYING &&
+        player.getPlayerState() !== YT.PlayerState.ENDED
+      ) {
+        player.playVideo()
       }
     }, 750)
 
     return () => window.clearInterval(interval)
-  }, [isHost, playerReady, publishPlayback])
+  }, [playerReady])
 
-  const handleLoadVideo = (event: FormEvent<HTMLFormElement>) => {
+  const handleJoinQueue = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const player = playerRef.current
     const videoId = extractYouTubeVideoId(videoUrl)
 
     if (!videoId) {
-      setError('Вставьте корректную ссылку YouTube или ID из 11 символов.')
+      setQueueInputError(
+        'Вставьте корректную ссылку YouTube или ID из 11 символов.',
+      )
       return
     }
 
     if (!playerReady || !player) {
-      setError('Плеер ещё загружается. Попробуйте через пару секунд.')
+      setQueueInputError('Плеер ещё загружается. Попробуйте через пару секунд.')
       return
     }
 
     setError(null)
+    setQueueInputError(null)
+    setQueueSubmitting(true)
     setAutoplayBlocked(false)
     suppressPlayerEventsUntilRef.current = Date.now() + 800
-    player.unMute()
-    setMuted(false)
     player.loadVideoById({ startSeconds: 0, videoId })
-    playbackAnchorRef.current = {
-      measuredAt: Date.now(),
-      positionSeconds: 0,
-      status: 'playing',
-      videoId,
-    }
-    void publishPlayback(videoId, 'playing', 0)
+    setLocalQueuedVideoId(videoId)
+    await publishPlayback(videoId, 'playing', 0)
+    setQueueSubmitting(false)
+    setQueueDialogOpen(false)
+    setVideoUrl('')
   }
 
   const handleToggleSound = () => {
@@ -475,21 +408,14 @@ export function SyncedYouTubePlayer({
     }
   }
 
-  const handleForceSync = () => {
-    const remote = lastRemoteStateRef.current
-    if (!remote) return
-
-    setAutoplayBlocked(false)
-    applyRemoteState(remote)
-    if (remote.status === 'playing') playerRef.current?.playVideo()
-  }
-
   const syncLabels: Record<SyncStatus, string> = {
     connected: 'Firestore подключён',
     connecting: 'Подключаем Firestore…',
     error: 'Ошибка синхронизации',
     syncing: 'Сохраняем состояние…',
   }
+  const queueIsEmpty =
+    syncStatus === 'connected' && !remoteState && !localQueuedVideoId
 
   return (
     <section
@@ -506,9 +432,6 @@ export function SyncedYouTubePlayer({
 
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-white px-3 py-2">
-            {isHost ? 'Ведущий' : 'Слушатель'}
-          </span>
-          <span className="rounded-full bg-white px-3 py-2">
             {syncEnabled ? syncLabels[syncStatus] : 'Локальный режим'}
           </span>
           {remoteState && (
@@ -519,22 +442,6 @@ export function SyncedYouTubePlayer({
         </div>
       </div>
 
-      {isHost && (
-        <form className="mb-4 flex gap-2" onSubmit={handleLoadVideo}>
-          <TextField
-            fullWidth
-            label="Ссылка на YouTube"
-            onChange={event => setVideoUrl(event.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            size="small"
-            value={videoUrl}
-          />
-          <Button disabled={!playerReady} type="submit" variant="contained">
-            Запустить
-          </Button>
-        </form>
-      )}
-
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
         {!playerReady && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-white">
@@ -542,27 +449,40 @@ export function SyncedYouTubePlayer({
           </div>
         )}
         <div
-          className={`h-full w-full ${isHost ? '' : 'pointer-events-none'}`}
+          className="pointer-events-none h-full w-full"
           ref={playerContainerRef}
         />
       </div>
+
+      {queueIsEmpty && (
+        <Button
+          disabled={!playerReady}
+          fullWidth
+          onClick={() => setQueueDialogOpen(true)}
+          sx={{
+            '&:hover': { backgroundColor: '#5D5FD4' },
+            backgroundColor: '#6F70E7',
+            color: '#FFFFFF',
+            fontSize: '18px',
+            marginTop: '16px',
+          }}
+          variant="contained"
+        >
+          Встать в очередь
+        </Button>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-secondary-text">
           {formatPlaybackTime(currentTime)} / {formatPlaybackTime(duration)}
           {remoteState && (
             <span className="ml-3">
-              Эфир: {remoteState.status === 'playing' ? 'играет' : 'пауза'}
+              Эфир: играет
             </span>
           )}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {!isHost && remoteState && (
-            <Button onClick={handleForceSync} variant="outlined">
-              Синхронизировать сейчас
-            </Button>
-          )}
           <Button
             disabled={!playerReady}
             onClick={handleToggleSound}
@@ -575,10 +495,8 @@ export function SyncedYouTubePlayer({
 
       {autoplayBlocked && (
         <div className="mt-4 rounded-xl bg-[#FFF3CD] p-3 text-sm">
-          Браузер заблокировал автозапуск со звуком.{' '}
-          {isHost
-            ? 'Нажмите Play внутри видео.'
-            : 'Нажмите «Синхронизировать сейчас» или «Включить звук».'}
+          Браузер заблокировал автозапуск. Нажмите «Включить звук», чтобы
+          запустить видео.
         </div>
       )}
 
@@ -587,6 +505,118 @@ export function SyncedYouTubePlayer({
           {error}
         </div>
       )}
+
+      <Modal
+        aria-describedby="queue-dialog-description"
+        aria-labelledby="queue-dialog-title"
+        closeAfterTransition
+        onClose={() => {
+          if (!queueSubmitting) setQueueDialogOpen(false)
+        }}
+        open={queueDialogOpen}
+        slotProps={{
+          backdrop: {
+            sx: { backgroundColor: 'rgba(20, 22, 42, 0.72)' },
+          },
+        }}
+      >
+        <Fade in={queueDialogOpen}>
+          <Box component="form" onSubmit={handleJoinQueue} sx={queueDialogStyle}>
+            <button
+              aria-label="Закрыть окно"
+              className="absolute right-0 top-[-62px] h-12 w-12 border-0 bg-transparent p-0"
+              disabled={queueSubmitting}
+              onClick={() => setQueueDialogOpen(false)}
+              type="button"
+            >
+              <span className="absolute left-0 top-[22px] block h-[4px] w-12 rotate-45 rounded-full bg-white" />
+              <span className="absolute left-0 top-[22px] block h-[4px] w-12 -rotate-45 rounded-full bg-white" />
+            </button>
+
+            <h2
+              className="font-ultrabold"
+              id="queue-dialog-title"
+              style={{ fontSize: '58px', lineHeight: 1.1, marginBottom: 20 }}
+            >
+              Добавление в очередь
+            </h2>
+            <p
+              id="queue-dialog-description"
+              style={{
+                color: '#8B8DB3',
+                fontSize: '26px',
+                lineHeight: '39px',
+                marginBottom: 16,
+              }}
+            >
+              Введите ссылку на видео на YouTube
+            </p>
+
+            <TextField
+              error={Boolean(queueInputError)}
+              fullWidth
+              helperText={queueInputError}
+              label="Ссылка на видео"
+              onChange={event => {
+                setVideoUrl(event.target.value)
+                if (queueInputError) setQueueInputError(null)
+              }}
+              sx={{
+                marginBottom: '30px',
+                '& .MuiFormHelperText-root': {
+                  marginLeft: '30px',
+                  position: 'absolute',
+                  top: '62px',
+                },
+                '& .MuiInputLabel-root': {
+                  color: '#8B8DB3',
+                  fontSize: '24px',
+                  left: '30px',
+                  transform: 'translate(0, 20px) scale(1)',
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#6F70E7' },
+                '& .MuiInputLabel-shrink': {
+                  transform: 'translate(0, -3px) scale(0.75)',
+                },
+                '& .MuiInputBase-input': {
+                  boxSizing: 'border-box',
+                  fontSize: '20px',
+                  height: '66px',
+                  padding: '20px 30px 12px',
+                },
+                '& .MuiInput-root:after': { borderBottomColor: '#6F70E7' },
+                '& .MuiInput-root:before': {
+                  borderBottom: '2px solid rgba(255, 255, 255, 0.72)',
+                },
+                '& .MuiInput-root:hover:not(.Mui-disabled, .Mui-error):before': {
+                  borderBottom: '2px solid rgba(255, 255, 255, 0.95)',
+                },
+              }}
+              value={videoUrl}
+              variant="standard"
+            />
+
+            <Button
+              disabled={queueSubmitting}
+              fullWidth
+              sx={{
+                '&.Mui-disabled': { color: '#FFFFFF', opacity: 0.6 },
+                '&:hover': { backgroundColor: '#5D5FD4' },
+                backgroundColor: '#6F70E7',
+                borderRadius: '16px',
+                color: '#FFFFFF',
+                fontSize: '22px',
+                height: '78px',
+                padding: 0,
+              }}
+              type="submit"
+              variant="contained"
+            >
+              Встать в очередь
+            </Button>
+          </Box>
+        </Fade>
+      </Modal>
     </section>
   )
 }

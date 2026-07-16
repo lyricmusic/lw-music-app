@@ -16,21 +16,21 @@ export function RoomListItem({
       type="button"
     >
       <div className="flex items-center">
-        <div className="w-[100px] h-[100px] rounded-2xl overflow-hidden mr-7">
+        <div className="mr-7 h-[100px] w-[100px] overflow-hidden rounded-2xl">
           <img
-            alt="Превью комнаты"
-            className="w-full h-full object-cover"
-            src={room.image}
+            alt={`Обложка комнаты «${room.name}»`}
+            className="h-full w-full object-cover"
+            src={room.imageUrl}
           />
         </div>
 
         <div>
           <p className="text-2xl font-ultrabold">{room.name}</p>
           <div className="flex items-center">
-            {room.categories?.map((category, index) => (
+            {room.categories.map((category, index) => (
               <div className="flex items-center" key={category.id}>
                 {index > 0 && (
-                  <div className="w-[6px] h-[6px] bg-secondary-text mx-2 rounded-full"></div>
+                  <div className="mx-2 h-[6px] w-[6px] rounded-full bg-secondary-text" />
                 )}
                 <span className="text-[#5C5866]">{category.title}</span>
               </div>
@@ -41,7 +41,7 @@ export function RoomListItem({
 
       <div className="flex items-center">
         <MembersIcon className="mr-2" />
-        <span>27</span>
+        <span>{room.participantCount}</span>
       </div>
     </button>
   )

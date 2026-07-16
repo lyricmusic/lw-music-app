@@ -1,8 +1,15 @@
+import type { Timestamp } from 'firebase/firestore'
+
 export type Room = {
   categories: Category[]
+  createdAt: Timestamp
   id: string
-  image: string
+  imagePath: string
+  imageUrl: string
   name: string
+  ownerId: string
+  participantCount: number
+  updatedAt: Timestamp
 }
 
 export type Category = {
