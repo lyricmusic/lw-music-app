@@ -1,20 +1,36 @@
-@import './preflight.scss';
-@import 'react-toastify/dist/ReactToastify.css';
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './preflight.scss' layer(base);
+@import 'react-toastify/dist/ReactToastify.css' layer(components);
+
+@theme static {
+  --color-accent: #b79eff;
+  --color-auth-card: #2a2b47;
+  --color-auth-muted: #8d8bb3;
+  --color-brand-color: #25263e;
+  --color-gray-block: #ecedf2;
+  --color-hover-brand: #e9e2ff;
+  --color-light-brand: #8b8db3;
+  --color-secondary-text: #5c5d7e;
+}
 
 /* Golos Text Regular */
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-cyrillic-ext-400-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-400-normal.woff2')
+    format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F,
-    U+FE2E-FE2F;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
 }
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-cyrillic-400-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-400-normal.woff2')
+    format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -23,40 +39,46 @@
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-latin-ext-400-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-ext-400-normal.woff2')
+    format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-latin-400-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-400-normal.woff2')
+    format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
 }
 
 /* Golos Text Medium */
 @font-face {
   font-family: 'Golos Text Medium';
-  src: url('../../../assets/fonts/golos-text-cyrillic-ext-500-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-500-normal.woff2')
+    format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F,
-    U+FE2E-FE2F;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
 }
 
 @font-face {
   font-family: 'Golos Text Medium';
-  src: url('../../../assets/fonts/golos-text-cyrillic-500-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-500-normal.woff2')
+    format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -65,40 +87,46 @@
 
 @font-face {
   font-family: 'Golos Text Medium';
-  src: url('../../../assets/fonts/golos-text-latin-ext-500-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-ext-500-normal.woff2')
+    format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
   font-family: 'Golos Text Medium';
-  src: url('../../../assets/fonts/golos-text-latin-500-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-500-normal.woff2')
+    format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
 }
 
 /* Golos Text Bold */
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-cyrillic-ext-700-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-700-normal.woff2')
+    format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F,
-    U+FE2E-FE2F;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
 }
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-cyrillic-700-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-cyrillic-700-normal.woff2')
+    format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -107,43 +135,36 @@
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-latin-ext-700-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-ext-700-normal.woff2')
+    format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
   font-family: 'Golos Text';
-  src: url('../../../assets/fonts/golos-text-latin-700-normal.woff2') format('woff2');
+  src: url('../../../assets/fonts/golos-text-latin-700-normal.woff2')
+    format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
 }
 
-/*@tailwind base;*/
-@tailwind components;
-@tailwind utilities;
-
 :root {
-  --color-accent: #b79eff;
-  --color-auth-card: #2a2b47;
   --color-auth-provider-background-default: transparent;
   --color-auth-provider-background-hover: #fff;
   --color-auth-provider-background-pressed: #fff;
   --color-auth-provider-border: #fff;
-  --color-auth-muted: #8d8bb3;
   --color-auth-text: #fff;
-  --color-brand: #25263e;
-  --color-gray-block: #ecedf2;
-  --color-hover-brand: #e9e2ff;
-  --color-light-brand: #8b8db3;
   --color-input-background: #d7dbf0;
   --color-input-placeholder: #8d8bb3;
   --color-primary-background-default: #6f70e7;
@@ -154,7 +175,6 @@
   --color-primary-text-hover: #fff;
   --color-primary-text-pressed: #fff;
   --color-primary-text-disabled: rgb(255 255 255 / 50%);
-  --color-secondary-text: #5c5d7e;
   /*--toastify-text-color-light: #333F48;*/
 }
 
