@@ -7,7 +7,9 @@ import { TextField } from '@/shared/ui/text-field'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 import { getAuthErrorMessage, signUpWithEmail } from '../api/auth'
+import { emailFieldValidation } from '../model/emailFieldValidation'
 import { authSubmitButtonSx } from './authFormStyles'
+import { PasswordField } from './PasswordField'
 
 export function SignUpForm() {
   const navigate = useNavigate()
@@ -49,14 +51,11 @@ export function SignUpForm() {
             error={Boolean(errors.email)}
             helperText={errors.email?.message}
             placeholder="Email"
-            {...register('email', {
-              required: 'Обязательное поле.',
-              setValueAs: value => value.trim(),
-            })}
+            {...register('email', emailFieldValidation)}
             type="email"
           />
 
-          <TextField
+          <PasswordField
             autoComplete="new-password"
             error={Boolean(errors.password)}
             helperText={errors.password?.message}
@@ -65,10 +64,9 @@ export function SignUpForm() {
               minLength: { message: 'Минимум 6 символов.', value: 6 },
               required: 'Обязательное поле.',
             })}
-            type="password"
           />
 
-          <TextField
+          <PasswordField
             autoComplete="new-password"
             error={Boolean(errors.copyPassword)}
             helperText={errors.copyPassword?.message}
@@ -79,7 +77,6 @@ export function SignUpForm() {
               validate: value =>
                 value === getValues('password') || 'Пароли не совпадают.',
             })}
-            type="password"
           />
         </div>
 

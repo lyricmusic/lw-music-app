@@ -7,8 +7,10 @@ import { TextField } from '@/shared/ui/text-field'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 import { getAuthErrorMessage, signInWithEmail } from '../api/auth'
+import { emailFieldValidation } from '../model/emailFieldValidation'
 import { getAuthDestination } from '../model/getAuthDestination'
 import { authSubmitButtonSx } from './authFormStyles'
+import { PasswordField } from './PasswordField'
 
 export function SignInForm() {
   const navigate = useNavigate()
@@ -48,20 +50,16 @@ export function SignInForm() {
             error={Boolean(errors.email)}
             helperText={errors.email?.message}
             placeholder="Email"
-            {...register('email', {
-              required: 'Обязательное поле.',
-              setValueAs: value => value.trim(),
-            })}
+            {...register('email', emailFieldValidation)}
             type="email"
           />
 
-          <TextField
+          <PasswordField
             autoComplete="current-password"
             error={Boolean(errors.password)}
             helperText={errors.password?.message}
             placeholder="Пароль"
             {...register('password', { required: 'Обязательное поле.' })}
-            type="password"
           />
         </div>
 
