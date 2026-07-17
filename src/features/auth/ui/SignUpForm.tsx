@@ -97,7 +97,7 @@ export function SignUpForm() {
         </div>
 
         <Button
-          className="w-full font-neue"
+          className="w-full"
           disabled={loading}
           sx={authSubmitButtonSx}
           type="submit"

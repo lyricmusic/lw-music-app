@@ -28,18 +28,23 @@ export const appTheme = createTheme({
             color: '#FF849A',
           },
           '&.MuiButton-colorPrimary.MuiButton-contained': {
-            '&.Mui-disabled': { opacity: 0.5 },
-            '&:active': {
-              '&:hover': { backgroundColor: '#7949C5' },
-              backgroundColor: '#7949C5',
-              boxShadow: 'none',
+            '&.Mui-disabled': {
+              backgroundColor: 'var(--color-primary-background-disabled)',
+              color: 'var(--color-primary-text-disabled)',
+              opacity: 1,
             },
             '&:hover': {
-              backgroundColor: '#A46CFF',
+              backgroundColor: 'var(--color-primary-background-hover)',
               boxShadow: 'none',
+              color: 'var(--color-primary-text-hover)',
             },
-            backgroundColor: '#B79EFF',
-            color: '#25263E',
+            '&:active, &:active:hover': {
+              backgroundColor: 'var(--color-primary-background-pressed)',
+              boxShadow: 'none',
+              color: 'var(--color-primary-text-pressed)',
+            },
+            backgroundColor: 'var(--color-primary-background-default)',
+            color: 'var(--color-primary-text-default)',
             paddingBottom: '16px',
             paddingTop: '16px',
           },
@@ -54,7 +59,9 @@ export const appTheme = createTheme({
           },
           borderRadius: '16px',
           boxShadow: 'none',
-          fontFamily: 'inherit',
+          fontFamily: 'Golos Text Medium, sans-serif',
+          fontSize: '14px',
+          fontWeight: 500,
           lineHeight: '20px',
         },
       },
@@ -93,7 +100,15 @@ export const appTheme = createTheme({
       },
     },
   },
-  palette: { error: { main: '#FF849A' } },
+  palette: {
+    error: { main: '#FF849A' },
+    primary: {
+      contrastText: '#FFF',
+      dark: '#3031A5',
+      light: '#8282E9',
+      main: '#6F70E7',
+    },
+  },
   typography: {
     fontFamily: [
       '-apple-system',

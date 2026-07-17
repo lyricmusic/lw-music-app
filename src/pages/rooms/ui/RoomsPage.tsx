@@ -21,7 +21,6 @@ export function RoomsPage() {
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[38px] font-ultrabold">Комнаты</h2>
         <Button
-          className="font-neue"
           onClick={() => setIsOpen(true)}
           variant="outlined"
         >
