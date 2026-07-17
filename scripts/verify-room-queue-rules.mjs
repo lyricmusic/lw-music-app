@@ -118,6 +118,7 @@ const playbackTimeTransform = [
 
 const firstUser = await createAuthUser('first')
 const secondUser = await createAuthUser('second')
+const managerUser = await createAuthUser('manager')
 
 const accessSeed = await commit(
   [
@@ -143,6 +144,13 @@ const accessSeed = await commit(
       isGuest: booleanValue(false),
       joinedAt: timestampValue('2026-01-01T00:00:00Z'),
       role: stringValue('member'),
+      status: stringValue('active'),
+    }),
+    update(`rooms/${roomId}/members/${managerUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('host'),
       status: stringValue('active'),
     }),
   ],
@@ -194,6 +202,51 @@ async function seedQueue() {
   )
   assert.equal(seeded.ok, true, JSON.stringify(seeded))
 }
+
+await seedQueue()
+
+const hostKickWaitingMember = await commit(
+  [
+    update(
+      `rooms/${roomId}/queueState/current`,
+      {
+        activePosition: integerValue(1),
+        itemIds: arrayValue([firstItemId]),
+        lastPosition: integerValue(2),
+      },
+      requestTimeTransform,
+    ),
+    remove(`rooms/${roomId}/queue/${secondItemId}`),
+    remove(`rooms/${roomId}/queueMembers/${secondUser.uid}`),
+    update(`rooms/${roomId}/members/${secondUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('member'),
+      status: stringValue('left'),
+    }),
+  ],
+  managerUser.idToken,
+)
+assert.equal(
+  hostKickWaitingMember.ok,
+  true,
+  JSON.stringify(hostKickWaitingMember),
+)
+
+const resetKickedMember = await commit(
+  [
+    update(`rooms/${roomId}/members/${secondUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('member'),
+      status: stringValue('active'),
+    }),
+  ],
+  'owner',
+)
+assert.equal(resetKickedMember.ok, true, JSON.stringify(resetKickedMember))
 
 await seedQueue()
 
@@ -299,5 +352,5 @@ const lastActiveLeave = await commit(
 assert.equal(lastActiveLeave.ok, true, JSON.stringify(lastActiveLeave))
 
 console.log(
-  'Queue rules verification passed: waiting, active-next, active-last.',
+  'Queue rules verification passed: kicked-waiting, self-waiting, active-next, active-last.',
 )

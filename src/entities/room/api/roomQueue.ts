@@ -1,5 +1,10 @@
 import { auth, db } from '@/shared/api/firebase'
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
+import {
+  doc,
+  runTransaction,
+  serverTimestamp,
+  type Transaction,
+} from 'firebase/firestore'
 
 import { ROOM_QUEUE_LIMIT } from './useRoomQueue'
 
@@ -17,6 +22,13 @@ interface AdvanceRoomQueueInput {
 
 interface LeaveRoomQueueInput {
   roomId: string
+}
+
+interface RemoveRoomQueueMemberInput {
+  changedBy: string
+  memberId: string
+  roomId: string
+  strict?: boolean
 }
 
 interface QueueState {
@@ -283,111 +295,140 @@ export async function advanceRoomQueue({
   })
 }
 
+export async function removeRoomQueueMemberInTransaction(
+  transaction: Transaction,
+  { changedBy, memberId, roomId, strict = true }: RemoveRoomQueueMemberInput,
+) {
+  const playbackRef = doc(db, 'rooms', roomId, 'playback', 'current')
+  const queueStateRef = doc(db, 'rooms', roomId, 'queueState', 'current')
+  const queueMemberRef = doc(db, 'rooms', roomId, 'queueMembers', memberId)
+
+  const [queueStateSnapshot, playbackSnapshot, queueMemberSnapshot] =
+    await Promise.all([
+      transaction.get(queueStateRef),
+      transaction.get(playbackRef),
+      transaction.get(queueMemberRef),
+    ])
+
+  if (!queueMemberSnapshot.exists()) {
+    return { removed: false, wasActive: false }
+  }
+
+  if (!queueStateSnapshot.exists()) {
+    if (strict) {
+      throw new Error('Состояние очереди не найдено.')
+    }
+    return { removed: false, wasActive: false }
+  }
+
+  const queueState = parseQueueState(queueStateSnapshot.data())
+  const queueItemId = queueMemberSnapshot.data().itemId
+
+  if (!queueState) {
+    if (strict) {
+      throw new Error('В комнате сохранено некорректное состояние очереди.')
+    }
+    return { removed: false, wasActive: false }
+  }
+  if (
+    typeof queueItemId !== 'string' ||
+    !queueState.itemIds.includes(queueItemId)
+  ) {
+    if (strict) {
+      throw new Error('Не удалось найти вашу позицию в очереди.')
+    }
+    return { removed: false, wasActive: false }
+  }
+
+  const queueItemRef = doc(db, 'rooms', roomId, 'queue', queueItemId)
+  const wasActive = queueState.itemIds[0] === queueItemId
+  const nextItemId = wasActive ? (queueState.itemIds[1] ?? null) : null
+  const nextItemRef = nextItemId
+    ? doc(db, 'rooms', roomId, 'queue', nextItemId)
+    : null
+  const [queueItemSnapshot, nextItemSnapshot] = await Promise.all([
+    transaction.get(queueItemRef),
+    nextItemRef ? transaction.get(nextItemRef) : Promise.resolve(null),
+  ])
+
+  if (
+    !queueItemSnapshot.exists() ||
+    queueItemSnapshot.data().userId !== memberId
+  ) {
+    if (strict) {
+      throw new Error('Не удалось найти вашу запись в очереди.')
+    }
+    return { removed: false, wasActive: false }
+  }
+  if (nextItemRef && !nextItemSnapshot?.exists()) {
+    if (strict) {
+      throw new Error('Следующий элемент очереди не найден.')
+    }
+    return { removed: false, wasActive: false }
+  }
+
+  const nextItem = nextItemSnapshot?.data()
+  const nextPosition = nextItem?.position
+  if (
+    nextItem &&
+    (typeof nextPosition !== 'number' ||
+      !Number.isInteger(nextPosition) ||
+      nextPosition <= (queueState.activePosition ?? 0) ||
+      typeof nextItem.videoId !== 'string' ||
+      !/^[\w-]{11}$/.test(nextItem.videoId))
+  ) {
+    if (strict) {
+      throw new Error('Следующий элемент очереди содержит некорректные данные.')
+    }
+    return { removed: false, wasActive: false }
+  }
+
+  transaction.delete(queueItemRef)
+  transaction.delete(queueMemberRef)
+  transaction.set(queueStateRef, {
+    activePosition: wasActive
+      ? nextItem
+        ? nextPosition
+        : null
+      : queueState.activePosition,
+    itemIds: queueState.itemIds.filter(itemId => itemId !== queueItemId),
+    lastPosition: queueState.lastPosition,
+    updatedAt: serverTimestamp(),
+  })
+
+  if (wasActive) {
+    if (nextItem) {
+      const currentRevision = playbackSnapshot.exists()
+        ? Number(playbackSnapshot.data().revision) || 0
+        : 0
+
+      transaction.set(playbackRef, {
+        changedAt: serverTimestamp(),
+        changedBy,
+        positionSeconds: 0,
+        revision: currentRevision + 1,
+        status: 'playing',
+        videoId: nextItem.videoId,
+      })
+    } else if (playbackSnapshot.exists()) {
+      transaction.delete(playbackRef)
+    }
+  }
+
+  return { removed: true, wasActive }
+}
+
 export async function leaveRoomQueue({ roomId }: LeaveRoomQueueInput) {
   const user = auth.currentUser
 
   if (!user) throw new Error('Чтобы покинуть очередь, войдите в аккаунт.')
   if (!roomId) throw new Error('Комната не найдена.')
 
-  const playbackRef = doc(db, 'rooms', roomId, 'playback', 'current')
-  const queueStateRef = doc(db, 'rooms', roomId, 'queueState', 'current')
-  const queueMemberRef = doc(db, 'rooms', roomId, 'queueMembers', user.uid)
-
-  return runTransaction(db, async transaction => {
-    const [queueStateSnapshot, playbackSnapshot, queueMemberSnapshot] =
-      await Promise.all([
-        transaction.get(queueStateRef),
-        transaction.get(playbackRef),
-        transaction.get(queueMemberRef),
-      ])
-
-    if (!queueMemberSnapshot.exists()) {
-      return { removed: false, wasActive: false }
-    }
-
-    if (!queueStateSnapshot.exists()) {
-      throw new Error('Состояние очереди не найдено.')
-    }
-
-    const queueState = parseQueueState(queueStateSnapshot.data())
-    const queueItemId = queueMemberSnapshot.data().itemId
-
-    if (!queueState) {
-      throw new Error('В комнате сохранено некорректное состояние очереди.')
-    }
-    if (
-      typeof queueItemId !== 'string' ||
-      !queueState.itemIds.includes(queueItemId)
-    ) {
-      throw new Error('Не удалось найти вашу позицию в очереди.')
-    }
-
-    const queueItemRef = doc(db, 'rooms', roomId, 'queue', queueItemId)
-    const wasActive = queueState.itemIds[0] === queueItemId
-    const nextItemId = wasActive ? (queueState.itemIds[1] ?? null) : null
-    const nextItemRef = nextItemId
-      ? doc(db, 'rooms', roomId, 'queue', nextItemId)
-      : null
-    const [queueItemSnapshot, nextItemSnapshot] = await Promise.all([
-      transaction.get(queueItemRef),
-      nextItemRef ? transaction.get(nextItemRef) : Promise.resolve(null),
-    ])
-
-    if (
-      !queueItemSnapshot.exists() ||
-      queueItemSnapshot.data().userId !== user.uid
-    ) {
-      throw new Error('Не удалось найти вашу запись в очереди.')
-    }
-    if (nextItemRef && !nextItemSnapshot?.exists()) {
-      throw new Error('Следующий элемент очереди не найден.')
-    }
-
-    const nextItem = nextItemSnapshot?.data()
-    const nextPosition = nextItem?.position
-    if (
-      nextItem &&
-      (typeof nextPosition !== 'number' ||
-        !Number.isInteger(nextPosition) ||
-        nextPosition <= (queueState.activePosition ?? 0) ||
-        typeof nextItem.videoId !== 'string' ||
-        !/^[\w-]{11}$/.test(nextItem.videoId))
-    ) {
-      throw new Error('Следующий элемент очереди содержит некорректные данные.')
-    }
-
-    transaction.delete(queueItemRef)
-    transaction.delete(queueMemberRef)
-    transaction.set(queueStateRef, {
-      activePosition: wasActive
-        ? nextItem
-          ? nextPosition
-          : null
-        : queueState.activePosition,
-      itemIds: queueState.itemIds.filter(itemId => itemId !== queueItemId),
-      lastPosition: queueState.lastPosition,
-      updatedAt: serverTimestamp(),
+  return runTransaction(db, transaction => {
+    return removeRoomQueueMemberInTransaction(transaction, {
+      changedBy: user.uid,
+      memberId: user.uid,
+      roomId,
     })
-
-    if (wasActive) {
-      if (nextItem) {
-        const currentRevision = playbackSnapshot.exists()
-          ? Number(playbackSnapshot.data().revision) || 0
-          : 0
-
-        transaction.set(playbackRef, {
-          changedAt: serverTimestamp(),
-          changedBy: user.uid,
-          positionSeconds: 0,
-          revision: currentRevision + 1,
-          status: 'playing',
-          videoId: nextItem.videoId,
-        })
-      } else if (playbackSnapshot.exists()) {
-        transaction.delete(playbackRef)
-      }
-    }
-
-    return { removed: true, wasActive }
   })
 }

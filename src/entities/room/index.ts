@@ -19,6 +19,7 @@ export {
 } from './api/useRoomRestrictions'
 export { useRoomQueue } from './api/useRoomQueue'
 export {
+  kickRoomMember,
   leaveRoom,
   restorePublicRoomMembership,
   setRoomMemberRole,

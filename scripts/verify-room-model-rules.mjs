@@ -388,6 +388,155 @@ const publicRejoin = await commit(
 )
 assert.equal(publicRejoin.ok, true, JSON.stringify(publicRejoin))
 
+const ownerKick = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(ownerKick.ok, true, JSON.stringify(ownerKick))
+
+const publicRejoinAfterKick = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  publicRejoinAfterKick.ok,
+  true,
+  JSON.stringify(publicRejoinAfterKick),
+)
+
+const secondRegisteredMembership = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  invitee.idToken,
+)
+assert.equal(
+  secondRegisteredMembership.ok,
+  true,
+  JSON.stringify(secondRegisteredMembership),
+)
+
+const makeHost = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { role: stringValue('host') },
+      ['role'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(makeHost.ok, true, JSON.stringify(makeHost))
+
+const hostKickMember = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(hostKickMember.ok, true, JSON.stringify(hostKickMember))
+
+const kickedMemberRejoin = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  invitee.idToken,
+)
+assert.equal(kickedMemberRejoin.ok, true, JSON.stringify(kickedMemberRejoin))
+
+const makeModerator = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { role: stringValue('moderator') },
+      ['role'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(makeModerator.ok, true, JSON.stringify(makeModerator))
+
+const hostKickModerator = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(hostKickModerator.ok, false, JSON.stringify(hostKickModerator))
+
+const moderatorKickHost = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  invitee.idToken,
+)
+assert.equal(moderatorKickHost.ok, false, JSON.stringify(moderatorKickHost))
+
+const resetManagementRoles = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { role: stringValue('member') },
+      ['role'],
+    ),
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { role: stringValue('member') },
+      ['role'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(
+  resetManagementRoles.ok,
+  true,
+  JSON.stringify(resetManagementRoles),
+)
+
+const memberKickMember = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(memberKickMember.ok, false, JSON.stringify(memberKickMember))
+
 const registeredProfile = await commit(
   [
     update(
@@ -787,5 +936,5 @@ assert.equal(
 )
 
 console.log(
-  'Room model rules verification passed: public listing, membership lifecycle, private invites, bans, mutes, blocks, and slow mode.',
+  'Room model rules verification passed: public listing, membership lifecycle, role-based kicks, private invites, bans, mutes, blocks, and slow mode.',
 )

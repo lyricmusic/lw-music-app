@@ -157,6 +157,16 @@ export function RoomPage() {
     )
   }
 
+  if (currentMember?.status === 'left') {
+    return (
+      <RoomEntryState
+        actionLabel="К комнатам"
+        message="Вы больше не участвуете в этой комнате."
+        onAction={() => navigate(routes.rooms, { replace: true })}
+      />
+    )
+  }
+
   if (room.access?.status === 'archived') {
     if (!currentMember) {
       return <RoomEntryState message="Загружаем настройки архива…" pending />

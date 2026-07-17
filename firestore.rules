@@ -340,6 +340,31 @@ service cloud.firestore {
           .hasOnly(['role']);
     }
 
+    function hasRoomKickAuthority(roomId, memberId, memberRole) {
+      let actorPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid);
+      let actor = get(actorPath).data;
+      return isSignedIn()
+        && memberId != request.auth.uid
+        && exists(actorPath)
+        && actor.status == 'active'
+        && (
+          (actor.role == 'owner' && memberRole != 'owner')
+          || (actor.role in ['host', 'moderator'] && memberRole == 'member')
+        );
+    }
+
+    function isValidRoomKick(roomId, memberId) {
+      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
+      let memberBefore = get(memberPath).data;
+      let memberAfter = getAfter(memberPath).data;
+      return exists(memberPath)
+        && existsAfter(memberPath)
+        && hasRoomKickAuthority(roomId, memberId, memberBefore.role)
+        && memberBefore.status == 'active'
+        && memberAfter.status == 'left'
+        && memberAfter.diff(memberBefore).affectedKeys().hasOnly(['status']);
+    }
+
     function isValidModerationRemoval(roomId, memberId) {
       return canModerateRoom(roomId)
         && resource.data.role != 'owner'
@@ -536,6 +561,23 @@ service cloud.firestore {
         && isQueueItemRemovedAfter(roomId, itemId);
     }
 
+    function hasKickedWaitingQueueItemRemoval(
+      roomId,
+      previousItemIds,
+      nextItemIds,
+      previousActive
+    ) {
+      let removedItemIds = previousItemIds.removeAll(nextItemIds);
+      let removedItemId = removedItemIds.size() == 1 ? removedItemIds[0] : '';
+      let removedItemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(removedItemId);
+      return removedItemIds.size() == 1
+        && exists(removedItemPath)
+        && get(removedItemPath).data.position > previousActive
+        && isQueueItemRemovedAfter(roomId, removedItemId)
+        && nextItemIds == previousItemIds.removeAll([removedItemId])
+        && isValidRoomKick(roomId, get(removedItemPath).data.userId);
+    }
+
     function hasValidQueueStateUpdate(roomId) {
       let previousActive = resource.data.activePosition;
       let previousLast = resource.data.lastPosition;
@@ -585,14 +627,23 @@ service cloud.firestore {
             )
             || (
               nextActive == previousActive
-              && exists(
-                /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
+              && (
+                (exists(
+                    /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
+                  )
+                  && hasWaitingQueueItemRemoval(roomId, previousActive)
+                  && (!previousHasItemIds
+                    || nextItemIds == resource.data.itemIds.removeAll([
+                      getCallerQueueItemId(roomId)
+                    ])))
+                || (previousHasItemIds
+                  && hasKickedWaitingQueueItemRemoval(
+                    roomId,
+                    resource.data.itemIds,
+                    nextItemIds,
+                    previousActive
+                  ))
               )
-              && hasWaitingQueueItemRemoval(roomId, previousActive)
-              && (!previousHasItemIds
-                || nextItemIds == resource.data.itemIds.removeAll([
-                  getCallerQueueItemId(roomId)
-                ]))
             )
           )
         );
@@ -686,7 +737,8 @@ service cloud.firestore {
             && previousQueueState.itemIds.size() > 0
             && previousQueueState.itemIds[0] == itemId)
           || (!previousQueueState.keys().hasAll(['itemIds'])
-            && previousQueueState.activePosition == resource.data.position));
+            && previousQueueState.activePosition == resource.data.position)
+          || isValidRoomKick(roomId, resource.data.userId));
     }
 
     function hasValidMessage(roomId, messageId) {
@@ -951,6 +1003,7 @@ service cloud.firestore {
           || (resource.data.status == 'left'
             && hasValidInviteJoin(roomId, memberId))
           || isValidOwnerRoleChange(roomId)
+          || isValidRoomKick(roomId, memberId)
           || isValidModerationRemoval(roomId, memberId));
       allow delete: if false;
     }

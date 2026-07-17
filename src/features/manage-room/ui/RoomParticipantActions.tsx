@@ -3,6 +3,7 @@ import { toast } from 'react-toastify'
 
 import {
   banRoomUser,
+  kickRoomMember,
   muteRoomUser,
   setRoomMemberRole,
   type RoomMemberRole,
@@ -64,6 +65,8 @@ export function RoomParticipantActions({
   const [moderationAction, setModerationAction] =
     useState<ModerationAction | null>(null)
   const [duration, setDuration] = useState<RestrictionDuration>('24h')
+  const [kickDialogOpen, setKickDialogOpen] = useState(false)
+  const [kickError, setKickError] = useState<null | string>(null)
   const [reason, setReason] = useState('')
   const [formError, setFormError] = useState<null | string>(null)
   const [pending, setPending] = useState(false)
@@ -75,8 +78,13 @@ export function RoomParticipantActions({
     (actorRole === 'owner' || actorRole === 'moderator') &&
     participant.role !== 'owner' &&
     !isSelf
+  const canKick =
+    !isSelf &&
+    ((actorRole === 'owner' && participant.role !== 'owner') ||
+      ((actorRole === 'host' || actorRole === 'moderator') &&
+        participant.role === 'member'))
 
-  if (!canAssignRole && !canModerate) return null
+  if (!canAssignRole && !canModerate && !canKick) return null
 
   const closeMenu = () => setAnchorElement(null)
 
@@ -109,6 +117,35 @@ export function RoomParticipantActions({
 
   const closeModerationDialog = () => {
     if (!pending) setModerationAction(null)
+  }
+
+  const openKickDialog = () => {
+    closeMenu()
+    setKickError(null)
+    setKickDialogOpen(true)
+  }
+
+  const closeKickDialog = () => {
+    if (!pending) setKickDialogOpen(false)
+  }
+
+  const handleKick = async () => {
+    setPending(true)
+    setKickError(null)
+
+    try {
+      await kickRoomMember(roomId, participant.id)
+      toast.success(`${participant.displayName} исключён из комнаты.`)
+      setKickDialogOpen(false)
+    } catch (reason) {
+      setKickError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось выгнать участника из комнаты.',
+      )
+    } finally {
+      setPending(false)
+    }
   }
 
   const handleModeration = async () => {
@@ -195,11 +232,16 @@ export function RoomParticipantActions({
           </MenuItem>,
         ]}
 
-        {canAssignRole && canModerate && <Divider />}
+        {canAssignRole && (canModerate || canKick) && <Divider />}
 
         {canModerate && (
           <MenuItem onClick={() => openModerationDialog('mute')}>
             Запретить писать…
+          </MenuItem>
+        )}
+        {canKick && (
+          <MenuItem onClick={openKickDialog} sx={{ color: 'error.main' }}>
+            Выгнать из комнаты…
           </MenuItem>
         )}
         {canModerate && (
@@ -211,6 +253,40 @@ export function RoomParticipantActions({
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog
+        fullWidth
+        maxWidth="sm"
+        onClose={closeKickDialog}
+        open={kickDialogOpen}
+      >
+        <DialogTitle>Выгнать {participant.displayName} из комнаты?</DialogTitle>
+        <DialogContent sx={{ paddingTop: '12px !important' }}>
+          <Typography>
+            Участник сразу потеряет доступ и будет удалён из очереди. Это не
+            блокировка: он сможет снова войти в открытую комнату или получить
+            новое приглашение в приватную.
+          </Typography>
+          {kickError && (
+            <Typography color="error" mt={2} role="alert">
+              {kickError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ padding: 3, paddingTop: 1 }}>
+          <Button disabled={pending} onClick={closeKickDialog}>
+            Отмена
+          </Button>
+          <Button
+            color="error"
+            disabled={pending}
+            onClick={() => void handleKick()}
+            variant="contained"
+          >
+            {pending ? 'Исключаем…' : 'Выгнать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         fullWidth
