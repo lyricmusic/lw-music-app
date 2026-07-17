@@ -58,6 +58,91 @@ function getParticipantInitials(displayName: string) {
     .toUpperCase()
 }
 
+type RoomUserListItemStatus = 'current' | 'next'
+
+interface RoomUserListItemProps {
+  displayName: string
+  pending?: boolean
+  photoURL: null | string
+  status?: RoomUserListItemStatus
+}
+
+function RoomUserListItem({
+  displayName,
+  pending = false,
+  photoURL,
+  status,
+}: RoomUserListItemProps) {
+  const isCurrent = status === 'current'
+  const isNext = status === 'next'
+
+  return (
+    <Box
+      className="flex min-w-0 items-center gap-3"
+      component="li"
+      sx={{
+        backgroundColor: '#3F3F59',
+        borderRadius: '8px',
+        boxShadow: isCurrent ? 'inset 0 0 0 2px #6F70E7' : 'none',
+        height: '48px',
+        opacity: pending ? 0.72 : 1,
+        padding: '2px 12px 2px 2px',
+        width: '243px',
+      }}
+    >
+      <Avatar
+        alt={displayName}
+        src={photoURL ?? undefined}
+        variant="rounded"
+        sx={{
+          backgroundColor: '#6F70E7',
+          borderRadius: '6px',
+          flexShrink: 0,
+          fontSize: '14px',
+          height: 44,
+          width: 44,
+        }}
+      >
+        {getParticipantInitials(displayName)}
+      </Avatar>
+
+      <Box className="min-w-0 flex-1">
+        <Typography
+          className="truncate text-[15px] leading-[18px]"
+          component="span"
+          sx={{ color: '#D7DBF0' }}
+        >
+          {displayName}
+        </Typography>
+
+        {status && (
+          <Box className="mt-0.5 flex items-center gap-1.5">
+            <Box
+              component="span"
+              sx={{
+                backgroundColor: isCurrent ? '#6F70E7' : 'transparent',
+                border: isNext ? '1px solid #8B8DB3' : 'none',
+                borderRadius: '50%',
+                boxSizing: 'border-box',
+                flexShrink: 0,
+                height: 8,
+                width: 8,
+              }}
+            />
+            <Typography
+              className="truncate text-[12px] leading-[14px]"
+              component="span"
+              sx={{ color: '#D7DBF0' }}
+            >
+              {isCurrent ? 'Сейчас показывает' : 'Следующий'}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
 function allowAutoplay(player: YT.Player) {
   const iframe = player.getIframe()
   const allowedFeatures = iframe.allow
@@ -609,7 +694,7 @@ export function SyncedYouTubePlayer({
                 className="grid min-w-0 gap-2 overflow-x-auto pb-1"
                 component="ul"
                 sx={{
-                  gridAutoColumns: 'minmax(220px, 1fr)',
+                  gridAutoColumns: '243px',
                   gridAutoFlow: 'column',
                   gridTemplateRows: 'repeat(4, 48px)',
                   listStyle: 'none',
@@ -620,83 +705,31 @@ export function SyncedYouTubePlayer({
                 }}
               >
                 {queueItems.map((queueItem, queueItemIndex) => {
-                  const isCurrent = queueItemIndex === 0
-                  const isNext = queueItemIndex === 1
-
                   return (
-                    <Box
-                      className="flex h-12 min-w-0 items-center gap-3 pr-3"
-                      component="li"
+                    <RoomUserListItem
+                      displayName={queueItem.displayName}
                       key={queueItem.id}
-                      sx={{
-                        backgroundColor: '#3F3F59',
-                        border: '2px solid',
-                        borderColor: isCurrent ? '#6F70E7' : 'transparent',
-                        borderRadius: '8px',
-                        opacity: queueItem.pending ? 0.72 : 1,
-                      }}
-                    >
-                      <Avatar
-                        alt={queueItem.displayName}
-                        src={queueItem.photoURL ?? undefined}
-                        variant="rounded"
-                        sx={{
-                          backgroundColor: '#6F70E7',
-                          borderRadius: '7px',
-                          flexShrink: 0,
-                          fontSize: '14px',
-                          height: 44,
-                          width: 44,
-                        }}
-                      >
-                        {getParticipantInitials(queueItem.displayName)}
-                      </Avatar>
-
-                      <Box className="min-w-0 flex-1">
-                        <Typography
-                          className="truncate text-[15px] leading-[18px]"
-                          component="span"
-                          sx={{ color: '#D7DBF0' }}
-                        >
-                          {queueItem.displayName}
-                        </Typography>
-
-                        {(isCurrent || isNext) && (
-                          <Box className="mt-0.5 flex items-center gap-1.5">
-                            <Box
-                              component="span"
-                              sx={{
-                                backgroundColor: isCurrent
-                                  ? '#6F70E7'
-                                  : 'transparent',
-                                border: isNext ? '1px solid #8B8DB3' : 'none',
-                                borderRadius: '50%',
-                                boxSizing: 'border-box',
-                                flexShrink: 0,
-                                height: 8,
-                                width: 8,
-                              }}
-                            />
-                            <Typography
-                              className="truncate text-[12px] leading-[14px]"
-                              component="span"
-                              sx={{ color: '#D7DBF0' }}
-                            >
-                              {isCurrent ? 'Сейчас показывает' : 'Следующий'}
-                            </Typography>
-                          </Box>
-                        )}
-                      </Box>
-                    </Box>
+                      pending={queueItem.pending}
+                      photoURL={queueItem.photoURL}
+                      status={
+                        queueItemIndex === 0
+                          ? 'current'
+                          : queueItemIndex === 1
+                            ? 'next'
+                            : undefined
+                      }
+                    />
                   )
                 })}
 
                 <Box
-                  className="h-12 min-w-0 overflow-hidden"
+                  className="min-w-0 overflow-hidden"
                   component="li"
                   sx={{
                     backgroundColor: '#3F3F59',
                     borderRadius: '8px',
+                    height: '48px',
+                    width: '243px',
                   }}
                 >
                   <Button
@@ -717,7 +750,7 @@ export function SyncedYouTubePlayer({
                     }}
                     sx={{
                       '&.Mui-disabled': {
-                        color: '#D7DBF0',
+                        color: '#FFFFFF',
                         opacity: 0.5,
                       },
                       '&:hover': { backgroundColor: '#4A4A68' },
@@ -730,9 +763,9 @@ export function SyncedYouTubePlayer({
                       gap: '12px',
                       height: '48px',
                       justifyContent: 'flex-start',
-                      padding: 0,
-                      paddingRight: '12px',
+                      padding: '2px 12px 2px 2px',
                       textTransform: 'none',
+                      width: '243px',
                     }}
                   >
                     <Box
@@ -740,7 +773,7 @@ export function SyncedYouTubePlayer({
                       component="span"
                       sx={{
                         backgroundColor: '#6F70E7',
-                        borderRadius: '7px',
+                        borderRadius: '6px',
                         color: '#FFFFFF',
                       }}
                     >
@@ -787,38 +820,11 @@ export function SyncedYouTubePlayer({
             sx={{ listStyle: 'none', marginLeft: 0, marginRight: 0 }}
           >
             {participants.map(participant => (
-              <Box
-                className="flex min-h-[52px] items-center gap-3 p-1 pr-4"
-                component="li"
+              <RoomUserListItem
+                displayName={participant.displayName}
                 key={participant.id}
-                sx={{
-                  backgroundColor: '#3F3F59',
-                  borderRadius: '10px',
-                }}
-              >
-                <Avatar
-                  alt={participant.displayName}
-                  src={participant.photoURL ?? undefined}
-                  variant="rounded"
-                  sx={{
-                    backgroundColor: '#6F70E7',
-                    borderRadius: '8px',
-                    flexShrink: 0,
-                    fontSize: '14px',
-                    height: 44,
-                    width: 44,
-                  }}
-                >
-                  {getParticipantInitials(participant.displayName)}
-                </Avatar>
-                <Typography
-                  className="min-w-0 truncate text-[16px] leading-5"
-                  component="span"
-                  sx={{ color: '#D7DBF0' }}
-                >
-                  {participant.displayName}
-                </Typography>
-              </Box>
+                photoURL={participant.photoURL}
+              />
             ))}
 
             {participantsLoading && (
