@@ -726,10 +726,10 @@ export function SyncedYouTubePlayer({
             </Button>
 
             <Typography
-              className="font-ultrabold"
               component="h2"
               id="queue-dialog-title"
               sx={{ fontSize: '58px', lineHeight: 1.1, marginBottom: '20px' }}
+              variant="h2"
             >
               Добавление в очередь
             </Typography>

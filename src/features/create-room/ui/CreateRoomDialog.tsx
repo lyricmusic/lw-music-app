@@ -126,7 +126,7 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
     >
       <Fade in={open}>
         <Box component="form" onSubmit={handleCreateRoom} sx={style}>
-          <h2 className="mb-4 text-4xl font-ultrabold" id="create-room-title">
+          <h2 className="mb-4 text-4xl" id="create-room-title">
             Создание комнаты
           </h2>
           <div className="mb-6 flex flex-col" id="create-room-description">

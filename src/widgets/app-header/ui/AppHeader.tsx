@@ -61,14 +61,13 @@ export function AppHeader() {
               component="h1"
               sx={{
                 color: '#FFFFFF',
-                fontFamily: 'Golos Text, sans-serif',
                 fontSize: '32px',
-                fontWeight: 700,
                 lineHeight: 1.2,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
+              variant="h1"
             >
               {roomName}
             </Typography>

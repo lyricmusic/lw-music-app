@@ -4,7 +4,7 @@ import { toast } from 'react-toastify'
 
 import { routes } from '@/shared/config/routes'
 import { TextField } from '@/shared/ui/text-field'
-import { Box, Button, CircularProgress } from '@mui/material'
+import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 import { getAuthErrorMessage, signInWithEmail } from '../api/auth'
 import { authSubmitButtonSx } from './authFormStyles'
@@ -44,7 +44,9 @@ export function SignInForm() {
 
   return (
     <div>
-      <h1 className="mb-8 text-[38px] leading-none font-ultrabold">Вход</h1>
+      <Typography component="h1" variant="h1">
+        Вход
+      </Typography>
       <Box component="form" noValidate onSubmit={handleLogin}>
         <div className="flex flex-col gap-y-3 mb-6">
           <TextField
@@ -83,7 +85,9 @@ export function SignInForm() {
         </Button>
 
         <div className="flex justify-center mt-5 gap-x-[10px]">
-          <span className="text-auth-muted">Нет аккаунта?</span>
+          <span style={{ color: 'var(--color-auth-muted)' }}>
+            Нет аккаунта?
+          </span>
           <RouterLink className="text-white underline" to={routes.signUp}>
             Зарегистрироваться
           </RouterLink>

@@ -19,7 +19,7 @@ export function RoomsPage() {
   return (
     <div className="flex-1 rounded-[20px] bg-[#ECEDF2] px-10 py-7">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[38px] font-ultrabold">Комнаты</h2>
+        <h2 className="text-[38px]">Комнаты</h2>
         <Button
           onClick={() => setIsOpen(true)}
           variant="outlined"

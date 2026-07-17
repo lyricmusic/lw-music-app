@@ -99,6 +99,22 @@ export const appTheme = createTheme({
         },
       },
     },
+    MuiTypography: {
+      styleOverrides: {
+        h1: {
+          fontFamily: 'Golos Text, sans-serif',
+          fontSize: '40px',
+          fontWeight: 700,
+          lineHeight: 1,
+          marginBottom: '24px',
+        },
+        h2: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
+        h3: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
+        h4: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
+        h5: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
+        h6: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
+      },
+    },
   },
   palette: {
     error: { main: '#FF849A' },

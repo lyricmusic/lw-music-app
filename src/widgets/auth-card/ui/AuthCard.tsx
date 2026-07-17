@@ -51,20 +51,22 @@ export function AuthCard({ mode }: AuthCardProps) {
         disabled={googleLoading}
         onClick={handleGoogleLogin}
         sx={{
-          '&:active': {
+          '&.MuiButton-colorPrimary.MuiButton-outlined': {
+            '&:active, &:active:hover': {
+              backgroundColor: 'var(--color-auth-google-background-pressed)',
+              borderColor: 'var(--color-auth-google-border)',
+              color: 'var(--color-auth-card)',
+            },
+            '&:hover': {
+              backgroundColor: 'var(--color-auth-google-background-hover)',
+              borderColor: 'var(--color-auth-google-border)',
+              color: 'var(--color-auth-card)',
+            },
+            backgroundColor: 'var(--color-auth-google-background-default)',
+            border: '2px solid var(--color-auth-google-border)',
             color: 'var(--color-auth-text)',
           },
-          '&:hover': {
-            backgroundColor: 'var(--color-accent)',
-            borderColor: 'var(--color-accent)',
-            color: 'var(--color-auth-card)',
-          },
-          backgroundColor: 'transparent',
-          border: '2px solid var(--color-auth-border)',
           borderRadius: '12px',
-          color: 'var(--color-auth-text)',
-          fontSize: '14px',
-          fontWeight: 800,
           height: '52px',
           padding: 0,
           textTransform: 'uppercase',

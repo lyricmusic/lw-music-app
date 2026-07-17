@@ -174,8 +174,10 @@ export function RoomChat({ roomId }: RoomChatProps) {
       }}
     >
       <Typography
-        className="shrink-0 text-[28px] font-ultrabold leading-none"
+        className="shrink-0"
         component="h2"
+        sx={{ fontSize: '28px', lineHeight: 1 }}
+        variant="h2"
       >
         Чат
       </Typography>

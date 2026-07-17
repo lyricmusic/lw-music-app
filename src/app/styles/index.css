@@ -133,8 +133,11 @@
 
 :root {
   --color-accent: #b79eff;
-  --color-auth-border: #dfdddf;
   --color-auth-card: #2a2b47;
+  --color-auth-google-background-default: transparent;
+  --color-auth-google-background-hover: #fff;
+  --color-auth-google-background-pressed: #fff;
+  --color-auth-google-border: #fff;
   --color-auth-muted: #8d8bb3;
   --color-auth-text: #fff;
   --color-brand: #25263e;
@@ -164,12 +167,6 @@
 .font-medium {
   font-family: 'Golos Text Medium', sans-serif;
   font-weight: 500;
-  font-style: normal;
-}
-
-.font-ultrabold {
-  font-family: 'Golos Text', sans-serif;
-  font-weight: 700;
   font-style: normal;
 }
 
@@ -208,6 +205,16 @@
 
 body {
   font-family: 'Golos Text', sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Golos Text', sans-serif;
+  font-weight: 700;
 }
 
 .room-content-grid {

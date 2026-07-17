@@ -25,7 +25,7 @@ export function RoomListItem({
         </div>
 
         <div>
-          <p className="text-2xl font-ultrabold">{room.name}</p>
+          <p className="text-2xl font-bold">{room.name}</p>
           <div className="flex items-center">
             {room.categories.map((category, index) => (
               <div className="flex items-center" key={category.id}>
