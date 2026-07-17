@@ -1,6 +1,11 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
 import {
+  createRoomInvite,
+  getRoomInviteUrl,
+  useCurrentRoomMember,
   useRoomExists,
   useRoomMembership,
   useRoomPresence,
@@ -48,12 +53,19 @@ function RoomEntryState({
 
 export function RoomPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { roomId = 'demo-room' } = useParams<{ roomId: string }>()
   const { profile, user } = useSession()
-  const room = useRoomExists(roomId)
+  const [inviteCreating, setInviteCreating] = useState(false)
+  const inviteId = searchParams.get('invite')?.trim() || undefined
   const membership = useRoomMembership(
     roomId,
-    room.exists === true && profile?.onboardingCompleted === true,
+    profile?.onboardingCompleted === true,
+    inviteId,
+  )
+  const room = useRoomExists(roomId, membership.status)
+  const currentMember = useCurrentRoomMember(
+    membership.status === 'joined' ? roomId : '',
   )
   useRoomPresence(membership.status === 'joined' ? roomId : '')
 
@@ -62,7 +74,31 @@ export function RoomPage() {
       replace: true,
     })
 
-  if (room.error === 'forbidden') {
+  const handleCreateInvite = async () => {
+    setInviteCreating(true)
+    try {
+      const inviteId = await createRoomInvite({
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        roomId,
+      })
+      await navigator.clipboard.writeText(getRoomInviteUrl(roomId, inviteId))
+      toast.success('Ссылка-приглашение скопирована. Она действует 24 часа.')
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось создать приглашение.',
+      )
+    } finally {
+      setInviteCreating(false)
+    }
+  }
+
+  if (
+    room.error === 'forbidden' &&
+    membership.status !== 'joining' &&
+    membership.status !== 'joined'
+  ) {
     return (
       <RoomEntryState
         actionLabel={user?.isAnonymous ? 'Войти в аккаунт' : 'К комнатам'}
@@ -117,9 +153,21 @@ export function RoomPage() {
 
   return (
     <Box
-      className="h-full min-h-0 overflow-hidden bg-[#3F3F59] px-1"
+      className="relative h-full min-h-0 overflow-hidden bg-[#3F3F59] px-1"
       component="main"
     >
+      {currentMember &&
+        ['host', 'moderator', 'owner'].includes(currentMember.role) && (
+          <Button
+            disabled={inviteCreating}
+            onClick={handleCreateInvite}
+            size="small"
+            sx={{ position: 'absolute', right: 20, top: 16, zIndex: 2 }}
+            variant="contained"
+          >
+            {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
+          </Button>
+        )}
       <Box className="room-content-grid">
         <Box className="room-player-column">
           <SyncedYouTubePlayer key={roomId} roomId={roomId} />

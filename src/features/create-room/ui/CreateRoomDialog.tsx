@@ -7,6 +7,7 @@ import {
   ROOM_CATEGORIES,
   ROOM_NAME_MAX_LENGTH,
   type Category,
+  type RoomVisibility,
 } from '@/entities/room'
 import { MembersIcon } from '@/shared/ui/icons'
 import {
@@ -14,6 +15,7 @@ import {
   Box,
   Button,
   Fade,
+  MenuItem,
   Modal,
   TextField,
 } from '@mui/material'
@@ -48,6 +50,7 @@ interface CreateRoomFormValues {
   categories: Category[]
   image: File | null
   roomName: string
+  visibility: RoomVisibility
 }
 
 export function CreateRoomDialog({
@@ -65,7 +68,12 @@ export function CreateRoomDialog({
     setValue,
     watch,
   } = useForm<CreateRoomFormValues>({
-    defaultValues: { categories: [], image: null, roomName: '' },
+    defaultValues: {
+      categories: [],
+      image: null,
+      roomName: '',
+      visibility: 'public',
+    },
   })
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const image = watch('image')
@@ -92,6 +100,7 @@ export function CreateRoomDialog({
         categories: values.categories,
         image: values.image,
         name: values.roomName.trim(),
+        visibility: values.visibility,
       })
       reset()
       onClose()
@@ -183,6 +192,27 @@ export function CreateRoomDialog({
                 }}
                 variant="filled"
               />
+            </div>
+
+            <div className="mb-6 border-b border-white pb-7">
+              <span className="mb-3 block text-secondary-text">
+                Доступ к комнате
+              </span>
+              <TextField
+                disabled={isSubmitting}
+                fullWidth
+                label="Видимость"
+                select
+                {...register('visibility')}
+              >
+                <MenuItem value="public">Публичная — видна в списке</MenuItem>
+                <MenuItem value="unlisted">
+                  По ссылке — скрыта из списка
+                </MenuItem>
+                <MenuItem value="private">
+                  Приватная — только по приглашению
+                </MenuItem>
+              </TextField>
             </div>
 
             <div className="mb-6 border-b border-white pb-7">

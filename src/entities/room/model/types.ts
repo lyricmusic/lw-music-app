@@ -37,6 +37,30 @@ export type RoomMember = {
   status: RoomMemberStatus
 }
 
+export type RoomBan = {
+  bannedBy: string
+  createdAt: Timestamp
+  expiresAt: null | Timestamp
+  reason: string
+}
+
+export type RoomMute = {
+  expiresAt: null | Timestamp
+  mutedBy: string
+  reason: string
+}
+
+export type RoomInvite = {
+  createdAt: Timestamp
+  createdBy: string
+  expiresAt: Timestamp
+  id: string
+  maxUses: number
+  revokedAt: null | Timestamp
+  roomId: string
+  uses: number
+}
+
 export type Category = {
   id: number
   title: string

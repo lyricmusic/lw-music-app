@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore'
@@ -15,6 +14,7 @@ import {
   normalizeRoomName,
   ROOM_NAME_MAX_LENGTH,
   type Category,
+  type RoomVisibility,
 } from '@/entities/room'
 import { auth, db } from '@/shared/api/firebase'
 import {
@@ -27,6 +27,7 @@ interface CreateRoomInput {
   categories: Category[]
   image: File
   name: string
+  visibility?: RoomVisibility
 }
 
 export class RoomNameAlreadyExistsError extends Error {
@@ -36,7 +37,12 @@ export class RoomNameAlreadyExistsError extends Error {
   }
 }
 
-export async function createRoom({ categories, image, name }: CreateRoomInput) {
+export async function createRoom({
+  categories,
+  image,
+  name,
+  visibility = DEFAULT_ROOM_VISIBILITY,
+}: CreateRoomInput) {
   const user = auth.currentUser
   if (!user) throw new Error('Чтобы создать комнату, войдите в аккаунт.')
 
@@ -55,20 +61,8 @@ export async function createRoom({ categories, image, name }: CreateRoomInput) {
   let uploadedObjectKey: null | string = null
 
   try {
-    const [roomNameSnapshot, roomsSnapshot] = await Promise.all([
-      getDoc(roomNameRef),
-      getDocs(collection(db, 'rooms')),
-    ])
-    const legacyRoomHasSameName = roomsSnapshot.docs.some(snapshot => {
-      const existingName = snapshot.data().name
-
-      return (
-        typeof existingName === 'string' &&
-        getRoomNameKey(existingName) === nameKey
-      )
-    })
-
-    if (roomNameSnapshot.exists() || legacyRoomHasSameName) {
+    const roomNameSnapshot = await getDoc(roomNameRef)
+    if (roomNameSnapshot.exists()) {
       throw new RoomNameAlreadyExistsError()
     }
 
@@ -105,7 +99,7 @@ export async function createRoom({ categories, image, name }: CreateRoomInput) {
         settings: DEFAULT_ROOM_SETTINGS,
         status: DEFAULT_ROOM_STATUS,
         updatedAt: serverTimestamp(),
-        visibility: DEFAULT_ROOM_VISIBILITY,
+        visibility,
       })
       transaction.set(ownerMemberRef, {
         invitedBy: null,

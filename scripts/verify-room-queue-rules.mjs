@@ -10,8 +10,10 @@ const firestoreUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases
 
 const stringValue = value => ({ stringValue: value })
 const integerValue = value => ({ integerValue: String(value) })
+const booleanValue = value => ({ booleanValue: value })
 const timestampValue = value => ({ timestampValue: value })
 const nullValue = () => ({ nullValue: null })
+const mapValue = fields => ({ mapValue: { fields } })
 const arrayValue = values => ({
   arrayValue: { values: values.map(stringValue) },
 })
@@ -116,6 +118,37 @@ const playbackTimeTransform = [
 
 const firstUser = await createAuthUser('first')
 const secondUser = await createAuthUser('second')
+
+const accessSeed = await commit(
+  [
+    update(`rooms/${roomId}`, {
+      ownerId: stringValue(firstUser.uid),
+      settings: mapValue({
+        allowGuestChat: booleanValue(true),
+        allowGuestQueue: booleanValue(true),
+        slowModeSeconds: integerValue(0),
+      }),
+      status: stringValue('active'),
+      visibility: stringValue('public'),
+    }),
+    update(`rooms/${roomId}/members/${firstUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('owner'),
+      status: stringValue('active'),
+    }),
+    update(`rooms/${roomId}/members/${secondUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('member'),
+      status: stringValue('active'),
+    }),
+  ],
+  'owner',
+)
+assert.equal(accessSeed.ok, true, JSON.stringify(accessSeed))
 
 async function seedQueue() {
   const seeded = await commit(

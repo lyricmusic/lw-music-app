@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 
 import {
@@ -8,6 +8,7 @@ import {
 } from '@/entities/message'
 import type { RoomMessage } from '@/entities/message'
 import { useSession } from '@/entities/session'
+import { useBlockedUsers } from '@/entities/user'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
 import { Avatar, Box, CircularProgress, Paper, Typography } from '@mui/material'
@@ -118,6 +119,11 @@ function MessageItem({
 export function RoomChat({ roomId }: RoomChatProps) {
   const { profile, user } = useSession()
   const { error, loading, messages } = useRoomMessages(roomId)
+  const blockedUserIds = useBlockedUsers()
+  const visibleMessages = useMemo(
+    () => messages.filter(message => !blockedUserIds.has(message.authorId)),
+    [blockedUserIds, messages],
+  )
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
@@ -135,7 +141,7 @@ export function RoomChat({ roomId }: RoomChatProps) {
     if (!messageList || !stickToBottomRef.current) return
 
     messageList.scrollTop = messageList.scrollHeight
-  }, [messages])
+  }, [visibleMessages])
 
   async function handleSendMessage({ message }: { message: string }) {
     if (!profile || !user || !message.trim()) return
@@ -225,7 +231,7 @@ export function RoomChat({ roomId }: RoomChatProps) {
         )}
 
         {!loading &&
-          messages.map(message => (
+          visibleMessages.map(message => (
             <MessageItem
               isOwn={message.authorId === user?.uid}
               key={message.id}

@@ -3,8 +3,8 @@
     ".read": false,
     ".write": false,
     "roomPresence": {
-      ".read": "auth != null",
       "$roomId": {
+        ".read": "auth != null",
         "$uid": {
           "$connectionId": {
             ".write": "auth != null && auth.uid === $uid",

@@ -1,5 +1,9 @@
 export { useRooms } from './api/useRooms'
 export { useRoomExists } from './api/useRoomExists'
+export {
+  useCurrentRoomMember,
+  type CurrentRoomMember,
+} from './api/useCurrentRoomMember'
 export { useRoomName } from './api/useRoomName'
 export {
   useRoomMembership,
@@ -9,6 +13,23 @@ export { useRoomPresence } from './api/useRoomPresence'
 export { useRoomParticipants } from './api/useRoomParticipants'
 export type { RoomParticipant } from './api/useRoomParticipants'
 export { useRoomQueue } from './api/useRoomQueue'
+export {
+  leaveRoom,
+  restorePublicRoomMembership,
+  setRoomMemberRole,
+} from './api/roomMembership'
+export {
+  createRoomInvite,
+  getRoomInviteUrl,
+  revokeRoomInvite,
+} from './api/roomInvites'
+export {
+  banRoomUser,
+  muteRoomUser,
+  unbanRoomUser,
+  unmuteRoomUser,
+} from './api/roomModeration'
+export { updateRoomAccess } from './api/roomSettings'
 export {
   advanceRoomQueue,
   enqueueRoomVideo,
@@ -31,9 +52,12 @@ export {
 export type {
   Category,
   Room,
+  RoomBan,
+  RoomInvite,
   RoomMember,
   RoomMemberRole,
   RoomMemberStatus,
+  RoomMute,
   RoomQueueItem,
   RoomSettings,
   RoomStatus,

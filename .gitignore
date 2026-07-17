@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 .tools/
+.migration-backups/
 *.local
 
 # Editor directories and files

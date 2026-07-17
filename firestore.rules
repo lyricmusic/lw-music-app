@@ -186,28 +186,78 @@ service cloud.firestore {
         ).data.status == 'active';
     }
 
+    function hasActiveRoomRole(roomId, roles) {
+      return isActiveRoomMember(roomId)
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)
+        ).data.role in roles;
+    }
+
+    function isActiveRestriction(restriction) {
+      return restriction.expiresAt == null
+        || restriction.expiresAt > request.time;
+    }
+
+    function isActivelyBanned(roomId, userId) {
+      let banPath = /databases/$(database)/documents/rooms/$(roomId)/bans/$(userId);
+      return exists(banPath) && isActiveRestriction(get(banPath).data);
+    }
+
+    function isActivelyMuted(roomId, userId) {
+      let mutePath = /databases/$(database)/documents/rooms/$(roomId)/mutes/$(userId);
+      return exists(mutePath) && isActiveRestriction(get(mutePath).data);
+    }
+
+    function isRoomOwnerByData(room) {
+      return isSignedIn() && room.ownerId == request.auth.uid;
+    }
+
+    function canModerateRoom(roomId) {
+      return hasActiveRoomRole(roomId, ['moderator', 'owner']);
+    }
+
+    function canInviteToRoom(roomId) {
+      return hasActiveRoomRole(roomId, ['host', 'moderator', 'owner']);
+    }
+
     function canAccessRoom(roomId) {
       let roomPath = /databases/$(database)/documents/rooms/$(roomId);
+      let room = get(roomPath).data;
       return isSignedIn()
-        && (
-          !isAnonymous()
-          || (exists(roomPath)
-            && isRoomActive(get(roomPath).data)
-            && (isRoomOpenForDirectJoin(get(roomPath).data)
-              || isActiveRoomMember(roomId)))
-        );
+        && exists(roomPath)
+        && !isActivelyBanned(roomId, request.auth.uid)
+        && (isRoomOwnerByData(room)
+          || isActiveRoomMember(roomId)
+          || isRoomOpenForDirectJoin(room));
     }
 
     function canParticipateInRoom(roomId) {
-      return canAccessRoom(roomId)
-        && (!isAnonymous() || isActiveRoomMember(roomId));
+      let roomPath = /databases/$(database)/documents/rooms/$(roomId);
+      let room = get(roomPath).data;
+      return canReadRoomContent(roomId)
+        && isRoomActive(room)
+        && (isActiveRoomMember(roomId) || isRoomOwnerByData(room));
+    }
+
+    function canReadRoomContent(roomId) {
+      let roomPath = /databases/$(database)/documents/rooms/$(roomId);
+      let room = get(roomPath).data;
+      return isSignedIn()
+        && exists(roomPath)
+        && !isActivelyBanned(roomId, request.auth.uid)
+        && (isRoomOwnerByData(room) || isActiveRoomMember(roomId));
+    }
+
+    function isGuestRoomMember(roomId) {
+      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid);
+      return exists(memberPath) && get(memberPath).data.isGuest == true;
     }
 
     function guestCanChat(roomId) {
       let room = get(
         /databases/$(database)/documents/rooms/$(roomId)
       ).data;
-      return !isAnonymous()
+      return !isGuestRoomMember(roomId)
         || !('settings' in room)
         || room.settings.allowGuestChat == true;
     }
@@ -216,7 +266,7 @@ service cloud.firestore {
       let room = get(
         /databases/$(database)/documents/rooms/$(roomId)
       ).data;
-      return !isAnonymous()
+      return !isGuestRoomMember(roomId)
         || !('settings' in room)
         || room.settings.allowGuestQueue == true;
     }
@@ -244,6 +294,66 @@ service cloud.firestore {
             && member.isGuest == isAnonymous()
             && member.role == 'member')
         );
+    }
+
+    function hasValidInviteJoin(roomId, memberId) {
+      let redemption = getAfter(
+        /databases/$(database)/documents/roomInviteRedemptions/$(memberId)
+      ).data;
+      let inviteBefore = get(
+        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
+      ).data;
+      let inviteAfter = getAfter(
+        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
+      ).data;
+      let member = request.resource.data;
+      return memberId == request.auth.uid
+        && hasValidRoomMemberData(member)
+        && member.invitedBy == inviteBefore.createdBy
+        && member.isGuest == isAnonymous()
+        && member.joinedAt == request.time
+        && member.role == 'member'
+        && member.status == 'active'
+        && redemption.roomId == roomId
+        && redemption.redeemedAt == request.time
+        && inviteBefore.roomId == roomId
+        && inviteBefore.revokedAt == null
+        && inviteBefore.expiresAt > request.time
+        && inviteBefore.uses < inviteBefore.maxUses
+        && inviteAfter.uses == inviteBefore.uses + 1;
+    }
+
+    function isValidSelfLeave(memberId) {
+      return memberId == request.auth.uid
+        && resource.data.role != 'owner'
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'left'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status']);
+    }
+
+    function isValidOwnerRoleChange(roomId) {
+      return hasActiveRoomRole(roomId, ['owner'])
+        && resource.data.role != 'owner'
+        && request.resource.data.role in ['host', 'member', 'moderator']
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['role']);
+    }
+
+    function isValidModerationRemoval(roomId, memberId) {
+      return canModerateRoom(roomId)
+        && resource.data.role != 'owner'
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'left'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status'])
+        && isActivelyBannedAfter(roomId, memberId);
+    }
+
+    function isActivelyBannedAfter(roomId, userId) {
+      let banPath = /databases/$(database)/documents/rooms/$(roomId)/bans/$(userId);
+      return existsAfter(banPath)
+        && isActiveRestriction(getAfter(banPath).data);
     }
 
     function hasValidRoom(roomId) {
@@ -579,9 +689,12 @@ service cloud.firestore {
             && previousQueueState.activePosition == resource.data.position));
     }
 
-    function hasValidMessage() {
+    function hasValidMessage(roomId, messageId) {
       let profile = get(
         /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+      let activity = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/messageActivity/$(request.auth.uid)
       ).data;
       return request.resource.data.keys().hasAll([
           'authorId',
@@ -609,11 +722,169 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 1000;
+        && request.resource.data.text.size() <= 1000
+        && activity.lastMessageAt == request.time
+        && activity.messageId == messageId;
+    }
+
+    function hasValidMessageActivity(roomId, memberId) {
+      let room = get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data;
+      let message = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/messages/$(request.resource.data.messageId)
+      ).data;
+      let respectsSlowMode = !exists(
+          /databases/$(database)/documents/rooms/$(roomId)/messageActivity/$(memberId)
+        ) || request.time >= resource.data.lastMessageAt
+          + duration.value(room.settings.slowModeSeconds, 's');
+      return memberId == request.auth.uid
+        && request.resource.data.keys().hasAll(['lastMessageAt', 'messageId'])
+        && request.resource.data.keys().hasOnly(['lastMessageAt', 'messageId'])
+        && request.resource.data.lastMessageAt == request.time
+        && request.resource.data.messageId is string
+        && message.authorId == request.auth.uid
+        && message.createdAt == request.time
+        && respectsSlowMode;
+    }
+
+    function hasValidRoomInvite() {
+      return request.resource.data.keys().hasAll([
+          'createdAt',
+          'createdBy',
+          'expiresAt',
+          'maxUses',
+          'revokedAt',
+          'roomId',
+          'uses'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'createdBy',
+          'expiresAt',
+          'maxUses',
+          'revokedAt',
+          'roomId',
+          'uses'
+        ])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdBy is string
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.maxUses is int
+        && request.resource.data.maxUses >= 1
+        && request.resource.data.maxUses <= 100
+        && (request.resource.data.revokedAt == null
+          || request.resource.data.revokedAt is timestamp)
+        && request.resource.data.roomId is string
+        && request.resource.data.uses is int
+        && request.resource.data.uses >= 0
+        && request.resource.data.uses <= request.resource.data.maxUses;
+    }
+
+    function hasValidInviteRedemption(inviteId) {
+      let member = getAfter(
+        /databases/$(database)/documents/rooms/$(resource.data.roomId)/members/$(request.auth.uid)
+      ).data;
+      return resource.data.revokedAt == null
+        && resource.data.expiresAt > request.time
+        && resource.data.uses < resource.data.maxUses
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['uses'])
+        && request.resource.data.uses == resource.data.uses + 1
+        && existsAfter(
+          /databases/$(database)/documents/roomInviteRedemptions/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/roomInviteRedemptions/$(request.auth.uid)
+        ).data.inviteId == inviteId
+        && member.status == 'active'
+        && member.role == 'member'
+        && member.invitedBy == resource.data.createdBy
+        && member.joinedAt == request.time;
+    }
+
+    function hasValidRedemptionProof(userId) {
+      let redemption = request.resource.data;
+      let inviteBefore = get(
+        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
+      ).data;
+      let inviteAfter = getAfter(
+        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
+      ).data;
+      let member = getAfter(
+        /databases/$(database)/documents/rooms/$(redemption.roomId)/members/$(userId)
+      ).data;
+      return userId == request.auth.uid
+        && redemption.keys().hasAll(['inviteId', 'redeemedAt', 'roomId'])
+        && redemption.keys().hasOnly(['inviteId', 'redeemedAt', 'roomId'])
+        && redemption.inviteId is string
+        && redemption.redeemedAt == request.time
+        && redemption.roomId is string
+        && inviteBefore.roomId == redemption.roomId
+        && inviteBefore.revokedAt == null
+        && inviteBefore.expiresAt > request.time
+        && inviteBefore.uses < inviteBefore.maxUses
+        && inviteAfter.uses == inviteBefore.uses + 1
+        && member.status == 'active'
+        && member.role == 'member'
+        && member.invitedBy == inviteBefore.createdBy
+        && member.joinedAt == request.time;
+    }
+
+    function hasValidBanData(roomId, memberId) {
+      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
+      return request.resource.data.keys().hasAll([
+          'bannedBy', 'createdAt', 'expiresAt', 'reason'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'bannedBy', 'createdAt', 'expiresAt', 'reason'
+        ])
+        && request.resource.data.bannedBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && (request.resource.data.expiresAt == null
+          || (request.resource.data.expiresAt is timestamp
+            && request.resource.data.expiresAt > request.time))
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && memberId != request.auth.uid
+        && (!exists(memberPath) || get(memberPath).data.role != 'owner')
+        && (!exists(memberPath)
+          || get(memberPath).data.status != 'active'
+          || getAfter(memberPath).data.status == 'left');
+    }
+
+    function hasValidMuteData(roomId, memberId) {
+      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
+      return request.resource.data.keys().hasAll([
+          'expiresAt', 'mutedBy', 'reason'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'expiresAt', 'mutedBy', 'reason'
+        ])
+        && request.resource.data.mutedBy == request.auth.uid
+        && (request.resource.data.expiresAt == null
+          || (request.resource.data.expiresAt is timestamp
+            && request.resource.data.expiresAt > request.time))
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && memberId != request.auth.uid
+        && (!exists(memberPath) || get(memberPath).data.role != 'owner');
+    }
+
+    function hasValidBlockedUser(userId, blockedUserId) {
+      return userId == request.auth.uid
+        && blockedUserId != request.auth.uid
+        && request.resource.data.keys().hasAll(['createdAt'])
+        && request.resource.data.keys().hasOnly(['createdAt'])
+        && request.resource.data.createdAt == request.time;
     }
 
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if false;
       allow create: if isOwner(userId)
         && hasValidUserProfile(userId)
         && request.resource.data.createdAt == request.time
@@ -630,9 +901,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /users/{userId}/blockedUsers/{blockedUserId} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && hasValidBlockedUser(userId, blockedUserId);
+    }
+
     match /rooms/{roomId} {
-      allow get: if canAccessRoom(roomId);
-      allow list: if isSignedIn() && !isAnonymous();
+      allow get: if isSignedIn()
+        && (!exists(/databases/$(database)/documents/rooms/$(roomId))
+          || canAccessRoom(roomId));
+      allow list: if isSignedIn()
+        && !isAnonymous()
+        && resource.data.visibility == 'public'
+        && resource.data.status == 'active';
       allow create: if isSignedIn()
         && !isAnonymous()
         && hasValidRoom(roomId)
@@ -655,14 +937,45 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/members/{memberId} {
-      allow read: if canAccessRoom(roomId);
+      allow get: if (isSignedIn() && memberId == request.auth.uid)
+        || canReadRoomContent(roomId);
+      allow list: if canReadRoomContent(roomId);
       allow create: if isSignedIn()
-        && hasValidSelfJoinedMember(roomId, memberId);
-      allow update, delete: if false;
+        && (hasValidSelfJoinedMember(roomId, memberId)
+          || hasValidInviteJoin(roomId, memberId));
+      allow update: if isSignedIn()
+        && hasValidRoomMemberData(request.resource.data)
+        && (isValidSelfLeave(memberId)
+          || (resource.data.status == 'left'
+            && hasValidSelfJoinedMember(roomId, memberId))
+          || (resource.data.status == 'left'
+            && hasValidInviteJoin(roomId, memberId))
+          || isValidOwnerRoleChange(roomId)
+          || isValidModerationRemoval(roomId, memberId));
+      allow delete: if false;
+    }
+
+    match /rooms/{roomId}/bans/{memberId} {
+      allow get: if isSignedIn()
+        && (memberId == request.auth.uid || canModerateRoom(roomId));
+      allow list: if canModerateRoom(roomId);
+      allow create, update: if canModerateRoom(roomId)
+        && hasValidBanData(roomId, memberId);
+      allow delete: if canModerateRoom(roomId);
+    }
+
+    match /rooms/{roomId}/mutes/{memberId} {
+      allow get: if isSignedIn()
+        && (memberId == request.auth.uid || canModerateRoom(roomId));
+      allow list: if canModerateRoom(roomId);
+      allow create, update: if canModerateRoom(roomId)
+        && hasValidMuteData(roomId, memberId);
+      allow delete: if canModerateRoom(roomId);
     }
 
     match /roomNames/{roomNameId} {
-      allow read: if isSignedIn() && !isAnonymous();
+      allow get: if isSignedIn() && !isAnonymous();
+      allow list: if false;
       allow create: if isSignedIn()
         && hasValidRoomNameReservation(roomNameId);
       allow update: if false;
@@ -672,8 +985,36 @@ service cloud.firestore {
         );
     }
 
+    match /roomInvites/{inviteId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn()
+        && hasValidRoomInvite()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.revokedAt == null
+        && request.resource.data.uses == 0
+        && canInviteToRoom(request.resource.data.roomId);
+      allow update: if isSignedIn()
+        && hasValidRoomInvite()
+        && (hasValidInviteRedemption(inviteId)
+          || (canInviteToRoom(resource.data.roomId)
+            && resource.data.revokedAt == null
+            && request.resource.data.revokedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['revokedAt'])));
+      allow delete: if false;
+    }
+
+    match /roomInviteRedemptions/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isSignedIn()
+        && hasValidRedemptionProof(userId);
+      allow delete: if false;
+    }
+
     match /rooms/{roomId}/playback/{stateId} {
-      allow read: if canAccessRoom(roomId) && stateId == 'current';
+      allow read: if canReadRoomContent(roomId) && stateId == 'current';
       allow create: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && hasValidPlaybackState()
@@ -686,7 +1027,7 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/queueState/{stateId} {
-      allow read: if canAccessRoom(roomId) && stateId == 'current';
+      allow read: if canReadRoomContent(roomId) && stateId == 'current';
       allow create: if canParticipateInRoom(roomId)
         && guestCanUseQueue(roomId)
         && stateId == 'current'
@@ -705,7 +1046,7 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/queue/{itemId} {
-      allow read: if canAccessRoom(roomId)
+      allow read: if canReadRoomContent(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId));
       allow create: if canParticipateInRoom(roomId)
         && guestCanUseQueue(roomId)
@@ -719,7 +1060,7 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/queueMembers/{memberId} {
-      allow read: if canAccessRoom(roomId);
+      allow read: if canReadRoomContent(roomId);
       allow create: if canParticipateInRoom(roomId)
         && guestCanUseQueue(roomId)
         && !exists(
@@ -735,16 +1076,26 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/messages/{messageId} {
-      allow read: if canAccessRoom(roomId)
+      allow read: if canReadRoomContent(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId));
       allow create: if canParticipateInRoom(roomId)
         && guestCanChat(roomId)
+        && !isActivelyMuted(roomId, request.auth.uid)
         && exists(/databases/$(database)/documents/rooms/$(roomId))
         && exists(
           /databases/$(database)/documents/users/$(request.auth.uid)
         )
-        && hasValidMessage();
+        && hasValidMessage(roomId, messageId);
       allow update, delete: if false;
+    }
+
+    match /rooms/{roomId}/messageActivity/{memberId} {
+      allow read: if isOwner(memberId) && canReadRoomContent(roomId);
+      allow create, update: if canParticipateInRoom(roomId)
+        && guestCanChat(roomId)
+        && !isActivelyMuted(roomId, request.auth.uid)
+        && hasValidMessageActivity(roomId, memberId);
+      allow delete: if false;
     }
   }
 }

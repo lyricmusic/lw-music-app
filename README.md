@@ -134,6 +134,29 @@ rooms/{roomId}/members/{uid}
   role: "owner" | "host" | "moderator" | "member"
   status: "active" | "left"
 
+rooms/{roomId}/bans/{uid}
+  bannedBy: uid
+  reason: string
+  expiresAt: timestamp | null
+  createdAt: timestamp
+
+rooms/{roomId}/mutes/{uid}
+  mutedBy: uid
+  expiresAt: timestamp | null
+  reason: string
+
+roomInvites/{inviteId}
+  roomId: string
+  createdBy: uid
+  expiresAt: timestamp
+  maxUses: integer
+  uses: integer
+  revokedAt: timestamp | null
+  createdAt: timestamp
+
+users/{uid}/blockedUsers/{blockedUid}
+  createdAt: timestamp
+
 rooms/{roomId}/playback/current
   videoId: string
   status: "playing" | "paused"
@@ -164,12 +187,25 @@ YouTube-видеопоток через Firebase не передаётся. Ка
 
 Запись выполняется транзакцией с последовательным увеличением `revision`. События, вызванные удалённой синхронизацией, временно не отправляются обратно, чтобы не возникал цикл play/pause.
 
-Текущая роль ведущего — режим MVP для разработки: любой участник комнаты технически может записать корректное состояние плеера. Владелец получает membership при создании комнаты. Пользователь, открывший прямую ссылку на публичную или скрытую комнату без аккаунта, входит через Firebase Anonymous Auth, завершает облегчённый профиль и получает роль `member`. Приватная или архивная комната не допускает самостоятельное гостевое присоединение.
+Доступ к содержимому комнаты получают только активные участники. Публичные комнаты показываются в общем списке, скрытые открываются по прямой ссылке, приватные — активным участникам или по действующему приглашению. Владелец получает membership при создании комнаты. Пользователь, открывший публичную или скрытую комнату без аккаунта, входит через Firebase Anonymous Auth, завершает облегчённый профиль и получает роль `member`.
+
+Приглашения принимаются атомарно: одна транзакция увеличивает `uses`, сохраняет подтверждение использования и создаёт membership. Баны закрывают чтение и участие в комнате, муты запрещают отправку сообщений, а `slowModeSeconds` проверяется Security Rules через `messageActivity`. Пользовательские блокировки скрывают сообщения заблокированных авторов на клиенте.
+
+Старые комнаты проверяются dry-run миграцией:
+
+```powershell
+pnpm migrate:room-model -- --project lwmusic-ffe83 --firebase-cli-auth
+```
+
+Для применения нужны Application Default Credentials, `FIREBASE_SERVICE_ACCOUNT_JSON` или флаг `--firebase-cli-auth` с активной сессией Firebase CLI. Режим `--apply` требует обязательный путь `--backup`; при любых предупреждениях запись отменяется:
+
+```powershell
+pnpm migrate:room-model -- --project lwmusic-ffe83 --firebase-cli-auth --apply --backup .migration-backups/room-model-before.json
+```
 
 ## Следующие этапы
 
-1. Добавить приглашения в приватные комнаты и восстановление membership со статусом `left`.
-2. Применить `visibility` при чтении списка комнат: публичные показывать всем зарегистрированным пользователям, скрытые открывать только по ссылке, приватные — только участникам.
-3. Добавить управление ролями владельца, ведущего и модератора.
-4. Ограничить запись playback ролью или активной позицией очереди.
-5. Добавить жалобы, блокировки, rate limiting и App Check.
+1. Добавить полноценный интерфейс управления ролями, банами, мутами и настройками комнаты поверх готовых API.
+2. Добавить передачу владения комнатой.
+3. Ограничить запись playback ролью или активной позицией очереди.
+4. Добавить жалобы, серверный rate limiting и App Check.

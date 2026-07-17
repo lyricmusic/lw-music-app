@@ -11,6 +11,7 @@ const firestoreUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases
 const stringValue = value => ({ stringValue: value })
 const integerValue = value => ({ integerValue: String(value) })
 const booleanValue = value => ({ booleanValue: value })
+const timestampValue = value => ({ timestampValue: value })
 const nullValue = () => ({ nullValue: null })
 const mapValue = fields => ({ mapValue: { fields } })
 const arrayValue = values => ({ arrayValue: { values } })
@@ -26,12 +27,25 @@ function update(path, fields, updateTransforms = []) {
   }
 }
 
+function patch(path, fields, fieldPaths, updateTransforms = []) {
+  return {
+    update: { fields, name: documentPath(path) },
+    updateMask: { fieldPaths },
+    ...(updateTransforms.length > 0 ? { updateTransforms } : {}),
+  }
+}
+
+function remove(path) {
+  return { delete: documentPath(path) }
+}
+
 async function createAuthUser(label) {
+  const email = `${label}-${Date.now()}@example.test`
   const response = await fetch(
     `http://${authHost}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake`,
     {
       body: JSON.stringify({
-        email: `${label}-${Date.now()}@example.test`,
+        email,
         password: 'room-model-rules-password',
         returnSecureToken: true,
       }),
@@ -41,7 +55,7 @@ async function createAuthUser(label) {
   )
   const body = await response.json()
   assert.equal(response.ok, true, JSON.stringify(body))
-  return { idToken: body.idToken, uid: body.localId }
+  return { email, idToken: body.idToken, uid: body.localId }
 }
 
 async function createAnonymousUser() {
@@ -82,6 +96,50 @@ async function readDocument(path, token) {
   return { body, ok: response.ok, status: response.status }
 }
 
+async function queryRooms(token, constrained) {
+  const where = constrained
+    ? {
+        compositeFilter: {
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: 'visibility' },
+                op: 'EQUAL',
+                value: stringValue('public'),
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: 'status' },
+                op: 'EQUAL',
+                value: stringValue('active'),
+              },
+            },
+          ],
+          op: 'AND',
+        },
+      }
+    : undefined
+  const response = await fetch(
+    `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+    {
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'rooms' }],
+          ...(where ? { where } : {}),
+        },
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+  const body = await response.json()
+  return { body, ok: response.ok, status: response.status }
+}
+
 const requestTime = fieldPath => ({
   fieldPath,
   setToServerValue: 'REQUEST_TIME',
@@ -93,6 +151,7 @@ function roomFields({
   ownerId,
   roomId,
   status = 'active',
+  slowModeSeconds = 0,
   visibility,
 }) {
   return {
@@ -109,19 +168,19 @@ function roomFields({
     settings: mapValue({
       allowGuestChat: booleanValue(true),
       allowGuestQueue: booleanValue(true),
-      slowModeSeconds: integerValue(0),
+      slowModeSeconds: integerValue(slowModeSeconds),
     }),
     status: stringValue(status),
     visibility: stringValue(visibility),
   }
 }
 
-function memberFields({ isGuest, role }) {
+function memberFields({ invitedBy = null, isGuest, role, status = 'active' }) {
   return {
-    invitedBy: nullValue(),
+    invitedBy: invitedBy == null ? nullValue() : stringValue(invitedBy),
     isGuest: booleanValue(isGuest),
     role: stringValue(role),
-    status: stringValue('active'),
+    status: stringValue(status),
   }
 }
 
@@ -130,6 +189,7 @@ function roomCreationWrites({
   isGuest = false,
   ownerId,
   role = 'owner',
+  slowModeSeconds = 0,
   status = 'active',
   suffix,
   visibility = 'public',
@@ -149,7 +209,15 @@ function roomCreationWrites({
     ),
     update(
       `rooms/${roomId}`,
-      roomFields({ name, nameKey, ownerId, roomId, status, visibility }),
+      roomFields({
+        name,
+        nameKey,
+        ownerId,
+        roomId,
+        slowModeSeconds,
+        status,
+        visibility,
+      }),
       [requestTime('createdAt'), requestTime('updatedAt')],
     ),
   ]
@@ -169,6 +237,7 @@ function roomCreationWrites({
 
 const owner = await createAuthUser('owner')
 const otherUser = await createAuthUser('other')
+const invitee = await createAuthUser('invitee')
 const anonymousUser = await createAnonymousUser()
 const runId = `${Date.now()}`
 
@@ -178,6 +247,26 @@ const validRoom = roomCreationWrites({
 })
 const validCreate = await commit(validRoom.writes, owner.idToken)
 assert.equal(validCreate.ok, true, JSON.stringify(validCreate))
+
+const unconstrainedRoomList = await queryRooms(otherUser.idToken, false)
+assert.equal(
+  unconstrainedRoomList.ok,
+  false,
+  JSON.stringify(unconstrainedRoomList),
+)
+
+const publicRoomList = await queryRooms(otherUser.idToken, true)
+assert.equal(publicRoomList.ok, true, JSON.stringify(publicRoomList))
+
+const publicRoomMemberReadBeforeJoin = await readDocument(
+  `rooms/${validRoom.roomId}/members/${owner.uid}`,
+  otherUser.idToken,
+)
+assert.equal(
+  publicRoomMemberReadBeforeJoin.ok,
+  false,
+  JSON.stringify(publicRoomMemberReadBeforeJoin),
+)
 
 const anonymousProfile = await commit(
   [
@@ -235,6 +324,13 @@ const anonymousMessage = await commit(
       },
       [requestTime('createdAt')],
     ),
+    update(
+      `rooms/${validRoom.roomId}/messageActivity/${anonymousUser.uid}`,
+      {
+        messageId: stringValue(`guest-${runId}`),
+      },
+      [requestTime('lastMessageAt')],
+    ),
   ],
   anonymousUser.idToken,
 )
@@ -256,6 +352,160 @@ assert.equal(
   JSON.stringify(registeredMembership),
 )
 
+const roleChange = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { role: stringValue('host') },
+      ['role'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(roleChange.ok, true, JSON.stringify(roleChange))
+
+const selfLeave = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(selfLeave.ok, true, JSON.stringify(selfLeave))
+
+const publicRejoin = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(publicRejoin.ok, true, JSON.stringify(publicRejoin))
+
+const registeredProfile = await commit(
+  [
+    update(
+      `users/${otherUser.uid}`,
+      {
+        avatar: mapValue({
+          presetId: stringValue('beat'),
+          storagePath: nullValue(),
+          type: stringValue('preset'),
+        }),
+        displayName: stringValue('Registered member'),
+        email: stringValue(otherUser.email),
+        onboardingCompleted: booleanValue(true),
+        photoURL: stringValue('/avatars/beat.svg'),
+      },
+      [requestTime('createdAt'), requestTime('updatedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(registeredProfile.ok, true, JSON.stringify(registeredProfile))
+
+const userBlock = await commit(
+  [
+    update(`users/${otherUser.uid}/blockedUsers/${owner.uid}`, {}, [
+      requestTime('createdAt'),
+    ]),
+  ],
+  otherUser.idToken,
+)
+assert.equal(userBlock.ok, true, JSON.stringify(userBlock))
+
+const mute = await commit(
+  [
+    update(`rooms/${validRoom.roomId}/mutes/${otherUser.uid}`, {
+      expiresAt: nullValue(),
+      mutedBy: stringValue(owner.uid),
+      reason: stringValue('Muted by rules test'),
+    }),
+  ],
+  owner.idToken,
+)
+assert.equal(mute.ok, true, JSON.stringify(mute))
+
+const mutedMessageId = `muted-${runId}`
+const mutedMessage = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/messages/${mutedMessageId}`,
+      {
+        authorId: stringValue(otherUser.uid),
+        authorName: stringValue('Registered member'),
+        authorPhotoURL: stringValue('/avatars/beat.svg'),
+        text: stringValue('This message must be denied'),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `rooms/${validRoom.roomId}/messageActivity/${otherUser.uid}`,
+      { messageId: stringValue(mutedMessageId) },
+      [requestTime('lastMessageAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(mutedMessage.ok, false, JSON.stringify(mutedMessage))
+
+const unmute = await commit(
+  [remove(`rooms/${validRoom.roomId}/mutes/${otherUser.uid}`)],
+  owner.idToken,
+)
+assert.equal(unmute.ok, true, JSON.stringify(unmute))
+
+const ban = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/bans/${otherUser.uid}`,
+      {
+        bannedBy: stringValue(owner.uid),
+        expiresAt: nullValue(),
+        reason: stringValue('Banned by rules test'),
+      },
+      [requestTime('createdAt')],
+    ),
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(ban.ok, true, JSON.stringify(ban))
+
+const bannedRoomRead = await readDocument(
+  `rooms/${validRoom.roomId}`,
+  otherUser.idToken,
+)
+assert.equal(bannedRoomRead.ok, false, JSON.stringify(bannedRoomRead))
+
+const unban = await commit(
+  [remove(`rooms/${validRoom.roomId}/bans/${otherUser.uid}`)],
+  owner.idToken,
+)
+assert.equal(unban.ok, true, JSON.stringify(unban))
+
+const rejoinAfterBan = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(rejoinAfterBan.ok, true, JSON.stringify(rejoinAfterBan))
+
 const privateRoom = roomCreationWrites({
   ownerId: owner.uid,
   suffix: `${runId}-private`,
@@ -263,6 +513,16 @@ const privateRoom = roomCreationWrites({
 })
 const privateRoomCreate = await commit(privateRoom.writes, owner.idToken)
 assert.equal(privateRoomCreate.ok, true, JSON.stringify(privateRoomCreate))
+
+const registeredPrivateRoomRead = await readDocument(
+  `rooms/${privateRoom.roomId}`,
+  otherUser.idToken,
+)
+assert.equal(
+  registeredPrivateRoomRead.ok,
+  false,
+  JSON.stringify(registeredPrivateRoomRead),
+)
 
 const anonymousPrivateRoomRead = await readDocument(
   `rooms/${privateRoom.roomId}`,
@@ -290,6 +550,146 @@ assert.equal(
   JSON.stringify(anonymousPrivateMembership),
 )
 
+const registeredPrivateMembership = await commit(
+  [
+    update(
+      `rooms/${privateRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  registeredPrivateMembership.ok,
+  false,
+  JSON.stringify(registeredPrivateMembership),
+)
+
+const inviteId = `invite-${runId}`
+const inviteExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+const inviteCreate = await commit(
+  [
+    update(
+      `roomInvites/${inviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        expiresAt: timestampValue(inviteExpiresAt),
+        maxUses: integerValue(1),
+        revokedAt: nullValue(),
+        roomId: stringValue(privateRoom.roomId),
+        uses: integerValue(0),
+      },
+      [requestTime('createdAt')],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(inviteCreate.ok, true, JSON.stringify(inviteCreate))
+
+const inviteRedemption = await commit(
+  [
+    patch(`roomInvites/${inviteId}`, { uses: integerValue(1) }, ['uses']),
+    update(
+      `roomInviteRedemptions/${invitee.uid}`,
+      {
+        inviteId: stringValue(inviteId),
+        roomId: stringValue(privateRoom.roomId),
+      },
+      [requestTime('redeemedAt')],
+    ),
+    update(
+      `rooms/${privateRoom.roomId}/members/${invitee.uid}`,
+      memberFields({
+        invitedBy: owner.uid,
+        isGuest: false,
+        role: 'member',
+      }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  invitee.idToken,
+)
+assert.equal(inviteRedemption.ok, true, JSON.stringify(inviteRedemption))
+
+const invitedPrivateRoomRead = await readDocument(
+  `rooms/${privateRoom.roomId}`,
+  invitee.idToken,
+)
+assert.equal(
+  invitedPrivateRoomRead.ok,
+  true,
+  JSON.stringify(invitedPrivateRoomRead),
+)
+
+const slowRoom = roomCreationWrites({
+  ownerId: owner.uid,
+  slowModeSeconds: 30,
+  suffix: `${runId}-slow-mode`,
+})
+const slowRoomCreate = await commit(slowRoom.writes, owner.idToken)
+assert.equal(slowRoomCreate.ok, true, JSON.stringify(slowRoomCreate))
+
+const slowRoomMembership = await commit(
+  [
+    update(
+      `rooms/${slowRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(slowRoomMembership.ok, true, JSON.stringify(slowRoomMembership))
+
+const firstSlowMessageId = `slow-first-${runId}`
+const firstSlowMessage = await commit(
+  [
+    update(
+      `rooms/${slowRoom.roomId}/messages/${firstSlowMessageId}`,
+      {
+        authorId: stringValue(otherUser.uid),
+        authorName: stringValue('Registered member'),
+        authorPhotoURL: stringValue('/avatars/beat.svg'),
+        text: stringValue('First slow mode message'),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `rooms/${slowRoom.roomId}/messageActivity/${otherUser.uid}`,
+      { messageId: stringValue(firstSlowMessageId) },
+      [requestTime('lastMessageAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(firstSlowMessage.ok, true, JSON.stringify(firstSlowMessage))
+
+const secondSlowMessageId = `slow-second-${runId}`
+const secondSlowMessage = await commit(
+  [
+    update(
+      `rooms/${slowRoom.roomId}/messages/${secondSlowMessageId}`,
+      {
+        authorId: stringValue(otherUser.uid),
+        authorName: stringValue('Registered member'),
+        authorPhotoURL: stringValue('/avatars/beat.svg'),
+        text: stringValue('Second slow mode message'),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `rooms/${slowRoom.roomId}/messageActivity/${otherUser.uid}`,
+      {
+        messageId: stringValue(secondSlowMessageId),
+      },
+      [requestTime('lastMessageAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(secondSlowMessage.ok, false, JSON.stringify(secondSlowMessage))
+
 const archivedRoom = roomCreationWrites({
   ownerId: owner.uid,
   status: 'archived',
@@ -297,6 +697,16 @@ const archivedRoom = roomCreationWrites({
 })
 const archivedRoomCreate = await commit(archivedRoom.writes, owner.idToken)
 assert.equal(archivedRoomCreate.ok, true, JSON.stringify(archivedRoomCreate))
+
+const registeredArchivedRoomRead = await readDocument(
+  `rooms/${archivedRoom.roomId}`,
+  otherUser.idToken,
+)
+assert.equal(
+  registeredArchivedRoomRead.ok,
+  false,
+  JSON.stringify(registeredArchivedRoomRead),
+)
 
 const anonymousArchivedMembership = await commit(
   [
@@ -377,5 +787,5 @@ assert.equal(
 )
 
 console.log(
-  'Room model rules verification passed: owner model, anonymous profile, public self-join, private and archived room denial.',
+  'Room model rules verification passed: public listing, membership lifecycle, private invites, bans, mutes, blocks, and slow mode.',
 )

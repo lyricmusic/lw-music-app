@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { db, realtimeDb } from '@/shared/api/firebase'
 import { onValue, ref } from 'firebase/database'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
 
 import {
   parseRoomSettings,
@@ -22,8 +22,13 @@ export function useRooms() {
   const [error, setError] = useState<null | string>(null)
 
   useEffect(() => {
-    const unsubscribeRooms = onSnapshot(
+    const publicRoomsQuery = query(
       collection(db, 'rooms'),
+      where('visibility', '==', 'public'),
+      where('status', '==', 'active'),
+    )
+    const unsubscribeRooms = onSnapshot(
+      publicRoomsQuery,
       snapshot => {
         const nextRooms = snapshot.docs.map(roomSnapshot => {
           const data = roomSnapshot.data()
@@ -56,31 +61,40 @@ export function useRooms() {
       },
     )
 
-    const unsubscribePresence = onValue(
-      ref(realtimeDb, 'roomPresence'),
-      snapshot => {
-        const nextCounts: Record<string, number> = {}
+    return unsubscribeRooms
+  }, [])
 
-        snapshot.forEach(roomSnapshot => {
-          let participantCount = 0
-          roomSnapshot.forEach(userSnapshot => {
-            if (userSnapshot.hasChildren()) participantCount += 1
-          })
-          nextCounts[roomSnapshot.key ?? ''] = participantCount
-        })
-
-        setPresenceCounts(nextCounts)
-      },
-      reason => {
-        console.error('Не удалось загрузить присутствие в комнатах:', reason)
-      },
+  useEffect(() => {
+    setPresenceCounts(previousCounts =>
+      Object.fromEntries(
+        roomDocuments.map(room => [room.id, previousCounts[room.id] ?? 0]),
+      ),
     )
 
-    return () => {
-      unsubscribeRooms()
-      unsubscribePresence()
-    }
-  }, [])
+    const unsubscribers = roomDocuments.map(room =>
+      onValue(
+        ref(realtimeDb, `roomPresence/${room.id}`),
+        snapshot => {
+          let participantCount = 0
+          snapshot.forEach(userSnapshot => {
+            if (userSnapshot.hasChildren()) participantCount += 1
+          })
+          setPresenceCounts(previousCounts => ({
+            ...previousCounts,
+            [room.id]: participantCount,
+          }))
+        },
+        reason => {
+          console.error(
+            `Не удалось загрузить присутствие в комнате ${room.id}:`,
+            reason,
+          )
+        },
+      ),
+    )
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe())
+  }, [roomDocuments])
 
   const rooms = useMemo(
     () =>

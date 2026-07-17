@@ -9,7 +9,7 @@ interface RoomExistenceState {
   roomId: string
 }
 
-export function useRoomExists(roomId: string) {
+export function useRoomExists(roomId: string, retryKey: unknown = null) {
   const [state, setState] = useState<RoomExistenceState>({
     error: null,
     exists: null,
@@ -38,7 +38,7 @@ export function useRoomExists(roomId: string) {
         })
       },
     )
-  }, [roomId])
+  }, [retryKey, roomId])
 
   return state.roomId === roomId
     ? { error: state.error, exists: state.exists }
