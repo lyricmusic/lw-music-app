@@ -1,6 +1,6 @@
-import { FormEvent, useState } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { useForm } from 'react-hook-form'
 
 import { routes } from '@/shared/config/routes'
 import { TextField } from '@/shared/ui/text-field'
@@ -12,18 +12,21 @@ import { authSubmitButtonSx } from './authFormStyles'
 export function SignInForm() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const {
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+  } = useForm<{ email: string; password: string }>({
+    defaultValues: { email: '', password: '' },
+  })
 
-  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitted(true)
-
-    if (!email.trim() || !password) return
-
-    setLoading(true)
+  const handleLogin = async ({
+    email,
+    password,
+  }: {
+    email: string
+    password: string
+  }) => {
     try {
       await signInWithEmail(email, password)
       const from = (
@@ -37,8 +40,6 @@ export function SignInForm() {
       navigate(destination, { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -47,41 +48,42 @@ export function SignInForm() {
       <Typography component="h1" variant="h1">
         Вход
       </Typography>
-      <Box component="form" noValidate onSubmit={handleLogin}>
+      <Box component="form" noValidate onSubmit={handleSubmit(handleLogin)}>
         <div className="flex flex-col gap-y-3 mb-6">
           <TextField
             autoComplete="email"
-            error={submitted && !email.trim()}
-            helperText={
-              submitted && !email.trim() ? 'Обязательное поле.' : undefined
-            }
-            onChange={event => setEmail(event.target.value)}
+            error={Boolean(errors.email)}
+            helperText={errors.email?.message}
             placeholder="Email"
+            {...register('email', {
+              required: 'Обязательное поле.',
+              setValueAs: value => value.trim(),
+            })}
             type="email"
-            value={email}
           />
 
           <TextField
             autoComplete="current-password"
-            error={submitted && !password}
-            helperText={
-              submitted && !password ? 'Обязательное поле.' : undefined
-            }
-            onChange={event => setPassword(event.target.value)}
+            error={Boolean(errors.password)}
+            helperText={errors.password?.message}
             placeholder="Пароль"
+            {...register('password', { required: 'Обязательное поле.' })}
             type="password"
-            value={password}
           />
         </div>
 
         <Button
           className="w-full"
-          disabled={loading}
+          disabled={isSubmitting}
           sx={authSubmitButtonSx}
           type="submit"
           variant="contained"
         >
-          {loading ? <CircularProgress color="inherit" size={22} /> : 'Войти'}
+          {isSubmitting ? (
+            <CircularProgress color="inherit" size={22} />
+          ) : (
+            'Войти'
+          )}
         </Button>
 
         <div className="flex justify-center mt-5 gap-x-[10px]">

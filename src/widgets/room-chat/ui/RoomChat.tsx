@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useForm } from 'react-hook-form'
 
 import {
   ROOM_MESSAGE_MAX_LENGTH,
@@ -117,11 +118,17 @@ function MessageItem({
 export function RoomChat({ roomId }: RoomChatProps) {
   const { profile, user } = useSession()
   const { error, loading, messages } = useRoomMessages(roomId)
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sendError, setSendError] = useState<null | string>(null)
+  const {
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+    resetField,
+    setError,
+    watch,
+  } = useForm<{ message: string }>({ defaultValues: { message: '' } })
   const messageListRef = useRef<HTMLUListElement>(null)
   const stickToBottomRef = useRef(true)
+  const draft = watch('message')
 
   useEffect(() => {
     const messageList = messageListRef.current
@@ -130,13 +137,9 @@ export function RoomChat({ roomId }: RoomChatProps) {
     messageList.scrollTop = messageList.scrollHeight
   }, [messages])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!profile || !user || !draft.trim() || sending) return
+  async function handleSendMessage({ message }: { message: string }) {
+    if (!profile || !user || !message.trim()) return
 
-    const submittedText = draft
-    setSending(true)
-    setSendError(null)
     stickToBottomRef.current = true
 
     try {
@@ -144,23 +147,23 @@ export function RoomChat({ roomId }: RoomChatProps) {
         authorName: profile.displayName,
         authorPhotoURL: profile.photoURL,
         roomId,
-        text: submittedText,
+        text: message,
       })
-      setDraft('')
+      resetField('message')
     } catch (reason) {
       console.error('Не удалось отправить сообщение:', reason)
-      setSendError(
-        reason instanceof Error
-          ? reason.message
-          : 'Не удалось отправить сообщение.',
-      )
-    } finally {
-      setSending(false)
+      setError('message', {
+        message:
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось отправить сообщение.',
+        type: 'server',
+      })
     }
   }
 
   const inputDisabled = !profile || !user
-  const submitDisabled = inputDisabled || sending || !draft.trim()
+  const submitDisabled = inputDisabled || isSubmitting || !draft.trim()
 
   return (
     <Paper
@@ -231,29 +234,32 @@ export function RoomChat({ roomId }: RoomChatProps) {
           ))}
       </Box>
 
-      {(error || sendError) && (
+      {(error || errors.message?.message) && (
         <Typography
           className="mb-2 text-xs leading-4"
           role="alert"
           sx={{ color: '#FF9BAD' }}
         >
-          {sendError ?? error}
+          {errors.message?.message ?? error}
         </Typography>
       )}
 
       <Box
         className="flex min-h-14 shrink-0 items-center gap-2"
         component="form"
-        onSubmit={handleSubmit}
+        onSubmit={handleSubmit(handleSendMessage)}
       >
         <TextField
           autoComplete="off"
-          disabled={inputDisabled || sending}
-          onChange={event => {
-            setDraft(event.target.value)
-            if (sendError) setSendError(null)
-          }}
+          disabled={inputDisabled || isSubmitting}
           placeholder="Написать сообщение"
+          {...register('message', {
+            maxLength: {
+              message: `Сообщение не может быть длиннее ${ROOM_MESSAGE_MAX_LENGTH} символов.`,
+              value: ROOM_MESSAGE_MAX_LENGTH,
+            },
+            validate: value => Boolean(value.trim()) || 'Введите сообщение.',
+          })}
           slotProps={{
             htmlInput: {
               'aria-label': 'Сообщение',
@@ -261,7 +267,6 @@ export function RoomChat({ roomId }: RoomChatProps) {
             },
           }}
           sx={{ flex: 1, minWidth: 0 }}
-          value={draft}
         />
         <Button
           aria-label="Отправить сообщение"

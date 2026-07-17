@@ -23,7 +23,8 @@ src/
 ## Что уже работает
 
 - Firebase Authentication: регистрация и вход по e-mail/паролю, вход через Google, восстановление сессии и выход.
-- Профили пользователей в Cloud Firestore (`users/{uid}`).
+- Профили пользователей и обязательный онбординг после регистрации в Cloud Firestore (`users/{uid}`).
+- Все пользовательские формы работают через React Hook Form; для текущих простых правил отдельный слой Zod не используется.
 - Защищённые маршруты комнат.
 - YouTube IFrame Player API без отдельного backend и Socket.IO.
 - Синхронизация плеера через snapshot документа Cloud Firestore.
@@ -81,8 +82,13 @@ pnpm dlx firebase-tools deploy --only firestore:rules
 
 ```text
 users/{uid}
+  avatar:
+    type: "preset" | "custom" | "provider" | "none"
+    presetId: string | null
+    storagePath: string | null
   displayName: string
   email: string
+  onboardingCompleted: boolean
   photoURL: string | null
   createdAt: timestamp
   updatedAt: timestamp
@@ -104,6 +110,10 @@ rooms/{roomId}/messages/{messageId}
 ```
 
 Имя и аватар сохраняются в сообщении как снимок профиля на момент отправки.
+Пять встроенных аватаров лежат в `public/avatars` и сохраняются в профиле как
+стабильные URL вида `/avatars/pulse.svg`. Пользовательские аватары и обложки
+комнат загружаются в Yandex Object Storage через одну авторизованную serverless-
+функцию; в Firestore хранятся публичный URL и объектный путь.
 Клиент запрашивает документы по `createdAt desc` с `limit(50)`, а перед
 отрисовкой разворачивает их в хронологический порядок. Новые сообщения приходят
 через realtime-подписку `onSnapshot`; отдельный составной индекс для этого
@@ -120,6 +130,6 @@ YouTube-видеопоток через Firebase не передаётся. Ка
 1. Реализовать участников комнаты и очередь роликов.
 2. Ограничить запись playback только активным участником очереди.
 3. Добавить online presence через Firebase Realtime Database и `onDisconnect`.
-4. Перенести обложки и аватары в Firebase Storage.
+4. Добавить удаление старого пользовательского аватара при его замене.
 5. Добавить Firebase Emulator Suite и автоматические тесты Security Rules.
 6. Включить App Check перед публичным запуском.

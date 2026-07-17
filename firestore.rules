@@ -10,27 +10,68 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function hasValidUserProfile() {
+    function hasValidAvatar(userId) {
+      let avatar = request.resource.data.avatar;
+      let photoURL = request.resource.data.photoURL;
+      return avatar is map
+        && avatar.keys().hasAll(['presetId', 'storagePath', 'type'])
+        && avatar.keys().hasOnly(['presetId', 'storagePath', 'type'])
+        && avatar.type in ['custom', 'none', 'preset', 'provider']
+        && (
+          (avatar.type == 'preset'
+            && avatar.presetId in ['beat', 'cherry', 'lime', 'night', 'pulse']
+            && avatar.storagePath == null
+            && photoURL == '/avatars/' + avatar.presetId + '.svg')
+          || (avatar.type == 'custom'
+            && avatar.presetId == null
+            && avatar.storagePath is string
+            && avatar.storagePath.matches(
+              'user-avatars/' + userId
+                + '/avatar-[0-9a-f-]{36}[.](jpg|png|webp)'
+            )
+            && photoURL is string
+            && photoURL.matches(
+              'https://storage.yandexcloud.net/[^/]+/' + avatar.storagePath
+            ))
+          || (avatar.type == 'provider'
+            && avatar.presetId == null
+            && avatar.storagePath == null
+            && photoURL is string)
+          || (avatar.type == 'none'
+            && avatar.presetId == null
+            && avatar.storagePath == null
+            && photoURL == null)
+        );
+    }
+
+    function hasValidUserProfile(userId) {
       return request.resource.data.keys().hasAll([
+          'avatar',
           'createdAt',
           'displayName',
           'email',
+          'onboardingCompleted',
           'photoURL',
           'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
+          'avatar',
           'createdAt',
           'displayName',
           'email',
+          'onboardingCompleted',
           'photoURL',
           'updatedAt'
         ])
+        && hasValidAvatar(userId)
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 50
         && request.resource.data.email == request.auth.token.email
+        && request.resource.data.onboardingCompleted is bool
         && (request.resource.data.photoURL == null
-          || request.resource.data.photoURL is string)
+          || (request.resource.data.photoURL is string
+            && request.resource.data.photoURL.size() <= 2048))
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp;
     }
@@ -159,14 +200,17 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isOwner(userId)
-        && hasValidUserProfile()
+        && hasValidUserProfile(userId)
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
       allow update: if isOwner(userId)
-        && hasValidUserProfile()
+        && hasValidUserProfile(userId)
         && (request.resource.data.createdAt == resource.data.createdAt
           || (!('createdAt' in resource.data)
             && request.resource.data.createdAt == request.time))
+        && (!('onboardingCompleted' in resource.data)
+          || !resource.data.onboardingCompleted
+          || request.resource.data.onboardingCompleted)
         && request.resource.data.updatedAt == request.time;
       allow delete: if false;
     }

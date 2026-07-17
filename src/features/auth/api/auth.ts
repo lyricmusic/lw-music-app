@@ -3,6 +3,7 @@ import {
   GoogleAuthProvider,
   User,
   createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -15,20 +16,42 @@ import { auth, db } from '@/shared/api/firebase'
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: 'select_account' })
 
-async function saveUserProfile(user: User, displayName?: string) {
+async function saveUserProfile(
+  user: User,
+  displayName?: string,
+  requireOnboarding = false,
+) {
   const userRef = doc(db, 'users', user.uid)
   const userSnapshot = await getDoc(userRef)
-  const resolvedDisplayName =
+  const existingProfile = userSnapshot.data()
+  const isNewProfile = !userSnapshot.exists()
+  const resolvedDisplayName = (
     displayName?.trim() ||
     user.displayName ||
     user.email?.split('@')[0] ||
     'Пользователь'
+  ).slice(0, 50)
+
+  const resolvedPhotoURL = existingProfile?.photoURL ?? user.photoURL
+  const existingAvatar = existingProfile?.avatar
+  const avatar =
+    requireOnboarding && isNewProfile
+      ? { presetId: null, storagePath: null, type: 'none' }
+      : (existingAvatar ?? {
+          presetId: null,
+          storagePath: null,
+          type: resolvedPhotoURL ? 'provider' : 'none',
+        })
 
   await setDoc(userRef, {
-    createdAt: userSnapshot.data()?.createdAt ?? serverTimestamp(),
+    avatar,
+    createdAt: existingProfile?.createdAt ?? serverTimestamp(),
     displayName: resolvedDisplayName,
     email: user.email ?? '',
-    photoURL: user.photoURL,
+    onboardingCompleted:
+      existingProfile?.onboardingCompleted ??
+      !(requireOnboarding || isNewProfile),
+    photoURL: requireOnboarding && isNewProfile ? null : resolvedPhotoURL,
     updatedAt: serverTimestamp(),
   })
 }
@@ -46,9 +69,9 @@ export async function signUpWithEmail({
     password,
   )
 
-  const displayName = email.trim().split('@')[0]
+  const displayName = email.trim().split('@')[0].slice(0, 50)
   await updateProfile(credential.user, { displayName: displayName.trim() })
-  await saveUserProfile(credential.user, displayName)
+  await saveUserProfile(credential.user, displayName, true)
 
   return credential.user
 }
@@ -66,7 +89,11 @@ export async function signInWithEmail(email: string, password: string) {
 
 export async function signInWithGoogle() {
   const credential = await signInWithPopup(auth, googleProvider)
-  await saveUserProfile(credential.user)
+  await saveUserProfile(
+    credential.user,
+    undefined,
+    getAdditionalUserInfo(credential)?.isNewUser ?? false,
+  )
   return credential.user
 }
 

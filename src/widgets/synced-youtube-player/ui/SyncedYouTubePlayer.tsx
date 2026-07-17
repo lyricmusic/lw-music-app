@@ -1,11 +1,5 @@
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 
 import { auth, db } from '@/shared/api/firebase'
 import {
@@ -48,6 +42,10 @@ interface PlaybackState {
   revision: number
   status: PlaybackStatus
   videoId: string
+}
+
+interface QueueFormValues {
+  videoUrl: string
 }
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
@@ -149,7 +147,13 @@ export function SyncedYouTubePlayer({
   const suppressPlayerEventsUntilRef = useRef(0)
   const writeQueueRef = useRef(Promise.resolve())
 
-  const [videoUrl, setVideoUrl] = useState('')
+  const {
+    formState: { errors: queueFormErrors, isSubmitting: queueSubmitting },
+    handleSubmit: handleQueueSubmit,
+    register: registerQueueField,
+    reset: resetQueueForm,
+    setError: setQueueFormError,
+  } = useForm<QueueFormValues>({ defaultValues: { videoUrl: '' } })
   const [playerReady, setPlayerReady] = useState(false)
   const [muted, setMuted] = useState(true)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -159,8 +163,6 @@ export function SyncedYouTubePlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [queueDialogOpen, setQueueDialogOpen] = useState(false)
-  const [queueSubmitting, setQueueSubmitting] = useState(false)
-  const [queueInputError, setQueueInputError] = useState<null | string>(null)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
@@ -472,34 +474,34 @@ export function SyncedYouTubePlayer({
     return () => window.clearInterval(interval)
   }, [playerReady])
 
-  const handleJoinQueue = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const handleJoinQueue = async ({ videoUrl }: QueueFormValues) => {
     const player = playerRef.current
     const videoId = extractYouTubeVideoId(videoUrl)
 
     if (!videoId) {
-      setQueueInputError(
-        'Вставьте корректную ссылку YouTube или ID из 11 символов.',
-      )
+      setQueueFormError('videoUrl', {
+        message: 'Вставьте корректную ссылку YouTube или ID из 11 символов.',
+        type: 'validate',
+      })
       return
     }
 
     if (!playerReady || !player) {
-      setQueueInputError('Плеер ещё загружается. Попробуйте через пару секунд.')
+      setQueueFormError('videoUrl', {
+        message: 'Плеер ещё загружается. Попробуйте через пару секунд.',
+        type: 'server',
+      })
       return
     }
 
     setError(null)
-    setQueueInputError(null)
-    setQueueSubmitting(true)
     setAutoplayBlocked(false)
     suppressPlayerEventsUntilRef.current = Date.now() + 800
     player.loadVideoById({ startSeconds: 0, videoId })
     setLocalQueuedVideoId(videoId)
     await publishPlayback(videoId, 'playing', 0)
-    setQueueSubmitting(false)
     setQueueDialogOpen(false)
-    setVideoUrl('')
+    resetQueueForm()
   }
 
   const handleToggleSound = () => {
@@ -678,7 +680,7 @@ export function SyncedYouTubePlayer({
         <Fade in={queueDialogOpen}>
           <Box
             component="form"
-            onSubmit={handleJoinQueue}
+            onSubmit={handleQueueSubmit(handleJoinQueue)}
             sx={queueDialogStyle}
           >
             <Button
@@ -746,13 +748,15 @@ export function SyncedYouTubePlayer({
             </Typography>
 
             <TextField
-              error={Boolean(queueInputError)}
-              helperText={queueInputError}
-              onChange={event => {
-                setVideoUrl(event.target.value)
-                if (queueInputError) setQueueInputError(null)
-              }}
+              error={Boolean(queueFormErrors.videoUrl)}
+              helperText={queueFormErrors.videoUrl?.message}
               placeholder="Ссылка на видео"
+              {...registerQueueField('videoUrl', {
+                required: 'Введите ссылку на видео.',
+                validate: value =>
+                  Boolean(extractYouTubeVideoId(value)) ||
+                  'Вставьте корректную ссылку YouTube или ID из 11 символов.',
+              })}
               sx={{
                 marginBottom: '30px',
                 '& .MuiFormHelperText-root': {
@@ -768,7 +772,6 @@ export function SyncedYouTubePlayer({
                   padding: '0 30px',
                 },
               }}
-              value={videoUrl}
             />
 
             <Button

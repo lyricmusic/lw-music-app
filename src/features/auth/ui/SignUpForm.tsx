@@ -1,6 +1,6 @@
-import { FormEvent, useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { useForm } from 'react-hook-form'
 
 import { routes } from '@/shared/config/routes'
 import { TextField } from '@/shared/ui/text-field'
@@ -11,36 +11,29 @@ import { authSubmitButtonSx } from './authFormStyles'
 
 export function SignUpForm() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [copyPassword, setCopyPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const {
+    formState: { errors, isSubmitting },
+    getValues,
+    handleSubmit,
+    register,
+  } = useForm<{ copyPassword: string; email: string; password: string }>({
+    defaultValues: { copyPassword: '', email: '', password: '' },
+  })
 
-  const passwordsDoNotMatch = Boolean(copyPassword) && password !== copyPassword
-  const passwordIsTooShort = Boolean(password) && password.length < 6
-  const formIsInvalid =
-    !email.trim() ||
-    !password ||
-    !copyPassword ||
-    passwordsDoNotMatch ||
-    passwordIsTooShort
-
-  const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitted(true)
-
-    if (formIsInvalid) return
-
-    setLoading(true)
+  const handleRegister = async ({
+    email,
+    password,
+  }: {
+    copyPassword: string
+    email: string
+    password: string
+  }) => {
     try {
       await signUpWithEmail({ email, password })
       toast.success('Аккаунт создан. Добро пожаловать!')
       navigate(routes.rooms, { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -49,61 +42,55 @@ export function SignUpForm() {
       <Typography component="h1" variant="h1">
         Регистрация
       </Typography>
-      <Box component="form" noValidate onSubmit={handleRegister}>
+      <Box component="form" noValidate onSubmit={handleSubmit(handleRegister)}>
         <div className="flex flex-col gap-y-3 mb-6">
           <TextField
             autoComplete="email"
-            error={submitted && !email.trim()}
-            helperText={
-              submitted && !email.trim() ? 'Обязательное поле.' : undefined
-            }
-            onChange={event => setEmail(event.target.value)}
+            error={Boolean(errors.email)}
+            helperText={errors.email?.message}
             placeholder="Email"
+            {...register('email', {
+              required: 'Обязательное поле.',
+              setValueAs: value => value.trim(),
+            })}
             type="email"
-            value={email}
           />
 
           <TextField
             autoComplete="new-password"
-            error={(submitted && !password) || passwordIsTooShort}
-            helperText={
-              passwordIsTooShort
-                ? 'Минимум 6 символов.'
-                : submitted && !password
-                  ? 'Обязательное поле.'
-                  : undefined
-            }
-            onChange={event => setPassword(event.target.value)}
+            error={Boolean(errors.password)}
+            helperText={errors.password?.message}
             placeholder="Пароль"
+            {...register('password', {
+              minLength: { message: 'Минимум 6 символов.', value: 6 },
+              required: 'Обязательное поле.',
+            })}
             type="password"
-            value={password}
           />
 
           <TextField
             autoComplete="new-password"
-            error={(submitted && !copyPassword) || passwordsDoNotMatch}
-            helperText={
-              passwordsDoNotMatch
-                ? 'Пароли не совпадают.'
-                : submitted && !copyPassword
-                  ? 'Обязательное поле.'
-                  : undefined
-            }
-            onChange={event => setCopyPassword(event.target.value)}
+            error={Boolean(errors.copyPassword)}
+            helperText={errors.copyPassword?.message}
             placeholder="Повторите пароль"
+            {...register('copyPassword', {
+              deps: ['password'],
+              required: 'Обязательное поле.',
+              validate: value =>
+                value === getValues('password') || 'Пароли не совпадают.',
+            })}
             type="password"
-            value={copyPassword}
           />
         </div>
 
         <Button
           className="w-full"
-          disabled={loading}
+          disabled={isSubmitting}
           sx={authSubmitButtonSx}
           type="submit"
           variant="contained"
         >
-          {loading ? (
+          {isSubmitting ? (
             <CircularProgress color="inherit" size={22} />
           ) : (
             'Зарегистрироваться'

@@ -53,7 +53,7 @@ if (-not $serviceAccount) {
   $serviceAccount = Invoke-YcJson @(
     'iam', 'service-account', 'create',
     '--name', $serviceAccountName,
-    '--description', 'Uploads and removes LW Music room covers'
+    '--description', 'Uploads and removes LW Music media files'
   )
 }
 
@@ -97,7 +97,7 @@ if (-not $secret) {
   $accessKey = Invoke-YcJson @(
     'iam', 'access-key', 'create',
     '--service-account-id', $serviceAccount.id,
-    '--description', 'LW Music room cover upload function'
+    '--description', 'LW Music media upload function'
   )
   $accessKeyId = if ($accessKey.access_key.key_id) {
     $accessKey.access_key.key_id
@@ -127,7 +127,7 @@ if (-not $function) {
   $function = Invoke-YcJson @(
     'serverless', 'function', 'create',
     '--name', $functionName,
-    '--description', 'Signs authenticated room cover uploads to Object Storage'
+    '--description', 'Signs authenticated media uploads to Object Storage'
   )
 }
 

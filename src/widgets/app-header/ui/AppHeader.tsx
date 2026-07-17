@@ -4,10 +4,12 @@ import { useMatch, useNavigate } from 'react-router-dom'
 import logo from '@assets/lw.svg'
 
 import { useRoomName } from '@/entities/room'
+import { useSession } from '@/entities/session'
 import { routes } from '@/shared/config/routes'
 import { MemberIcon } from '@/shared/ui/icons'
 import {
   AppBar,
+  Avatar,
   Box,
   Button,
   IconButton,
@@ -18,6 +20,7 @@ import {
 import { UserMenu } from './UserMenu'
 // TODO тест удалить
 export function AppHeader() {
+  const { profile } = useSession()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const navigate = useNavigate()
   const roomMatch = useMatch(routes.roomPattern)
@@ -87,7 +90,9 @@ export function AppHeader() {
           )}
         </Box>
 
-        <Box sx={{ alignItems: 'center', display: 'flex', flexShrink: 0, gap: 2 }}>
+        <Box
+          sx={{ alignItems: 'center', display: 'flex', flexShrink: 0, gap: 2 }}
+        >
           {isInRoom && (
             <Button
               color="inherit"
@@ -129,13 +134,25 @@ export function AppHeader() {
               }}
               type="button"
             >
-              <MemberIcon
+              <Avatar
+                alt={profile?.displayName || 'Пользователь'}
+                src={profile?.photoURL ?? undefined}
                 sx={{
-                  '& path': { fill: '#6F70E7' },
-                  height: '22px',
-                  width: '18px',
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '8px',
+                  height: '52px',
+                  width: '52px',
                 }}
-              />
+                variant="rounded"
+              >
+                <MemberIcon
+                  sx={{
+                    '& path': { fill: '#6F70E7' },
+                    height: '22px',
+                    width: '18px',
+                  }}
+                />
+              </Avatar>
             </IconButton>
 
             {isUserMenuOpen && <UserMenu />}

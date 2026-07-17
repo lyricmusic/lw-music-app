@@ -13,8 +13,11 @@ const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const FIREBASE_JWKS_URL =
   'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'
 const ROOM_ID_PATTERN = /^[A-Za-z0-9]{20}$/
+const USER_ID_PATTERN = /^[A-Za-z0-9]{1,128}$/
 const OBJECT_KEY_PATTERN =
   /^room-covers\/[A-Za-z0-9]{20}\/cover-[0-9a-f-]{36}\.(?:jpg|png|webp)$/
+const AVATAR_OBJECT_KEY_PATTERN =
+  /^user-avatars\/[A-Za-z0-9]{1,128}\/avatar-[0-9a-f-]{36}\.(?:jpg|png|webp)$/
 const EXTENSIONS_BY_CONTENT_TYPE = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -200,10 +203,56 @@ async function createUpload(storageClient, uid, request) {
   }
 }
 
-async function deleteUpload(storageClient, uid, request) {
+async function createAvatarUpload(storageClient, uid, request) {
+  const { contentType, fileSize } = request
+  const extension = EXTENSIONS_BY_CONTENT_TYPE[contentType]
+
+  if (!USER_ID_PATTERN.test(uid)) {
+    throw new Error('Некорректный идентификатор пользователя.')
+  }
+  if (!extension) throw new Error('Разрешены изображения JPEG, PNG и WebP.')
+  if (
+    !Number.isInteger(fileSize) ||
+    fileSize <= 0 ||
+    fileSize > MAX_IMAGE_SIZE_BYTES
+  ) {
+    throw new Error('Размер аватара должен быть не больше 5 МБ.')
+  }
+
+  const bucket = requiredEnvironment('STORAGE_BUCKET')
+  const objectKey = `user-avatars/${uid}/avatar-${randomUUID()}.${extension}`
+  const { fields, url } = await createPresignedPost(storageClient, {
+    Bucket: bucket,
+    Conditions: [
+      ['content-length-range', 1, MAX_IMAGE_SIZE_BYTES],
+      ['eq', '$Content-Type', contentType],
+      ['eq', '$x-amz-meta-owner-id', uid],
+    ],
+    Expires: 120,
+    Fields: {
+      'Content-Type': contentType,
+      'x-amz-meta-owner-id': uid,
+    },
+    Key: objectKey,
+  })
+
+  return {
+    fields,
+    objectKey,
+    publicUrl: encodeObjectUrl(bucket, objectKey),
+    uploadUrl: url,
+  }
+}
+
+async function deleteUpload(
+  storageClient,
+  uid,
+  request,
+  objectKeyPattern = OBJECT_KEY_PATTERN,
+) {
   const { objectKey } = request
-  if (!OBJECT_KEY_PATTERN.test(objectKey ?? '')) {
-    throw new Error('Некорректный путь обложки.')
+  if (!objectKeyPattern.test(objectKey ?? '')) {
+    throw new Error('Некорректный путь изображения.')
   }
 
   const bucket = requiredEnvironment('STORAGE_BUCKET')
@@ -219,7 +268,7 @@ async function deleteUpload(storageClient, uid, request) {
   }
 
   if (metadata?.['owner-id'] !== uid) {
-    throw new Error('Нельзя удалить чужую обложку.')
+    throw new Error('Нельзя удалить чужое изображение.')
   }
 
   await storageClient.send(
@@ -271,8 +320,25 @@ exports.handler = async function handler(event) {
       )
       return createResponse(200, upload, allowedOrigin)
     }
+    if (request.action === 'signAvatarUpload') {
+      const upload = await createAvatarUpload(
+        storageClient,
+        firebaseUser.sub,
+        request,
+      )
+      return createResponse(200, upload, allowedOrigin)
+    }
     if (request.action === 'deleteUpload') {
       await deleteUpload(storageClient, firebaseUser.sub, request)
+      return createResponse(204, '', allowedOrigin)
+    }
+    if (request.action === 'deleteAvatarUpload') {
+      await deleteUpload(
+        storageClient,
+        firebaseUser.sub,
+        request,
+        AVATAR_OBJECT_KEY_PATTERN,
+      )
       return createResponse(204, '', allowedOrigin)
     }
 
@@ -282,7 +348,7 @@ exports.handler = async function handler(event) {
       allowedOrigin,
     )
   } catch (error) {
-    console.error('Room cover request failed:', error)
+    console.error('Media upload request failed:', error)
     const isClientError =
       error instanceof SyntaxError ||
       (error instanceof Error &&
@@ -293,7 +359,7 @@ exports.handler = async function handler(event) {
       {
         message: isClientError
           ? error.message
-          : 'Не удалось подготовить загрузку обложки.',
+          : 'Не удалось подготовить загрузку изображения.',
       },
       allowedOrigin,
     )

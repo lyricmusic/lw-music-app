@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 
 import { routes } from '@/shared/config/routes'
+import { ProfileOnboardingDialog } from '@/features/profile-onboarding'
 import { AppHeader } from '@/widgets/app-header'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
 import { CircularProgress } from '@mui/material'
@@ -36,12 +37,15 @@ function PageLoadingFallback() {
 
 function AuthenticatedLayout() {
   return (
-    <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] bg-[#3F3F59]">
-      <AppHeader />
-      <div className="h-full min-h-0 p-1">
-        <Outlet />
+    <>
+      <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] bg-[#3F3F59]">
+        <AppHeader />
+        <div className="h-full min-h-0 p-1">
+          <Outlet />
+        </div>
       </div>
-    </div>
+      <ProfileOnboardingDialog />
+    </>
   )
 }
 
@@ -53,15 +57,35 @@ function PlayerSmokeTestPage() {
   )
 }
 
+function ProfileOnboardingSmokeTestPage() {
+  return (
+    <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] bg-[#3F3F59]">
+      <AppHeader />
+      <div className="h-full min-h-0 p-1">
+        <main className="h-full rounded-[20px] bg-[#ECEDF2] px-10 py-7">
+          <h1 className="text-[38px]">Комнаты</h1>
+        </main>
+      </div>
+      <ProfileOnboardingDialog preview />
+    </div>
+  )
+}
+
 export function AppRouter() {
   return (
     <Suspense fallback={<PageLoadingFallback />}>
       <Routes>
         {import.meta.env.DEV && (
-          <Route
-            element={<PlayerSmokeTestPage />}
-            path={routes.playerSmokeTest}
-          />
+          <>
+            <Route
+              element={<PlayerSmokeTestPage />}
+              path={routes.playerSmokeTest}
+            />
+            <Route
+              element={<ProfileOnboardingSmokeTestPage />}
+              path={routes.profileOnboardingSmokeTest}
+            />
+          </>
         )}
 
         <Route element={<GuestOnlyRoute />}>

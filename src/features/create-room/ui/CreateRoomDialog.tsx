@@ -1,4 +1,5 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, useEffect, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { toast } from 'react-toastify'
 
 import type { Category } from '@/entities/room'
@@ -37,6 +38,12 @@ interface CreateRoomDialogProps {
   open: boolean
 }
 
+interface CreateRoomFormValues {
+  categories: Category[]
+  image: File | null
+  roomName: string
+}
+
 const categoryOptions: Category[] = [
   { id: 1, title: 'Приколы' },
   { id: 2, title: 'Весёлые песни' },
@@ -45,50 +52,45 @@ const categoryOptions: Category[] = [
 ]
 
 export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
-  const [roomName, setRoomName] = useState('')
-  const [categoryList, setCategoryList] = useState<Category[]>([])
-  const [image, setImage] = useState<File | null>(null)
+  const {
+    control,
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+    reset,
+    setValue,
+    watch,
+  } = useForm<CreateRoomFormValues>({
+    defaultValues: { categories: [], image: null, roomName: '' },
+  })
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const image = watch('image')
 
-  useEffect(
-    () => () => {
-      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
-    },
-    [imagePreviewUrl],
-  )
+  useEffect(() => {
+    if (!image) {
+      setImagePreviewUrl(null)
+      return
+    }
 
-  const nameHasError = submitted && !roomName.trim()
-  const categoriesHaveError = submitted && categoryList.length === 0
-  const imageHasError = submitted && !image
+    const objectUrl = URL.createObjectURL(image)
+    setImagePreviewUrl(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [image])
 
-  const handleCreateRoom = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitted(true)
-
-    if (!roomName.trim() || categoryList.length === 0 || !image) return
-
-    setLoading(true)
-
+  const handleCreateRoom = async (values: CreateRoomFormValues) => {
+    if (!values.image) return
     try {
       await createRoom({
-        categories: categoryList,
-        image,
-        name: roomName.trim(),
+        categories: values.categories,
+        image: values.image,
+        name: values.roomName.trim(),
       })
-      setRoomName('')
-      setCategoryList([])
-      setImage(null)
-      setImagePreviewUrl(null)
-      setSubmitted(false)
+      reset()
       onClose()
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось создать комнату.',
       )
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -107,13 +109,11 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
       return
     }
 
-    setImage(file)
-    setImagePreviewUrl(URL.createObjectURL(file))
+    setValue('image', file, { shouldValidate: true })
   }
 
   const handleRemoveImage = () => {
-    setImage(null)
-    setImagePreviewUrl(null)
+    setValue('image', null, { shouldValidate: true })
   }
 
   return (
@@ -125,7 +125,12 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
       open={open}
     >
       <Fade in={open}>
-        <Box component="form" onSubmit={handleCreateRoom} sx={style}>
+        <Box
+          component="form"
+          noValidate
+          onSubmit={handleSubmit(handleCreateRoom)}
+          sx={style}
+        >
           <h2 className="mb-4 text-4xl" id="create-room-title">
             Создание комнаты
           </h2>
@@ -136,18 +141,25 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
               </span>
 
               <TextField
-                disabled={loading}
-                error={nameHasError}
+                disabled={isSubmitting}
+                error={Boolean(errors.roomName)}
                 fullWidth
-                helperText={nameHasError ? 'Обязательное поле.' : ''}
+                helperText={errors.roomName?.message}
                 inputProps={{ maxLength: 80 }}
                 label="Название комнаты"
-                onChange={event => setRoomName(event.target.value)}
+                {...register('roomName', {
+                  maxLength: {
+                    message: 'Название не может быть длиннее 80 символов.',
+                    value: 80,
+                  },
+                  required: 'Обязательное поле.',
+                  validate: value =>
+                    Boolean(value.trim()) || 'Обязательное поле.',
+                })}
                 sx={{
                   '&.MuiFilledInput': { backgroundColor: 'white' },
                   borderRadius: '16px',
                 }}
-                value={roomName}
                 variant="filled"
               />
             </div>
@@ -157,30 +169,38 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                 Выберите категории видео (не более трёх)
               </span>
 
-              <Autocomplete
-                disabled={loading}
-                filterSelectedOptions
-                getOptionDisabled={() => categoryList.length >= 3}
-                getOptionLabel={option => option.title}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
-                multiple
-                noOptionsText="Нет категорий"
-                onChange={(_, newValue) => setCategoryList(newValue)}
-                options={categoryOptions}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    error={categoriesHaveError}
-                    helperText={
-                      categoriesHaveError
-                        ? 'Выберите хотя бы одну категорию.'
-                        : ''
+              <Controller
+                control={control}
+                name="categories"
+                render={({ field }) => (
+                  <Autocomplete
+                    disabled={isSubmitting}
+                    filterSelectedOptions
+                    getOptionDisabled={() => field.value.length >= 3}
+                    getOptionLabel={option => option.title}
+                    isOptionEqualToValue={(option, value) =>
+                      option.id === value.id
                     }
-                    label="Категории комнаты"
-                    placeholder="Начните вводить название категории"
+                    multiple
+                    noOptionsText="Нет категорий"
+                    onChange={(_, newValue) => field.onChange(newValue)}
+                    options={categoryOptions}
+                    renderInput={params => (
+                      <TextField
+                        {...params}
+                        error={Boolean(errors.categories)}
+                        helperText={errors.categories?.message}
+                        label="Категории комнаты"
+                        placeholder="Начните вводить название категории"
+                      />
+                    )}
+                    value={field.value}
                   />
                 )}
-                value={categoryList}
+                rules={{
+                  validate: categories =>
+                    categories.length > 0 || 'Выберите хотя бы одну категорию.',
+                }}
               />
             </div>
 
@@ -192,7 +212,7 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
               <div className="flex">
                 <div
                   className={`mr-5 h-[112px] w-[112px] overflow-hidden rounded-[10px] border ${
-                    imageHasError ? 'border-[#D32F2F]' : 'border-[#D6D7F0]'
+                    errors.image ? 'border-[#D32F2F]' : 'border-[#D6D7F0]'
                   }`}
                 >
                   {imagePreviewUrl ? (
@@ -212,15 +232,22 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                   <Button
                     className="mb-2 w-full"
                     component="label"
-                    disabled={loading}
+                    disabled={isSubmitting}
                     variant="outlined"
                   >
                     Загрузить обложку
-                    <input
-                      accept="image/png,image/jpeg,image/webp"
-                      hidden
-                      onChange={handleFiles}
-                      type="file"
+                    <Controller
+                      control={control}
+                      name="image"
+                      render={() => (
+                        <input
+                          accept="image/png,image/jpeg,image/webp"
+                          hidden
+                          onChange={handleFiles}
+                          type="file"
+                        />
+                      )}
+                      rules={{ required: 'Загрузите обложку комнаты.' }}
                     />
                   </Button>
 
@@ -228,7 +255,7 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                     <Button
                       className="w-full"
                       color="error"
-                      disabled={loading}
+                      disabled={isSubmitting}
                       onClick={handleRemoveImage}
                       variant="outlined"
                     >
@@ -237,21 +264,21 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                   )}
                 </div>
               </div>
-              {imageHasError && (
+              {errors.image && (
                 <span className="mt-2 block text-xs text-[#D32F2F]">
-                  Загрузите обложку комнаты.
+                  {errors.image.message}
                 </span>
               )}
             </div>
           </div>
 
           <Button
-            disabled={loading}
+            disabled={isSubmitting}
             fullWidth
             type="submit"
             variant="contained"
           >
-            {loading ? 'Создаём…' : 'Готово'}
+            {isSubmitting ? 'Создаём…' : 'Готово'}
           </Button>
         </Box>
       </Fade>
