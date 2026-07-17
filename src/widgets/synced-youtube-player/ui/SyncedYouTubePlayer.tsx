@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 
 import {
   advanceRoomQueue,
   enqueueRoomVideo,
   leaveRoomQueue,
+  type RoomMemberRole,
   useRoomParticipants,
   useRoomQueue,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import { RoomParticipantActions } from '@/features/manage-room'
 import { db } from '@/shared/api/firebase'
 import {
   checkYouTubeVideoEmbeddable,
@@ -30,6 +39,7 @@ import { Timestamp, doc, onSnapshot } from 'firebase/firestore'
 import { AddToQueueDialog } from './AddToQueueDialog'
 
 interface SyncedYouTubePlayerProps {
+  currentMemberRole?: null | RoomMemberRole
   roomId: string
   syncEnabled?: boolean
 }
@@ -61,16 +71,22 @@ function getParticipantInitials(displayName: string) {
 type RoomUserListItemStatus = 'current' | 'next'
 
 interface RoomUserListItemProps {
+  actions?: ReactNode
   displayName: string
+  online?: boolean
   pending?: boolean
   photoURL: null | string
+  secondaryLabel?: string
   status?: RoomUserListItemStatus
 }
 
 function RoomUserListItem({
+  actions,
   displayName,
+  online,
   pending = false,
   photoURL,
+  secondaryLabel,
   status,
 }: RoomUserListItemProps) {
   const isCurrent = status === 'current'
@@ -115,13 +131,19 @@ function RoomUserListItem({
           {displayName}
         </Typography>
 
-        {status && (
+        {(status || secondaryLabel) && (
           <Box className="mt-0.5 flex items-center gap-1.5">
             <Box
               component="span"
               sx={{
-                backgroundColor: isCurrent ? '#6F70E7' : 'transparent',
-                border: isNext ? '1px solid #8B8DB3' : 'none',
+                backgroundColor: status
+                  ? isCurrent
+                    ? '#6F70E7'
+                    : 'transparent'
+                  : online
+                    ? '#62D79B'
+                    : '#8B8DB3',
+                border: status && isNext ? '1px solid #8B8DB3' : 'none',
                 borderRadius: '50%',
                 boxSizing: 'border-box',
                 flexShrink: 0,
@@ -134,13 +156,25 @@ function RoomUserListItem({
               component="span"
               sx={{ color: '#D7DBF0' }}
             >
-              {isCurrent ? 'Сейчас показывает' : 'Следующий'}
+              {status
+                ? isCurrent
+                  ? 'Сейчас показывает'
+                  : 'Следующий'
+                : secondaryLabel}
             </Typography>
           </Box>
         )}
       </Box>
+      {actions}
     </Box>
   )
+}
+
+const ROOM_ROLE_LABELS: Record<RoomMemberRole, string> = {
+  host: 'Ведущий',
+  member: 'Участник',
+  moderator: 'Модератор',
+  owner: 'Владелец',
 }
 
 function allowAutoplay(player: YT.Player) {
@@ -199,6 +233,7 @@ function getExpectedPosition(state: PlaybackState) {
 }
 
 export function SyncedYouTubePlayer({
+  currentMemberRole = null,
   roomId,
   syncEnabled = true,
 }: SyncedYouTubePlayerProps) {
@@ -821,9 +856,18 @@ export function SyncedYouTubePlayer({
           >
             {participants.map(participant => (
               <RoomUserListItem
+                actions={
+                  <RoomParticipantActions
+                    actorRole={currentMemberRole}
+                    participant={participant}
+                    roomId={roomId}
+                  />
+                }
                 displayName={participant.displayName}
                 key={participant.id}
+                online={participant.online}
                 photoURL={participant.photoURL}
+                secondaryLabel={`${ROOM_ROLE_LABELS[participant.role]}${participant.isGuest ? ' · гость' : ''}${participant.online ? '' : ' · не в сети'}`}
               />
             ))}
 

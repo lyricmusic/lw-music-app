@@ -25,6 +25,12 @@ export type RoomSettings = {
   slowModeSeconds: number
 }
 
+export type RoomAccess = {
+  settings: RoomSettings
+  status: RoomStatus
+  visibility: RoomVisibility
+}
+
 export type RoomMemberRole = 'host' | 'member' | 'moderator' | 'owner'
 
 export type RoomMemberStatus = 'active' | 'left'

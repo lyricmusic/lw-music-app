@@ -12,6 +12,11 @@ export {
 export { useRoomPresence } from './api/useRoomPresence'
 export { useRoomParticipants } from './api/useRoomParticipants'
 export type { RoomParticipant } from './api/useRoomParticipants'
+export {
+  useRoomRestrictions,
+  type RoomRestriction,
+  type RoomRestrictionKind,
+} from './api/useRoomRestrictions'
 export { useRoomQueue } from './api/useRoomQueue'
 export {
   leaveRoom,
@@ -52,6 +57,7 @@ export {
 export type {
   Category,
   Room,
+  RoomAccess,
   RoomBan,
   RoomInvite,
   RoomMember,

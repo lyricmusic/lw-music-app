@@ -3,7 +3,15 @@ import { useEffect, useState } from 'react'
 import { db } from '@/shared/api/firebase'
 import { doc, onSnapshot } from 'firebase/firestore'
 
+import {
+  parseRoomSettings,
+  parseRoomStatus,
+  parseRoomVisibility,
+} from '../model/roomAccess'
+import type { RoomAccess } from '../model/types'
+
 interface RoomExistenceState {
+  access: null | RoomAccess
   error: null | 'forbidden' | 'unknown'
   exists: boolean | null
   roomId: string
@@ -11,6 +19,7 @@ interface RoomExistenceState {
 
 export function useRoomExists(roomId: string, retryKey: unknown = null) {
   const [state, setState] = useState<RoomExistenceState>({
+    access: null,
     error: null,
     exists: null,
     roomId: '',
@@ -19,7 +28,7 @@ export function useRoomExists(roomId: string, retryKey: unknown = null) {
   useEffect(() => {
     if (!roomId) return
 
-    setState({ error: null, exists: null, roomId })
+    setState({ access: null, error: null, exists: null, roomId })
 
     return onSnapshot(
       doc(db, 'rooms', roomId),
@@ -27,11 +36,27 @@ export function useRoomExists(roomId: string, retryKey: unknown = null) {
       snapshot => {
         if (!snapshot.exists() && snapshot.metadata.fromCache) return
 
-        setState({ error: null, exists: snapshot.exists(), roomId })
+        if (!snapshot.exists()) {
+          setState({ access: null, error: null, exists: false, roomId })
+          return
+        }
+
+        const room = snapshot.data()
+        setState({
+          access: {
+            settings: parseRoomSettings(room.settings),
+            status: parseRoomStatus(room.status),
+            visibility: parseRoomVisibility(room.visibility),
+          },
+          error: null,
+          exists: true,
+          roomId,
+        })
       },
       reason => {
         console.error('Не удалось проверить существование комнаты:', reason)
         setState({
+          access: null,
           error: reason.code === 'permission-denied' ? 'forbidden' : 'unknown',
           exists: null,
           roomId,
@@ -41,6 +66,6 @@ export function useRoomExists(roomId: string, retryKey: unknown = null) {
   }, [retryKey, roomId])
 
   return state.roomId === roomId
-    ? { error: state.error, exists: state.exists }
-    : { error: null, exists: null }
+    ? { access: state.access, error: state.error, exists: state.exists }
+    : { access: null, error: null, exists: null }
 }

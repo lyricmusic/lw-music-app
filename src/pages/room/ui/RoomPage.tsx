@@ -11,6 +11,10 @@ import {
   useRoomPresence,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import {
+  RoomRestrictionsDialog,
+  RoomSettingsDialog,
+} from '@/features/manage-room'
 import { routes } from '@/shared/config/routes'
 import { RoomChat } from '@/widgets/room-chat'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
@@ -57,6 +61,8 @@ export function RoomPage() {
   const { roomId = 'demo-room' } = useParams<{ roomId: string }>()
   const { profile, user } = useSession()
   const [inviteCreating, setInviteCreating] = useState(false)
+  const [restrictionsOpen, setRestrictionsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const inviteId = searchParams.get('invite')?.trim() || undefined
   const membership = useRoomMembership(
     roomId,
@@ -151,31 +157,113 @@ export function RoomPage() {
     )
   }
 
+  if (room.access?.status === 'archived') {
+    if (!currentMember) {
+      return <RoomEntryState message="Загружаем настройки архива…" pending />
+    }
+
+    const isOwner = currentMember.role === 'owner'
+    return (
+      <>
+        <RoomEntryState
+          actionLabel={isOwner ? 'Настройки' : 'К комнатам'}
+          message={
+            isOwner
+              ? 'Комната находится в архиве. Вы можете снова сделать её активной в настройках.'
+              : 'Владелец переместил эту комнату в архив.'
+          }
+          onAction={
+            isOwner ? () => setSettingsOpen(true) : () => navigate(routes.rooms)
+          }
+        />
+        {isOwner && room.access && (
+          <RoomSettingsDialog
+            access={room.access}
+            onClose={() => setSettingsOpen(false)}
+            open={settingsOpen}
+            roomId={roomId}
+          />
+        )}
+      </>
+    )
+  }
+
   return (
     <Box
       className="relative h-full min-h-0 overflow-hidden bg-[#3F3F59] px-1"
       component="main"
     >
-      {currentMember &&
-        ['host', 'moderator', 'owner'].includes(currentMember.role) && (
-          <Button
-            disabled={inviteCreating}
-            onClick={handleCreateInvite}
-            size="small"
-            sx={{ position: 'absolute', right: 20, top: 16, zIndex: 2 }}
-            variant="contained"
-          >
-            {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
-          </Button>
-        )}
+      {currentMember && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            justifyContent: 'flex-end',
+            maxWidth: 'calc(100% - 40px)',
+            position: 'absolute',
+            right: 20,
+            top: 16,
+            zIndex: 2,
+          }}
+        >
+          {currentMember.role === 'owner' && (
+            <Button
+              onClick={() => setSettingsOpen(true)}
+              size="small"
+              variant="outlined"
+            >
+              Настройки
+            </Button>
+          )}
+          {['moderator', 'owner'].includes(currentMember.role) && (
+            <Button
+              onClick={() => setRestrictionsOpen(true)}
+              size="small"
+              variant="outlined"
+            >
+              Ограничения
+            </Button>
+          )}
+          {['host', 'moderator', 'owner'].includes(currentMember.role) && (
+            <Button
+              disabled={inviteCreating}
+              onClick={handleCreateInvite}
+              size="small"
+              variant="contained"
+            >
+              {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
+            </Button>
+          )}
+        </Box>
+      )}
       <Box className="room-content-grid">
         <Box className="room-player-column">
-          <SyncedYouTubePlayer key={roomId} roomId={roomId} />
+          <SyncedYouTubePlayer
+            currentMemberRole={currentMember?.role}
+            key={roomId}
+            roomId={roomId}
+          />
         </Box>
         <Box className="room-chat-column">
           <RoomChat key={roomId} roomId={roomId} />
         </Box>
       </Box>
+      {currentMember?.role === 'owner' && room.access && (
+        <RoomSettingsDialog
+          access={room.access}
+          onClose={() => setSettingsOpen(false)}
+          open={settingsOpen}
+          roomId={roomId}
+        />
+      )}
+      {currentMember && ['moderator', 'owner'].includes(currentMember.role) && (
+        <RoomRestrictionsDialog
+          onClose={() => setRestrictionsOpen(false)}
+          open={restrictionsOpen}
+          roomId={roomId}
+        />
+      )}
     </Box>
   )
 }

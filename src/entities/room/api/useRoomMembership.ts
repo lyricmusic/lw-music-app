@@ -121,7 +121,7 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
 
     const room = roomSnapshot.data()
     const isOwner = room.ownerId === user.uid
-    if (parseRoomStatus(room.status) !== 'active') {
+    if (parseRoomStatus(room.status) !== 'active' && !isOwner) {
       throw new RoomMembershipError('Эта комната уже закрыта.', 'forbidden')
     }
 
