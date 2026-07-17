@@ -61,9 +61,9 @@ export function AppHeader() {
               component="h1"
               sx={{
                 color: '#FFFFFF',
-                fontFamily: 'Neue Machina Bold, sans-serif',
+                fontFamily: 'Golos Text, sans-serif',
                 fontSize: '32px',
-                fontWeight: 800,
+                fontWeight: 700,
                 lineHeight: 1.2,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',

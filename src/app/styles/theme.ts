@@ -98,7 +98,7 @@ export const appTheme = createTheme({
     fontFamily: [
       '-apple-system',
       'BlinkMacSystemFont',
-      'PP Neue Machina Plain',
+      'Golos Text',
       'Arial',
       'sans-serif',
       'Apple Color Emoji',
