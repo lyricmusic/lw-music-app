@@ -28,6 +28,12 @@ class AuthFlowError extends Error {
   }
 }
 
+interface SaveUserProfileOptions {
+  displayName?: string
+  requireOnboarding?: boolean
+  skipOnboarding?: boolean
+}
+
 function encodeBase64Url(value: string) {
   const bytes = new TextEncoder().encode(value)
   let binary = ''
@@ -54,8 +60,11 @@ function createYandexState() {
 
 async function saveUserProfile(
   user: User,
-  displayName?: string,
-  requireOnboarding = false,
+  {
+    displayName,
+    requireOnboarding = false,
+    skipOnboarding = false,
+  }: SaveUserProfileOptions = {},
 ) {
   const userRef = doc(db, 'users', user.uid)
   const userSnapshot = await getDoc(userRef)
@@ -73,11 +82,13 @@ async function saveUserProfile(
   const avatar =
     requireOnboarding && isNewProfile
       ? { presetId: null, storagePath: null, type: 'none' }
-      : (existingAvatar ?? {
-          presetId: null,
-          storagePath: null,
-          type: resolvedPhotoURL ? 'provider' : 'none',
-        })
+      : existingAvatar?.type === 'none' && resolvedPhotoURL
+        ? { presetId: null, storagePath: null, type: 'provider' }
+        : (existingAvatar ?? {
+            presetId: null,
+            storagePath: null,
+            type: resolvedPhotoURL ? 'provider' : 'none',
+          })
 
   await setDoc(userRef, {
     avatar,
@@ -85,8 +96,9 @@ async function saveUserProfile(
     displayName: resolvedDisplayName,
     email: user.email ?? '',
     onboardingCompleted:
-      existingProfile?.onboardingCompleted ??
-      !(requireOnboarding || isNewProfile),
+      skipOnboarding ||
+      (existingProfile?.onboardingCompleted ??
+        !(requireOnboarding || isNewProfile)),
     photoURL: requireOnboarding && isNewProfile ? null : resolvedPhotoURL,
     updatedAt: serverTimestamp(),
   })
@@ -107,7 +119,10 @@ export async function signUpWithEmail({
 
   const displayName = email.trim().split('@')[0].slice(0, 50)
   await updateProfile(credential.user, { displayName: displayName.trim() })
-  await saveUserProfile(credential.user, displayName, true)
+  await saveUserProfile(credential.user, {
+    displayName,
+    requireOnboarding: true,
+  })
 
   return credential.user
 }
@@ -185,7 +200,7 @@ export function signInWithYandex() {
 
       try {
         const credential = await signInWithCustomToken(auth, event.data.token)
-        await saveUserProfile(credential.user)
+        await saveUserProfile(credential.user, { skipOnboarding: true })
         resolve(credential.user)
       } catch (error) {
         reject(error)

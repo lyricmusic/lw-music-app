@@ -13,20 +13,67 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Invoke-YcJson {
-  param([string[]]$Arguments)
+  param(
+    [string[]]$Arguments,
+    [AllowNull()][string]$InputText
+  )
 
-  $output = & $YcPath @Arguments --format json 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  $hasInput = $PSBoundParameters.ContainsKey('InputText')
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # yc writes progress to stderr even when a command succeeds. Windows
+    # PowerShell must be allowed to finish the process before we inspect its
+    # exit code, otherwise ErrorActionPreference=Stop aborts the script.
+    $ErrorActionPreference = 'Continue'
+    if ($hasInput) {
+      $output = $InputText | & $YcPath @Arguments --format json 2>$null
+    } else {
+      $output = & $YcPath @Arguments --format json 2>$null
+    }
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  if ($exitCode -ne 0) {
     throw "Yandex Cloud CLI command failed: yc $($Arguments -join ' ')"
   }
   return $output | ConvertFrom-Json
 }
 
+function Invoke-YcCommand {
+  param([string[]]$Arguments)
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $null = & $YcPath @Arguments 2>$null
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  if ($exitCode -ne 0) {
+    throw "Yandex Cloud CLI command failed: yc $($Arguments -join ' ')"
+  }
+}
+
 function Find-YcJson {
   param([string[]]$Arguments)
 
-  $output = & $YcPath @Arguments --format json 2>$null
-  if ($LASTEXITCODE -ne 0) { return $null }
+  # Windows PowerShell turns stderr from native programs into error records.
+  # With ErrorActionPreference=Stop an expected "not found" response would
+  # terminate the script before we get a chance to inspect LASTEXITCODE.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $output = & $YcPath @Arguments --format json 2>$null
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  if ($exitCode -ne 0) { return $null }
   return $output | ConvertFrom-Json
 }
 
@@ -34,8 +81,15 @@ $ycCommand = Get-Command $YcPath -ErrorAction SilentlyContinue
 if (-not $ycCommand) { throw "Yandex Cloud CLI not found: $YcPath" }
 $YcPath = $ycCommand.Source
 
-$folderId = (& $YcPath config get folder-id 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $folderId) {
+$previousErrorActionPreference = $ErrorActionPreference
+try {
+  $ErrorActionPreference = 'Continue'
+  $folderId = (& $YcPath config get folder-id 2>$null).Trim()
+  $folderConfigExitCode = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($folderConfigExitCode -ne 0 -or -not $folderId) {
   throw 'Run yc init and select a default folder before deploying.'
 }
 
@@ -77,10 +131,11 @@ if (-not $serviceAccount) {
   )
 }
 
-& $YcPath resource-manager folder add-access-binding $folderId `
-  --role lockbox.payloadViewer `
-  --service-account-id $serviceAccount.id | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Failed to grant lockbox.payloadViewer.' }
+Invoke-YcCommand @(
+  'resource-manager', 'folder', 'add-access-binding', $folderId,
+  '--role', 'lockbox.payloadViewer',
+  '--service-account-id', $serviceAccount.id
+)
 
 $function = Find-YcJson @(
   'serverless', 'function', 'get', '--name', $functionName
@@ -102,19 +157,19 @@ $secretPayload = @(
 
 $secret = Find-YcJson @('lockbox', 'secret', 'get', '--name', $secretName)
 if (-not $secret) {
-  $secret = ($secretPayload | & $YcPath lockbox secret create `
-      --name $secretName `
-      --description 'Yandex ID and Firebase credentials for LW Music' `
-      --payload - `
-      --format json) | ConvertFrom-Json
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to create Lockbox secret.' }
+  $secret = Invoke-YcJson -Arguments @(
+    'lockbox', 'secret', 'create',
+    '--name', $secretName,
+    '--description', 'Yandex ID and Firebase credentials for LW Music',
+    '--payload', '-'
+  ) -InputText $secretPayload
   $secretVersionId = $secret.current_version.id
 } else {
-  $secretVersion = ($secretPayload | & $YcPath lockbox secret add-version `
-      --id $secret.id `
-      --payload - `
-      --format json) | ConvertFrom-Json
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to add Lockbox secret version.' }
+  $secretVersion = Invoke-YcJson -Arguments @(
+    'lockbox', 'secret', 'add-version',
+    '--id', $secret.id,
+    '--payload', '-'
+  ) -InputText $secretPayload
   $secretVersionId = $secretVersion.id
 }
 
@@ -134,8 +189,9 @@ Invoke-YcJson @(
   '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
 ) | Out-Null
 
-& $YcPath serverless function allow-unauthenticated-invoke $function.id | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Failed to allow HTTPS invocation.' }
+Invoke-YcCommand @(
+  'serverless', 'function', 'allow-unauthenticated-invoke', $function.id
+)
 
 [PSCustomObject]@{
   functionId = $function.id
