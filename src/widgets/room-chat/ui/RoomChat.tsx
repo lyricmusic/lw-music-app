@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 
 import {
@@ -14,6 +14,7 @@ import { TextField } from '@/shared/ui/text-field'
 import { Avatar, Box, CircularProgress, Paper, Typography } from '@mui/material'
 
 interface RoomChatProps {
+  actions?: ReactNode
   roomId: string
 }
 
@@ -116,7 +117,7 @@ function MessageItem({
   )
 }
 
-export function RoomChat({ roomId }: RoomChatProps) {
+export function RoomChat({ actions, roomId }: RoomChatProps) {
   const { profile, user } = useSession()
   const { error, loading, messages } = useRoomMessages(roomId)
   const blockedUserIds = useBlockedUsers()
@@ -182,17 +183,26 @@ export function RoomChat({ roomId }: RoomChatProps) {
         color: '#FFFFFF',
       }}
     >
-      <Typography
+      <Box
+        alignItems="center"
         className="shrink-0"
-        component="h2"
-        sx={{ fontSize: '28px', lineHeight: 1 }}
-        variant="h2"
+        display="flex"
+        flexWrap="wrap"
+        gap={1.5}
+        justifyContent="space-between"
       >
-        Чат
-      </Typography>
+        <Typography
+          component="h2"
+          sx={{ fontSize: '28px', lineHeight: 1 }}
+          variant="h2"
+        >
+          Чат
+        </Typography>
+        {actions}
+      </Box>
 
       <Box
-        className="my-5 min-h-0 flex-1 overflow-y-auto pr-1"
+        className="mb-5 mt-6 min-h-0 flex-1 overflow-y-auto pr-1"
         component="ul"
         onScroll={event => {
           const target = event.currentTarget

@@ -188,55 +188,64 @@ export function RoomPage() {
     )
   }
 
+  const outlinedActionSx = {
+    '&:hover': {
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      borderColor: '#FFFFFF',
+    },
+    borderColor: 'rgba(255, 255, 255, 0.85)',
+    color: '#FFFFFF',
+  }
+
+  const roomActions = currentMember ? (
+    <Box
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 1,
+        justifyContent: 'flex-end',
+      }}
+    >
+      {currentMember.role === 'owner' && (
+        <Button
+          color="inherit"
+          onClick={() => setSettingsOpen(true)}
+          size="small"
+          sx={outlinedActionSx}
+          variant="outlined"
+        >
+          Настройки
+        </Button>
+      )}
+      {['moderator', 'owner'].includes(currentMember.role) && (
+        <Button
+          color="inherit"
+          onClick={() => setRestrictionsOpen(true)}
+          size="small"
+          sx={outlinedActionSx}
+          variant="outlined"
+        >
+          Ограничения
+        </Button>
+      )}
+      {['host', 'moderator', 'owner'].includes(currentMember.role) && (
+        <Button
+          disabled={inviteCreating}
+          onClick={handleCreateInvite}
+          size="small"
+          variant="contained"
+        >
+          {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
+        </Button>
+      )}
+    </Box>
+  ) : null
+
   return (
     <Box
       className="relative h-full min-h-0 overflow-hidden bg-[#3F3F59] px-1"
       component="main"
     >
-      {currentMember && (
-        <Box
-          sx={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 1,
-            justifyContent: 'flex-end',
-            maxWidth: 'calc(100% - 40px)',
-            position: 'absolute',
-            right: 20,
-            top: 16,
-            zIndex: 2,
-          }}
-        >
-          {currentMember.role === 'owner' && (
-            <Button
-              onClick={() => setSettingsOpen(true)}
-              size="small"
-              variant="outlined"
-            >
-              Настройки
-            </Button>
-          )}
-          {['moderator', 'owner'].includes(currentMember.role) && (
-            <Button
-              onClick={() => setRestrictionsOpen(true)}
-              size="small"
-              variant="outlined"
-            >
-              Ограничения
-            </Button>
-          )}
-          {['host', 'moderator', 'owner'].includes(currentMember.role) && (
-            <Button
-              disabled={inviteCreating}
-              onClick={handleCreateInvite}
-              size="small"
-              variant="contained"
-            >
-              {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
-            </Button>
-          )}
-        </Box>
-      )}
       <Box className="room-content-grid">
         <Box className="room-player-column">
           <SyncedYouTubePlayer
@@ -246,7 +255,7 @@ export function RoomPage() {
           />
         </Box>
         <Box className="room-chat-column">
-          <RoomChat key={roomId} roomId={roomId} />
+          <RoomChat actions={roomActions} key={roomId} roomId={roomId} />
         </Box>
       </Box>
       {currentMember?.role === 'owner' && room.access && (
