@@ -1,5 +1,14 @@
 let youtubeApiPromise: null | Promise<void> = null
 
+const youtubeErrorMessages: Record<number, string> = {
+  2: 'Некорректная ссылка или ID видео.',
+  5: 'YouTube не смог воспроизвести это видео в HTML5-плеере.',
+  100: 'Видео удалено, скрыто или не существует.',
+  101: 'Владелец запретил воспроизведение этого видео на других сайтах.',
+  150: 'Владелец запретил воспроизведение этого видео на других сайтах.',
+  153: 'YouTube не смог определить источник встроенного плеера.',
+}
+
 export function extractYouTubeVideoId(value: string) {
   const input = value.trim()
 
@@ -49,6 +58,13 @@ export function formatPlaybackTime(value: number) {
   return `${minutes}:${rest.toString().padStart(2, '0')}`
 }
 
+export function getYouTubeErrorMessage(errorCode: number) {
+  return (
+    youtubeErrorMessages[errorCode] ??
+    `YouTube вернул ошибку ${errorCode}. Выберите другое видео.`
+  )
+}
+
 export function loadYouTubeIframeApi() {
   if (window.YT?.Player) return Promise.resolve()
   if (youtubeApiPromise) return youtubeApiPromise
@@ -84,4 +100,70 @@ export function loadYouTubeIframeApi() {
   })
 
   return youtubeApiPromise
+}
+
+export async function checkYouTubeVideoEmbeddable(videoId: string) {
+  await loadYouTubeIframeApi()
+
+  if (!window.YT) {
+    throw new Error('YouTube API недоступен. Попробуйте ещё раз.')
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const container = document.createElement('div')
+    const playerHost = document.createElement('div')
+    let player: null | YT.Player = null
+    let settled = false
+
+    container.setAttribute('aria-hidden', 'true')
+    Object.assign(container.style, {
+      height: '200px',
+      left: '-10000px',
+      pointerEvents: 'none',
+      position: 'fixed',
+      top: '-10000px',
+      visibility: 'hidden',
+      width: '200px',
+    })
+    container.append(playerHost)
+    document.body.append(container)
+
+    const timeout = window.setTimeout(() => {
+      finish(
+        new Error(
+          'Не удалось проверить, разрешено ли встраивание видео. Попробуйте ещё раз.',
+        ),
+      )
+    }, 12_000)
+
+    const finish = (reason?: Error) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeout)
+      player?.destroy()
+      container.remove()
+
+      if (reason) reject(reason)
+      else resolve()
+    }
+
+    player = new window.YT.Player(playerHost, {
+      events: {
+        onError: event => finish(new Error(getYouTubeErrorMessage(event.data))),
+        onReady: event => event.target.cueVideoById({ videoId }),
+        onStateChange: event => {
+          if (event.data === YT.PlayerState.CUED) finish()
+        },
+      },
+      height: 200,
+      playerVars: {
+        controls: 0,
+        disablekb: 1,
+        enablejsapi: 1,
+        origin: window.location.origin,
+        playsinline: 1,
+      },
+      width: 200,
+    })
+  })
 }

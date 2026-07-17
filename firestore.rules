@@ -164,6 +164,127 @@ service cloud.firestore {
         && request.resource.data.videoId.size() == 11;
     }
 
+    function hasValidQueueState() {
+      let activePosition = request.resource.data.activePosition;
+      let lastPosition = request.resource.data.lastPosition;
+      return request.resource.data.keys().hasAll([
+          'activePosition',
+          'lastPosition',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'activePosition',
+          'lastPosition',
+          'updatedAt'
+        ])
+        && (activePosition == null
+          || (activePosition is int
+            && activePosition > 0
+            && activePosition <= lastPosition))
+        && lastPosition is int
+        && lastPosition >= 0
+        && lastPosition <= 999999999999
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function hasValidQueueStateUpdate() {
+      let previousActive = resource.data.activePosition;
+      let previousLast = resource.data.lastPosition;
+      let nextActive = request.resource.data.activePosition;
+      let nextLast = request.resource.data.lastPosition;
+      return (
+          nextLast == previousLast + 1
+          && (
+            (previousActive == null && nextActive == nextLast)
+            || (previousActive != null && nextActive == previousActive)
+          )
+        ) || (
+          nextLast == previousLast
+          && previousActive != null
+          && (
+            (previousActive < previousLast
+              && nextActive == previousActive + 1)
+            || (previousActive == previousLast && nextActive == null)
+          )
+        );
+    }
+
+    function hasValidQueueItem(roomId, itemId) {
+      let profile = get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+      let queueState = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/queueState/current
+      ).data;
+      let queueMember = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
+      ).data;
+      return request.resource.data.keys().hasAll([
+          'createdAt',
+          'displayName',
+          'photoURL',
+          'position',
+          'userId',
+          'videoId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'displayName',
+          'photoURL',
+          'position',
+          'userId',
+          'videoId'
+        ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.displayName == profile.displayName
+        && request.resource.data.photoURL == profile.photoURL
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.position is int
+        && request.resource.data.position > 0
+        && request.resource.data.position == queueState.lastPosition
+        && queueMember.itemId == itemId
+        && queueMember.userId == request.auth.uid
+        && request.resource.data.videoId is string
+        && request.resource.data.videoId.matches('[-_A-Za-z0-9]{11}');
+    }
+
+    function hasValidQueueMember(roomId, memberId) {
+      let queueItem = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/queue/$(request.resource.data.itemId)
+      ).data;
+      return request.resource.data.keys().hasAll([
+          'createdAt',
+          'itemId',
+          'userId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'itemId',
+          'userId'
+        ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.itemId is string
+        && request.resource.data.itemId.matches('[0-9]{12}')
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userId == memberId
+        && queueItem.userId == request.auth.uid;
+    }
+
+    function canDeleteQueueItem(roomId) {
+      let nextQueueState = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/queueState/current
+      ).data;
+      return !existsAfter(
+          /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(resource.data.userId)
+        )
+        && (
+          (nextQueueState.activePosition == null
+            && resource.data.position == nextQueueState.lastPosition)
+          || (nextQueueState.activePosition is int
+            && resource.data.position == nextQueueState.activePosition - 1)
+        );
+    }
+
     function hasValidMessage() {
       let profile = get(
         /databases/$(database)/documents/users/$(request.auth.uid)
@@ -241,6 +362,46 @@ service cloud.firestore {
         && hasValidPlaybackState()
         && request.resource.data.revision == resource.data.revision + 1;
       allow delete: if isSignedIn() && stateId == 'current';
+    }
+
+    match /rooms/{roomId}/queueState/{stateId} {
+      allow read: if isSignedIn() && stateId == 'current';
+      allow create: if isSignedIn()
+        && stateId == 'current'
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && hasValidQueueState()
+        && request.resource.data.activePosition == 1
+        && request.resource.data.lastPosition == 1;
+      allow update: if isSignedIn()
+        && stateId == 'current'
+        && hasValidQueueState()
+        && hasValidQueueStateUpdate();
+      allow delete: if false;
+    }
+
+    match /rooms/{roomId}/queue/{itemId} {
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId));
+      allow create: if isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && itemId.matches('[0-9]{12}')
+        && hasValidQueueItem(roomId, itemId);
+      allow update: if false;
+      allow delete: if isSignedIn() && canDeleteQueueItem(roomId);
+    }
+
+    match /rooms/{roomId}/queueMembers/{memberId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && !exists(
+          /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(memberId)
+        )
+        && hasValidQueueMember(roomId, memberId);
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && !existsAfter(
+          /databases/$(database)/documents/rooms/$(roomId)/queue/$(resource.data.itemId)
+        );
     }
 
     match /rooms/{roomId}/messages/{messageId} {

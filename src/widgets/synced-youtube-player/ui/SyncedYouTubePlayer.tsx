@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 
-import { auth, db } from '@/shared/api/firebase'
 import {
+  advanceRoomQueue,
+  enqueueRoomVideo,
+  useRoomParticipants,
+  useRoomQueue,
+} from '@/entities/room'
+import { useSession } from '@/entities/session'
+import { db } from '@/shared/api/firebase'
+import {
+  checkYouTubeVideoEmbeddable,
   extractYouTubeVideoId,
   formatPlaybackTime,
+  getYouTubeErrorMessage,
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
 import {
+  Avatar,
   Box,
   CircularProgress,
   Fade,
@@ -19,13 +29,7 @@ import {
   Tabs,
   Typography,
 } from '@mui/material'
-import {
-  Timestamp,
-  doc,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp,
-} from 'firebase/firestore'
+import { Timestamp, doc, onSnapshot } from 'firebase/firestore'
 
 interface SyncedYouTubePlayerProps {
   roomId: string
@@ -49,6 +53,16 @@ interface QueueFormValues {
 }
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
+
+function getParticipantInitials(displayName: string) {
+  return displayName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(namePart => namePart[0])
+    .join('')
+    .toUpperCase()
+}
 
 function allowAutoplay(player: YT.Player) {
   const iframe = player.getIframe()
@@ -78,15 +92,6 @@ const queueDialogStyle = {
     borderRadius: '24px',
     padding: '32px 24px 24px',
   },
-}
-
-const youtubeErrorMessages: Record<number, string> = {
-  2: 'Некорректная ссылка или ID видео.',
-  5: 'YouTube не смог воспроизвести это видео в HTML5-плеере.',
-  100: 'Видео удалено, скрыто или не существует.',
-  101: 'Автор запретил воспроизведение этого видео на сторонних сайтах.',
-  150: 'Автор запретил воспроизведение этого видео на сторонних сайтах.',
-  153: 'YouTube не смог определить источник встроенного плеера.',
 }
 
 function parsePlaybackState(
@@ -136,6 +141,17 @@ export function SyncedYouTubePlayer({
   roomId,
   syncEnabled = true,
 }: SyncedYouTubePlayerProps) {
+  const { profile, user } = useSession()
+  const {
+    error: participantsError,
+    loading: participantsLoading,
+    participants,
+  } = useRoomParticipants(roomId)
+  const {
+    error: queueError,
+    items: queueItems,
+    loading: queueLoading,
+  } = useRoomQueue(roomId)
   const playbackRef = useMemo(
     () => doc(db, 'rooms', roomId, 'playback', 'current'),
     [roomId],
@@ -145,7 +161,7 @@ export function SyncedYouTubePlayer({
   const lastRemoteStateRef = useRef<null | PlaybackState>(null)
   const autoplayRecoveryVideoIdRef = useRef<null | string>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
-  const writeQueueRef = useRef(Promise.resolve())
+  const queueMutationRef = useRef(Promise.resolve())
 
   const {
     formState: { errors: queueFormErrors, isSubmitting: queueSubmitting },
@@ -157,7 +173,7 @@ export function SyncedYouTubePlayer({
   const [playerReady, setPlayerReady] = useState(false)
   const [muted, setMuted] = useState(true)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting')
+  const [, setSyncStatus] = useState<SyncStatus>('connecting')
   const [error, setError] = useState<null | string>(null)
   const [remoteState, setRemoteState] = useState<null | PlaybackState>(null)
   const [currentTime, setCurrentTime] = useState(0)
@@ -168,53 +184,6 @@ export function SyncedYouTubePlayer({
   )
   const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
     null,
-  )
-
-  const publishPlayback = useCallback(
-    (videoId: string, status: PlaybackStatus, rawPosition: number) => {
-      if (!syncEnabled) return Promise.resolve()
-
-      const user = auth.currentUser
-      if (!user) {
-        setError('Для синхронизации нужно войти в аккаунт.')
-        return Promise.resolve()
-      }
-
-      const positionSeconds = Number.isFinite(rawPosition)
-        ? Math.max(0, rawPosition)
-        : 0
-      setSyncStatus('syncing')
-
-      writeQueueRef.current = writeQueueRef.current
-        .then(async () => {
-          await runTransaction(db, async transaction => {
-            const snapshot = await transaction.get(playbackRef)
-            const currentRevision = snapshot.exists()
-              ? Number(snapshot.data().revision) || 0
-              : 0
-
-            transaction.set(playbackRef, {
-              changedAt: serverTimestamp(),
-              changedBy: user.uid,
-              positionSeconds,
-              revision: currentRevision + 1,
-              status,
-              videoId,
-            })
-          })
-          setSyncStatus('connected')
-        })
-        .catch(reason => {
-          console.error('Не удалось обновить состояние плеера:', reason)
-          setError(
-            'Firestore отклонил синхронизацию. Опубликуйте обновлённые firestore.rules.',
-          )
-          setSyncStatus('error')
-        })
-
-      return writeQueueRef.current
-    },
-    [playbackRef, syncEnabled],
   )
 
   const clearFinishedPlayback = useCallback(
@@ -230,22 +199,14 @@ export function SyncedYouTubePlayer({
         return Promise.resolve()
       }
 
-      const user = auth.currentUser
       if (!user) return Promise.resolve()
 
       setSyncStatus('syncing')
-      writeQueueRef.current = writeQueueRef.current
+      queueMutationRef.current = queueMutationRef.current
         .then(async () => {
-          await runTransaction(db, async transaction => {
-            const snapshot = await transaction.get(playbackRef)
-            if (
-              !snapshot.exists() ||
-              snapshot.data().videoId !== finishedVideoId
-            ) {
-              return
-            }
-
-            transaction.delete(playbackRef)
+          await advanceRoomQueue({
+            finishedVideoId,
+            roomId,
           })
           setLocalQueuedVideoId(currentVideoId =>
             currentVideoId === finishedVideoId ? null : currentVideoId,
@@ -253,16 +214,16 @@ export function SyncedYouTubePlayer({
           setSyncStatus('connected')
         })
         .catch(reason => {
-          console.error('Не удалось очистить завершённое видео:', reason)
+          console.error('Не удалось перейти к следующему видео:', reason)
           setError(
-            'Firestore отклонил очистку завершённого видео. Опубликуйте обновлённые firestore.rules.',
+            'Firestore отклонил переход к следующему видео. Опубликуйте обновлённые firestore.rules.',
           )
           setSyncStatus('error')
         })
 
-      return writeQueueRef.current
+      return queueMutationRef.current
     },
-    [playbackRef, syncEnabled],
+    [roomId, syncEnabled, user],
   )
 
   const applyRemoteState = useCallback((state: PlaybackState) => {
@@ -347,10 +308,14 @@ export function SyncedYouTubePlayer({
           events: {
             onAutoplayBlocked: handleAutoplayBlocked,
             onError: event => {
-              setError(
-                youtubeErrorMessages[event.data] ??
-                  `YouTube вернул ошибку ${event.data}.`,
-              )
+              setError(getYouTubeErrorMessage(event.data))
+
+              if ([100, 101, 150].includes(event.data)) {
+                const unavailableVideoId = event.target.getVideoData().video_id
+                if (unavailableVideoId) {
+                  void clearFinishedPlayback(unavailableVideoId)
+                }
+              }
             },
             onReady: event => {
               allowAutoplay(event.target)
@@ -391,7 +356,12 @@ export function SyncedYouTubePlayer({
       playerRef.current?.destroy()
       playerRef.current = null
     }
-  }, [applyRemoteState, handleAutoplayBlocked, handlePlayerStateChange])
+  }, [
+    applyRemoteState,
+    clearFinishedPlayback,
+    handleAutoplayBlocked,
+    handlePlayerStateChange,
+  ])
 
   useEffect(() => {
     if (!syncEnabled) {
@@ -486,22 +456,47 @@ export function SyncedYouTubePlayer({
       return
     }
 
-    if (!playerReady || !player) {
+    if (!profile || !user) {
       setQueueFormError('videoUrl', {
-        message: 'Плеер ещё загружается. Попробуйте через пару секунд.',
+        message: 'Чтобы встать в очередь, войдите в аккаунт.',
         type: 'server',
       })
       return
     }
 
-    setError(null)
-    setAutoplayBlocked(false)
-    suppressPlayerEventsUntilRef.current = Date.now() + 800
-    player.loadVideoById({ startSeconds: 0, videoId })
-    setLocalQueuedVideoId(videoId)
-    await publishPlayback(videoId, 'playing', 0)
-    setQueueDialogOpen(false)
-    resetQueueForm()
+    try {
+      await checkYouTubeVideoEmbeddable(videoId)
+
+      const { isActive } = await enqueueRoomVideo({
+        displayName: profile.displayName,
+        photoURL: profile.photoURL,
+        roomId,
+        videoId,
+      })
+
+      if (isActive) {
+        setError(null)
+        setAutoplayBlocked(false)
+        setLocalQueuedVideoId(videoId)
+
+        if (playerReady && player) {
+          suppressPlayerEventsUntilRef.current = Date.now() + 800
+          player.loadVideoById({ startSeconds: 0, videoId })
+        }
+      }
+
+      setQueueDialogOpen(false)
+      resetQueueForm()
+    } catch (reason) {
+      console.error('Не удалось добавить видео в очередь:', reason)
+      setQueueFormError('videoUrl', {
+        message:
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось добавить видео в очередь.',
+        type: 'server',
+      })
+    }
   }
 
   const handleToggleSound = () => {
@@ -518,8 +513,11 @@ export function SyncedYouTubePlayer({
     }
   }
 
-  const queueIsEmpty =
-    syncStatus === 'connected' && !remoteState && !localQueuedVideoId
+  const currentUserAlreadyQueued = queueItems.some(
+    queueItem => queueItem.userId === user?.uid,
+  )
+  const queueButtonDisabled =
+    queueLoading || !profile || !user || currentUserAlreadyQueued
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
 
   return (
@@ -624,36 +622,233 @@ export function SyncedYouTubePlayer({
         </Tabs>
 
         {activeRoomTab === 'queue' ? (
-          <Box className="mt-4 max-w-[500px]">
-            <Typography className="mb-3 text-[#D7DBF0]">
-              {syncStatus === 'connecting'
-                ? 'Загружаем очередь…'
-                : queueIsEmpty
-                  ? 'Очередь пока пуста'
-                  : 'Видео сейчас воспроизводится'}
-            </Typography>
-
-            {queueIsEmpty && (
-              <Button
-                disabled={!playerReady}
-                onClick={() => setQueueDialogOpen(true)}
+          <Box className="mt-3 min-w-0 max-w-[500px]">
+            {queueLoading ? (
+              <Box className="flex min-h-12 items-center justify-center">
+                <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+              </Box>
+            ) : (
+              <Box
+                className="grid min-w-0 gap-2 overflow-x-auto pb-1"
+                component="ul"
                 sx={{
-                  '&:hover': { backgroundColor: '#5D5FD4' },
-                  backgroundColor: '#6F70E7',
-                  color: '#FFFFFF',
-                  fontSize: '16px',
-                  padding: '12px 20px',
+                  gridAutoColumns: 'minmax(220px, 1fr)',
+                  gridAutoFlow: 'column',
+                  gridTemplateRows: 'repeat(4, 48px)',
+                  listStyle: 'none',
+                  marginLeft: 0,
+                  marginRight: 0,
+                  scrollbarColor: '#5C5D7E transparent',
+                  scrollbarWidth: 'thin',
                 }}
-                variant="contained"
               >
-                Встать в очередь
-              </Button>
+                {queueItems.map((queueItem, queueItemIndex) => {
+                  const isCurrent = queueItemIndex === 0
+                  const isNext = queueItemIndex === 1
+
+                  return (
+                    <Box
+                      className="flex h-12 min-w-0 items-center gap-3 pr-3"
+                      component="li"
+                      key={queueItem.id}
+                      sx={{
+                        backgroundColor: '#3F3F59',
+                        border: '2px solid',
+                        borderColor: isCurrent ? '#6F70E7' : 'transparent',
+                        borderRadius: '8px',
+                        opacity: queueItem.pending ? 0.72 : 1,
+                      }}
+                    >
+                      <Avatar
+                        alt={queueItem.displayName}
+                        src={queueItem.photoURL ?? undefined}
+                        variant="rounded"
+                        sx={{
+                          backgroundColor: '#6F70E7',
+                          borderRadius: '7px',
+                          flexShrink: 0,
+                          fontSize: '14px',
+                          height: 44,
+                          width: 44,
+                        }}
+                      >
+                        {getParticipantInitials(queueItem.displayName)}
+                      </Avatar>
+
+                      <Box className="min-w-0 flex-1">
+                        <Typography
+                          className="truncate text-[15px] leading-[18px]"
+                          component="span"
+                          sx={{ color: '#D7DBF0' }}
+                        >
+                          {queueItem.displayName}
+                        </Typography>
+
+                        {(isCurrent || isNext) && (
+                          <Box className="mt-0.5 flex items-center gap-1.5">
+                            <Box
+                              component="span"
+                              sx={{
+                                backgroundColor: isCurrent
+                                  ? '#6F70E7'
+                                  : 'transparent',
+                                border: isNext ? '1px solid #8B8DB3' : 'none',
+                                borderRadius: '50%',
+                                boxSizing: 'border-box',
+                                flexShrink: 0,
+                                height: 8,
+                                width: 8,
+                              }}
+                            />
+                            <Typography
+                              className="truncate text-[12px] leading-[14px]"
+                              component="span"
+                              sx={{ color: '#D7DBF0' }}
+                            >
+                              {isCurrent ? 'Сейчас показывает' : 'Следующий'}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+                  )
+                })}
+
+                <Box
+                  className="h-12 min-w-0 overflow-hidden"
+                  component="li"
+                  sx={{
+                    backgroundColor: '#3F3F59',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <Button
+                    aria-label="Встать в очередь"
+                    disabled={queueButtonDisabled}
+                    fullWidth
+                    onClick={() => setQueueDialogOpen(true)}
+                    sx={{
+                      '&.Mui-disabled': {
+                        color: '#D7DBF0',
+                        opacity: 0.5,
+                      },
+                      '&:hover': { backgroundColor: '#4A4A68' },
+                      backgroundColor: 'transparent',
+                      borderRadius: '8px',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      fontSize: '14px',
+                      fontWeight: 400,
+                      gap: '12px',
+                      height: '48px',
+                      justifyContent: 'flex-start',
+                      padding: 0,
+                      paddingRight: '12px',
+                      textTransform: 'none',
+                    }}
+                  >
+                    <Box
+                      className="flex h-11 w-11 shrink-0 items-center justify-center text-[28px] font-light leading-none"
+                      component="span"
+                      sx={{
+                        backgroundColor: '#6F70E7',
+                        borderRadius: '7px',
+                        color: '#FFFFFF',
+                      }}
+                    >
+                      +
+                    </Box>
+                    <Box className="min-w-0 truncate" component="span">
+                      Встать в очередь
+                    </Box>
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {queueError && (
+              <Typography
+                className="mt-2 text-sm"
+                role="alert"
+                sx={{ color: '#FF9BAD' }}
+              >
+                {queueError}
+              </Typography>
+            )}
+
+            {!queueLoading && queueItems.length === 0 && !queueError && (
+              <Typography className="sr-only">
+                Очередь пока пуста. Встаньте в очередь первым.
+              </Typography>
+            )}
+
+            {currentUserAlreadyQueued && (
+              <Typography className="sr-only">
+                Вы уже находитесь в очереди.
+              </Typography>
             )}
           </Box>
         ) : (
-          <Typography className="mt-4 text-[#D7DBF0]">
-            Список участников появится здесь.
-          </Typography>
+          <Box
+            className="mt-4 flex max-w-[500px] flex-col gap-2"
+            component="ul"
+            sx={{ listStyle: 'none', marginLeft: 0, marginRight: 0 }}
+          >
+            {participants.map(participant => (
+              <Box
+                className="flex min-h-[52px] items-center gap-3 p-1 pr-4"
+                component="li"
+                key={participant.id}
+                sx={{
+                  backgroundColor: '#3F3F59',
+                  borderRadius: '10px',
+                }}
+              >
+                <Avatar
+                  alt={participant.displayName}
+                  src={participant.photoURL ?? undefined}
+                  variant="rounded"
+                  sx={{
+                    backgroundColor: '#6F70E7',
+                    borderRadius: '8px',
+                    flexShrink: 0,
+                    fontSize: '14px',
+                    height: 44,
+                    width: 44,
+                  }}
+                >
+                  {getParticipantInitials(participant.displayName)}
+                </Avatar>
+                <Typography
+                  className="min-w-0 truncate text-[16px] leading-5"
+                  component="span"
+                  sx={{ color: '#D7DBF0' }}
+                >
+                  {participant.displayName}
+                </Typography>
+              </Box>
+            ))}
+
+            {participantsLoading && (
+              <Box className="flex min-h-[52px] items-center justify-center">
+                <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+              </Box>
+            )}
+
+            {!participantsLoading &&
+              !participantsError &&
+              participants.length === 0 && (
+                <Typography component="li" sx={{ color: '#D7DBF0' }}>
+                  В комнате пока никого нет.
+                </Typography>
+              )}
+
+            {participantsError && (
+              <Typography component="li" role="alert" sx={{ color: '#FF9BAD' }}>
+                {participantsError}
+              </Typography>
+            )}
+          </Box>
         )}
 
         {error && (
@@ -790,7 +985,7 @@ export function SyncedYouTubePlayer({
               type="submit"
               variant="contained"
             >
-              Встать в очередь
+              {queueSubmitting ? 'Проверяем видео…' : 'Встать в очередь'}
             </Button>
           </Box>
         </Fade>

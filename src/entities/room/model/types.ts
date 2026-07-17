@@ -16,3 +16,14 @@ export type Category = {
   id: number
   title: string
 }
+
+export type RoomQueueItem = {
+  createdAt: Timestamp | null
+  displayName: string
+  id: string
+  pending: boolean
+  photoURL: null | string
+  position: number
+  userId: string
+  videoId: string
+}
