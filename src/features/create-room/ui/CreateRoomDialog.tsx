@@ -1,8 +1,13 @@
-import { ChangeEvent, useEffect, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { toast } from 'react-toastify'
 
-import type { Category } from '@/entities/room'
+import {
+  getRoomNameKey,
+  ROOM_CATEGORIES,
+  ROOM_NAME_MAX_LENGTH,
+  type Category,
+} from '@/entities/room'
 import { MembersIcon } from '@/shared/ui/icons'
 import {
   Autocomplete,
@@ -13,7 +18,7 @@ import {
   TextField,
 } from '@mui/material'
 
-import { createRoom } from '../api/createRoom'
+import { createRoom, RoomNameAlreadyExistsError } from '../api/createRoom'
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -34,6 +39,7 @@ const style = {
 }
 
 interface CreateRoomDialogProps {
+  existingRoomNames: string[]
   onClose: () => void
   open: boolean
 }
@@ -44,20 +50,18 @@ interface CreateRoomFormValues {
   roomName: string
 }
 
-const categoryOptions: Category[] = [
-  { id: 1, title: 'Приколы' },
-  { id: 2, title: 'Весёлые песни' },
-  { id: 3, title: 'Научные фильмы' },
-  { id: 4, title: 'Космос' },
-]
-
-export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
+export function CreateRoomDialog({
+  existingRoomNames,
+  onClose,
+  open,
+}: CreateRoomDialogProps) {
   const {
     control,
     formState: { errors, isSubmitting },
     handleSubmit,
     register,
     reset,
+    setError,
     setValue,
     watch,
   } = useForm<CreateRoomFormValues>({
@@ -65,6 +69,10 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
   })
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const image = watch('image')
+  const existingRoomNameKeys = useMemo(
+    () => new Set(existingRoomNames.map(getRoomNameKey)),
+    [existingRoomNames],
+  )
 
   useEffect(() => {
     if (!image) {
@@ -88,6 +96,14 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
       reset()
       onClose()
     } catch (error) {
+      if (error instanceof RoomNameAlreadyExistsError) {
+        setError('roomName', {
+          message: error.message,
+          type: 'validate',
+        })
+        return
+      }
+
       toast.error(
         error instanceof Error ? error.message : 'Не удалось создать комнату.',
       )
@@ -145,16 +161,21 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                 error={Boolean(errors.roomName)}
                 fullWidth
                 helperText={errors.roomName?.message}
-                inputProps={{ maxLength: 80 }}
+                inputProps={{ maxLength: ROOM_NAME_MAX_LENGTH }}
                 label="Название комнаты"
                 {...register('roomName', {
                   maxLength: {
-                    message: 'Название не может быть длиннее 80 символов.',
-                    value: 80,
+                    message: `Название не может быть длиннее ${ROOM_NAME_MAX_LENGTH} символов.`,
+                    value: ROOM_NAME_MAX_LENGTH,
                   },
                   required: 'Обязательное поле.',
-                  validate: value =>
-                    Boolean(value.trim()) || 'Обязательное поле.',
+                  validate: {
+                    notBlank: value =>
+                      Boolean(value.trim()) || 'Обязательное поле.',
+                    unique: value =>
+                      !existingRoomNameKeys.has(getRoomNameKey(value)) ||
+                      'Комната с таким названием уже существует.',
+                  },
                 })}
                 sx={{
                   '&.MuiFilledInput': { backgroundColor: 'white' },
@@ -166,7 +187,7 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
 
             <div className="mb-6 border-b border-white pb-7">
               <span className="mb-3 block text-secondary-text">
-                Выберите категории видео (не более трёх)
+                Выберите музыкальные категории (не более трёх)
               </span>
 
               <Controller
@@ -184,14 +205,14 @@ export function CreateRoomDialog({ onClose, open }: CreateRoomDialogProps) {
                     multiple
                     noOptionsText="Нет категорий"
                     onChange={(_, newValue) => field.onChange(newValue)}
-                    options={categoryOptions}
+                    options={ROOM_CATEGORIES}
                     renderInput={params => (
                       <TextField
                         {...params}
                         error={Boolean(errors.categories)}
                         helperText={errors.categories?.message}
-                        label="Категории комнаты"
-                        placeholder="Начните вводить название категории"
+                        label="Жанры и направления"
+                        placeholder="Начните вводить жанр"
                       />
                     )}
                     value={field.value}

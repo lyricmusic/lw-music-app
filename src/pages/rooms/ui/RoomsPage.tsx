@@ -20,10 +20,7 @@ export function RoomsPage() {
     <div className="flex-1 rounded-[20px] bg-[#ECEDF2] px-10 py-7">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[38px]">Комнаты</h2>
-        <Button
-          onClick={() => setIsOpen(true)}
-          variant="outlined"
-        >
+        <Button onClick={() => setIsOpen(true)} variant="outlined">
           Создать комнату
         </Button>
       </div>
@@ -44,7 +41,11 @@ export function RoomsPage() {
         ))}
       </div>
 
-      <CreateRoomDialog onClose={() => setIsOpen(false)} open={isOpen} />
+      <CreateRoomDialog
+        existingRoomNames={rooms.map(room => room.name)}
+        onClose={() => setIsOpen(false)}
+        open={isOpen}
+      />
     </div>
   )
 }

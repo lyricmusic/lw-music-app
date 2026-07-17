@@ -104,6 +104,7 @@ service cloud.firestore {
           'imagePath',
           'imageUrl',
           'name',
+          'nameKey',
           'ownerId',
           'updatedAt'
         ])
@@ -113,6 +114,7 @@ service cloud.firestore {
           'imagePath',
           'imageUrl',
           'name',
+          'nameKey',
           'ownerId',
           'updatedAt'
         ])
@@ -120,6 +122,9 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 80
+        && request.resource.data.nameKey is string
+        && request.resource.data.nameKey.matches('v1:[^/]+')
+        && request.resource.data.nameKey.size() <= 1000
         && request.resource.data.imagePath is string
         && request.resource.data.imagePath.matches(
           'room-covers/' + roomId + '/[^/]+'
@@ -132,7 +137,54 @@ service cloud.firestore {
         && request.resource.data.imageUrl.size() <= 2048
         && request.resource.data.ownerId is string
         && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.updatedAt is timestamp
+        && existsAfter(
+          /databases/$(database)/documents/roomNames/$(request.resource.data.nameKey)
+        )
+        && getAfter(
+          /databases/$(database)/documents/roomNames/$(request.resource.data.nameKey)
+        ).data.roomId == roomId
+        && getAfter(
+          /databases/$(database)/documents/roomNames/$(request.resource.data.nameKey)
+        ).data.name == request.resource.data.name
+        && getAfter(
+          /databases/$(database)/documents/roomNames/$(request.resource.data.nameKey)
+        ).data.ownerId == request.resource.data.ownerId;
+    }
+
+    function hasValidRoomNameReservation(roomNameId) {
+      return request.resource.data.keys().hasAll([
+          'createdAt',
+          'name',
+          'ownerId',
+          'roomId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'name',
+          'ownerId',
+          'roomId'
+        ])
+        && roomNameId.matches('v1:[^/]+')
+        && roomNameId.size() <= 1000
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.roomId is string
+        && request.resource.data.createdAt == request.time
+        && existsAfter(
+          /databases/$(database)/documents/rooms/$(request.resource.data.roomId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/rooms/$(request.resource.data.roomId)
+        ).data.nameKey == roomNameId
+        && getAfter(
+          /databases/$(database)/documents/rooms/$(request.resource.data.roomId)
+        ).data.name == request.resource.data.name
+        && getAfter(
+          /databases/$(database)/documents/rooms/$(request.resource.data.roomId)
+        ).data.ownerId == request.resource.data.ownerId;
     }
 
     function hasValidPlaybackState() {
@@ -429,10 +481,27 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow update: if isOwner(resource.data.ownerId)
         && hasValidRoom(roomId)
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.nameKey == resource.data.nameKey
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time;
-      allow delete: if isOwner(resource.data.ownerId);
+      allow delete: if isOwner(resource.data.ownerId)
+        && (!('nameKey' in resource.data)
+          || !existsAfter(
+            /databases/$(database)/documents/roomNames/$(resource.data.nameKey)
+          ));
+    }
+
+    match /roomNames/{roomNameId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && hasValidRoomNameReservation(roomNameId);
+      allow update: if false;
+      allow delete: if isOwner(resource.data.ownerId)
+        && !existsAfter(
+          /databases/$(database)/documents/rooms/$(resource.data.roomId)
+        );
     }
 
     match /rooms/{roomId}/playback/{stateId} {
