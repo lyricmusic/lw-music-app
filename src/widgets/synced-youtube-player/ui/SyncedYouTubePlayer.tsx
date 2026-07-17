@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
 
 import {
   advanceRoomQueue,
   enqueueRoomVideo,
+  leaveRoomQueue,
   useRoomParticipants,
   useRoomQueue,
 } from '@/entities/room'
@@ -11,25 +11,23 @@ import { useSession } from '@/entities/session'
 import { db } from '@/shared/api/firebase'
 import {
   checkYouTubeVideoEmbeddable,
-  extractYouTubeVideoId,
   formatPlaybackTime,
   getYouTubeErrorMessage,
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
 import { Button } from '@/shared/ui/button'
-import { TextField } from '@/shared/ui/text-field'
 import {
   Avatar,
   Box,
   CircularProgress,
-  Fade,
-  Modal,
   Paper,
   Tab,
   Tabs,
   Typography,
 } from '@mui/material'
 import { Timestamp, doc, onSnapshot } from 'firebase/firestore'
+
+import { AddToQueueDialog } from './AddToQueueDialog'
 
 interface SyncedYouTubePlayerProps {
   roomId: string
@@ -46,10 +44,6 @@ interface PlaybackState {
   revision: number
   status: PlaybackStatus
   videoId: string
-}
-
-interface QueueFormValues {
-  videoUrl: string
 }
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
@@ -74,24 +68,6 @@ function allowAutoplay(player: YT.Player) {
   if (!allowedFeatures.some(feature => feature.startsWith('autoplay'))) {
     iframe.allow = [...allowedFeatures, 'autoplay'].join('; ')
   }
-}
-
-const queueDialogStyle = {
-  backgroundColor: '#D7DBF0',
-  borderRadius: '30px',
-  boxShadow: 24,
-  boxSizing: 'border-box',
-  left: '50%',
-  maxWidth: 'calc(100vw - 32px)',
-  padding: '50px 60px 60px',
-  position: 'absolute' as const,
-  top: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 833,
-  '@media (max-width: 640px)': {
-    borderRadius: '24px',
-    padding: '32px 24px 24px',
-  },
 }
 
 function parsePlaybackState(
@@ -163,13 +139,6 @@ export function SyncedYouTubePlayer({
   const suppressPlayerEventsUntilRef = useRef(0)
   const queueMutationRef = useRef(Promise.resolve())
 
-  const {
-    formState: { errors: queueFormErrors, isSubmitting: queueSubmitting },
-    handleSubmit: handleQueueSubmit,
-    register: registerQueueField,
-    reset: resetQueueForm,
-    setError: setQueueFormError,
-  } = useForm<QueueFormValues>({ defaultValues: { videoUrl: '' } })
   const [playerReady, setPlayerReady] = useState(false)
   const [muted, setMuted] = useState(true)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -179,6 +148,7 @@ export function SyncedYouTubePlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [queueDialogOpen, setQueueDialogOpen] = useState(false)
+  const [queueLeaving, setQueueLeaving] = useState(false)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
@@ -444,24 +414,11 @@ export function SyncedYouTubePlayer({
     return () => window.clearInterval(interval)
   }, [playerReady])
 
-  const handleJoinQueue = async ({ videoUrl }: QueueFormValues) => {
+  const handleJoinQueue = async (videoId: string) => {
     const player = playerRef.current
-    const videoId = extractYouTubeVideoId(videoUrl)
-
-    if (!videoId) {
-      setQueueFormError('videoUrl', {
-        message: 'Вставьте корректную ссылку YouTube или ID из 11 символов.',
-        type: 'validate',
-      })
-      return
-    }
 
     if (!profile || !user) {
-      setQueueFormError('videoUrl', {
-        message: 'Чтобы встать в очередь, войдите в аккаунт.',
-        type: 'server',
-      })
-      return
+      throw new Error('Чтобы встать в очередь, войдите в аккаунт.')
     }
 
     try {
@@ -484,18 +441,9 @@ export function SyncedYouTubePlayer({
           player.loadVideoById({ startSeconds: 0, videoId })
         }
       }
-
-      setQueueDialogOpen(false)
-      resetQueueForm()
     } catch (reason) {
       console.error('Не удалось добавить видео в очередь:', reason)
-      setQueueFormError('videoUrl', {
-        message:
-          reason instanceof Error
-            ? reason.message
-            : 'Не удалось добавить видео в очередь.',
-        type: 'server',
-      })
+      throw reason
     }
   }
 
@@ -513,12 +461,41 @@ export function SyncedYouTubePlayer({
     }
   }
 
-  const currentUserAlreadyQueued = queueItems.some(
+  const currentUserQueueItem = queueItems.find(
     queueItem => queueItem.userId === user?.uid,
   )
+  const currentUserAlreadyQueued = Boolean(currentUserQueueItem)
   const queueButtonDisabled =
-    queueLoading || !profile || !user || currentUserAlreadyQueued
+    queueLoading ||
+    queueLeaving ||
+    !user ||
+    currentUserQueueItem?.pending ||
+    (!currentUserAlreadyQueued && !profile)
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
+
+  const handleLeaveQueue = async () => {
+    if (!user || queueLeaving) return
+
+    setQueueLeaving(true)
+    try {
+      const { wasActive } = await leaveRoomQueue({ roomId })
+
+      if (wasActive) {
+        setLocalQueuedVideoId(null)
+        setAutoplayBlocked(false)
+      }
+      setError(null)
+    } catch (reason) {
+      console.error('Не удалось покинуть очередь:', reason)
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось покинуть очередь.',
+      )
+    } finally {
+      setQueueLeaving(false)
+    }
+  }
 
   return (
     <Box
@@ -723,10 +700,21 @@ export function SyncedYouTubePlayer({
                   }}
                 >
                   <Button
-                    aria-label="Встать в очередь"
+                    aria-label={
+                      currentUserAlreadyQueued
+                        ? 'Покинуть очередь'
+                        : 'Встать в очередь'
+                    }
+                    aria-busy={queueLeaving}
                     disabled={queueButtonDisabled}
                     fullWidth
-                    onClick={() => setQueueDialogOpen(true)}
+                    onClick={() => {
+                      if (currentUserAlreadyQueued) {
+                        void handleLeaveQueue()
+                      } else {
+                        setQueueDialogOpen(true)
+                      }
+                    }}
                     sx={{
                       '&.Mui-disabled': {
                         color: '#D7DBF0',
@@ -756,10 +744,14 @@ export function SyncedYouTubePlayer({
                         color: '#FFFFFF',
                       }}
                     >
-                      +
+                      {currentUserAlreadyQueued ? '−' : '+'}
                     </Box>
                     <Box className="min-w-0 truncate" component="span">
-                      Встать в очередь
+                      {queueLeaving
+                        ? 'Покидаем очередь…'
+                        : currentUserAlreadyQueued
+                          ? 'Покинуть очередь'
+                          : 'Встать в очередь'}
                     </Box>
                   </Button>
                 </Box>
@@ -858,138 +850,11 @@ export function SyncedYouTubePlayer({
         )}
       </Paper>
 
-      <Modal
-        aria-describedby="queue-dialog-description"
-        aria-labelledby="queue-dialog-title"
-        closeAfterTransition
-        onClose={() => {
-          if (!queueSubmitting) setQueueDialogOpen(false)
-        }}
+      <AddToQueueDialog
+        onClose={() => setQueueDialogOpen(false)}
+        onSubmit={handleJoinQueue}
         open={queueDialogOpen}
-        slotProps={{
-          backdrop: {
-            sx: { backgroundColor: 'rgba(20, 22, 42, 0.72)' },
-          },
-        }}
-      >
-        <Fade in={queueDialogOpen}>
-          <Box
-            component="form"
-            onSubmit={handleQueueSubmit(handleJoinQueue)}
-            sx={queueDialogStyle}
-          >
-            <Button
-              aria-label="Закрыть окно"
-              disabled={queueSubmitting}
-              onClick={() => setQueueDialogOpen(false)}
-              sx={{
-                '&:hover': { backgroundColor: 'transparent' },
-                backgroundColor: 'transparent',
-                height: '48px',
-                minWidth: '48px',
-                padding: 0,
-                position: 'absolute',
-                right: 0,
-                top: '-62px',
-                width: '48px',
-              }}
-            >
-              <Box
-                component="span"
-                sx={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: '999px',
-                  height: '4px',
-                  left: 0,
-                  position: 'absolute',
-                  top: '22px',
-                  transform: 'rotate(45deg)',
-                  width: '48px',
-                }}
-              />
-              <Box
-                component="span"
-                sx={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: '999px',
-                  height: '4px',
-                  left: 0,
-                  position: 'absolute',
-                  top: '22px',
-                  transform: 'rotate(-45deg)',
-                  width: '48px',
-                }}
-              />
-            </Button>
-
-            <Typography
-              component="h2"
-              id="queue-dialog-title"
-              sx={{ fontSize: '58px', lineHeight: 1.1, marginBottom: '20px' }}
-              variant="h2"
-            >
-              Добавление в очередь
-            </Typography>
-            <Typography
-              id="queue-dialog-description"
-              sx={{
-                color: '#8B8DB3',
-                fontSize: '26px',
-                lineHeight: '39px',
-                marginBottom: '16px',
-              }}
-            >
-              Введите ссылку на видео на YouTube
-            </Typography>
-
-            <TextField
-              error={Boolean(queueFormErrors.videoUrl)}
-              helperText={queueFormErrors.videoUrl?.message}
-              placeholder="Ссылка на видео"
-              {...registerQueueField('videoUrl', {
-                required: 'Введите ссылку на видео.',
-                validate: value =>
-                  Boolean(extractYouTubeVideoId(value)) ||
-                  'Вставьте корректную ссылку YouTube или ID из 11 символов.',
-              })}
-              sx={{
-                marginBottom: '30px',
-                '& .MuiFormHelperText-root': {
-                  marginLeft: '12px',
-                },
-                '& .MuiFilledInput-root': {
-                  borderRadius: '16px',
-                  height: '66px',
-                },
-                '& .MuiFilledInput-input': {
-                  fontSize: '20px',
-                  height: '66px',
-                  padding: '0 30px',
-                },
-              }}
-            />
-
-            <Button
-              disabled={queueSubmitting}
-              fullWidth
-              sx={{
-                '&.Mui-disabled': { color: '#FFFFFF', opacity: 0.6 },
-                '&:hover': { backgroundColor: '#5D5FD4' },
-                backgroundColor: '#6F70E7',
-                borderRadius: '16px',
-                color: '#FFFFFF',
-                fontSize: '22px',
-                height: '78px',
-                padding: 0,
-              }}
-              type="submit"
-              variant="contained"
-            >
-              {queueSubmitting ? 'Проверяем видео…' : 'Встать в очередь'}
-            </Button>
-          </Box>
-        </Fade>
-      </Modal>
+      />
     </Box>
   )
 }

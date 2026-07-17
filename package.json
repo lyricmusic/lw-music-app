@@ -20,7 +20,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\""
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

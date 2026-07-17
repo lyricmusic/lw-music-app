@@ -166,46 +166,124 @@ service cloud.firestore {
 
     function hasValidQueueState() {
       let activePosition = request.resource.data.activePosition;
+      let itemIds = request.resource.data.itemIds;
       let lastPosition = request.resource.data.lastPosition;
       return request.resource.data.keys().hasAll([
           'activePosition',
+          'itemIds',
           'lastPosition',
           'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
           'activePosition',
+          'itemIds',
           'lastPosition',
           'updatedAt'
         ])
-        && (activePosition == null
-          || (activePosition is int
+        && itemIds is list
+        && itemIds.size() <= 50
+        && itemIds.toSet().size() == itemIds.size()
+        && (
+          (itemIds.size() == 0 && activePosition == null)
+          || (itemIds.size() > 0
+            && activePosition is int
             && activePosition > 0
-            && activePosition <= lastPosition))
+            && activePosition <= lastPosition)
+        )
         && lastPosition is int
         && lastPosition >= 0
         && lastPosition <= 999999999999
         && request.resource.data.updatedAt == request.time;
     }
 
-    function hasValidQueueStateUpdate() {
+    function getCallerQueueItemId(roomId) {
+      return get(
+        /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
+      ).data.itemId;
+    }
+
+    function isQueueItemRemovedAfter(roomId, itemId) {
+      return !existsAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId)
+      );
+    }
+
+    function hasWaitingQueueItemRemoval(roomId, previousActive) {
+      let itemId = getCallerQueueItemId(roomId);
+      return get(
+          /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId)
+        ).data.position > previousActive
+        && isQueueItemRemovedAfter(roomId, itemId);
+    }
+
+    function hasValidQueueStateUpdate(roomId) {
       let previousActive = resource.data.activePosition;
       let previousLast = resource.data.lastPosition;
+      let previousHasItemIds = resource.data.keys().hasAll(['itemIds']);
+      let previousItemCount = previousHasItemIds
+        ? resource.data.itemIds.size()
+        : (previousActive == null ? 0 : previousLast - previousActive + 1);
       let nextActive = request.resource.data.activePosition;
+      let nextItemIds = request.resource.data.itemIds;
+      let nextItemCount = nextItemIds.size();
+      let appendedItemId = nextItemCount > previousItemCount
+        ? nextItemIds[nextItemCount - 1]
+        : '';
       let nextLast = request.resource.data.lastPosition;
       return (
           nextLast == previousLast + 1
+          && nextItemCount == previousItemCount + 1
           && (
             (previousActive == null && nextActive == nextLast)
             || (previousActive != null && nextActive == previousActive)
           )
+          && (!previousHasItemIds
+            || nextItemIds[0:previousItemCount] == resource.data.itemIds)
+          && appendedItemId is string
+          && appendedItemId.matches('[0-9]{12}')
+          && existsAfter(
+            /databases/$(database)/documents/rooms/$(roomId)/queue/$(appendedItemId)
+          )
         ) || (
           nextLast == previousLast
           && previousActive != null
+          && previousItemCount > 0
+          && nextItemCount == previousItemCount - 1
           && (
-            (previousActive < previousLast
-              && nextActive == previousActive + 1)
-            || (previousActive == previousLast && nextActive == null)
+            (
+              (
+                (nextItemCount == 0 && nextActive == null)
+                || (nextItemCount > 0
+                  && nextActive is int
+                  && nextActive > previousActive)
+              )
+              && (!previousHasItemIds
+                || nextItemCount == 0
+                || nextItemIds == resource.data.itemIds[1:previousItemCount])
+              && (!previousHasItemIds
+                || isQueueItemRemovedAfter(roomId, resource.data.itemIds[0]))
+            )
+            || (
+              nextActive == previousActive
+              && exists(
+                /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
+              )
+              && hasWaitingQueueItemRemoval(roomId, previousActive)
+              && (!previousHasItemIds
+                || nextItemIds == resource.data.itemIds.removeAll([
+                  getCallerQueueItemId(roomId)
+                ]))
+            )
           )
+        );
+    }
+
+    function hasInitialQueueItem(roomId) {
+      let itemId = request.resource.data.itemIds[0];
+      return itemId is string
+        && itemId.matches('[0-9]{12}')
+        && existsAfter(
+          /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId)
         );
     }
 
@@ -242,6 +320,7 @@ service cloud.firestore {
         && request.resource.data.position is int
         && request.resource.data.position > 0
         && request.resource.data.position == queueState.lastPosition
+        && itemId in queueState.itemIds
         && queueMember.itemId == itemId
         && queueMember.userId == request.auth.uid
         && request.resource.data.videoId is string
@@ -270,19 +349,24 @@ service cloud.firestore {
         && queueItem.userId == request.auth.uid;
     }
 
-    function canDeleteQueueItem(roomId) {
+    function canDeleteQueueItem(roomId, itemId) {
+      let previousQueueState = get(
+        /databases/$(database)/documents/rooms/$(roomId)/queueState/current
+      ).data;
       let nextQueueState = getAfter(
         /databases/$(database)/documents/rooms/$(roomId)/queueState/current
       ).data;
       return !existsAfter(
           /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(resource.data.userId)
         )
-        && (
-          (nextQueueState.activePosition == null
-            && resource.data.position == nextQueueState.lastPosition)
-          || (nextQueueState.activePosition is int
-            && resource.data.position == nextQueueState.activePosition - 1)
-        );
+        && nextQueueState.itemIds is list
+        && !(itemId in nextQueueState.itemIds)
+        && (request.auth.uid == resource.data.userId
+          || (previousQueueState.keys().hasAll(['itemIds'])
+            && previousQueueState.itemIds.size() > 0
+            && previousQueueState.itemIds[0] == itemId)
+          || (!previousQueueState.keys().hasAll(['itemIds'])
+            && previousQueueState.activePosition == resource.data.position));
     }
 
     function hasValidMessage() {
@@ -371,11 +455,13 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/rooms/$(roomId))
         && hasValidQueueState()
         && request.resource.data.activePosition == 1
-        && request.resource.data.lastPosition == 1;
+        && request.resource.data.lastPosition == 1
+        && request.resource.data.itemIds.size() == 1
+        && hasInitialQueueItem(roomId);
       allow update: if isSignedIn()
         && stateId == 'current'
         && hasValidQueueState()
-        && hasValidQueueStateUpdate();
+        && hasValidQueueStateUpdate(roomId);
       allow delete: if false;
     }
 
@@ -387,7 +473,7 @@ service cloud.firestore {
         && itemId.matches('[0-9]{12}')
         && hasValidQueueItem(roomId, itemId);
       allow update: if false;
-      allow delete: if isSignedIn() && canDeleteQueueItem(roomId);
+      allow delete: if isSignedIn() && canDeleteQueueItem(roomId, itemId);
     }
 
     match /rooms/{roomId}/queueMembers/{memberId} {
