@@ -1,19 +1,28 @@
 import { useState } from 'react'
-import { useMatch } from 'react-router-dom'
+import { useMatch, useNavigate } from 'react-router-dom'
 
 import logo from '@assets/lw.svg'
 
 import { useRoomName } from '@/entities/room'
 import { routes } from '@/shared/config/routes'
 import { MemberIcon } from '@/shared/ui/icons'
-import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material'
+import {
+  AppBar,
+  Box,
+  Button,
+  IconButton,
+  Toolbar,
+  Typography,
+} from '@mui/material'
 
 import { UserMenu } from './UserMenu'
 // TODO тест удалить
 export function AppHeader() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const navigate = useNavigate()
   const roomMatch = useMatch(routes.roomPattern)
   const roomName = useRoomName(roomMatch?.params.roomId)
+  const isInRoom = Boolean(roomMatch)
 
   return (
     <AppBar
@@ -22,7 +31,10 @@ export function AppHeader() {
       position="static"
       sx={{
         backgroundColor: '#2A2B47',
-        borderRadius: '0 0 20px 20px',
+        borderBottomLeftRadius: '20px',
+        borderBottomRightRadius: '20px',
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
         boxShadow: 'none',
         flexShrink: 0,
         height: '84px',
@@ -63,6 +75,7 @@ export function AppHeader() {
                 color: '#FFFFFF',
                 fontSize: '32px',
                 lineHeight: 1.2,
+                marginBottom: 0,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -74,28 +87,59 @@ export function AppHeader() {
           )}
         </Box>
 
-        <Box sx={{ flexShrink: 0, position: 'relative' }}>
-          <IconButton
-            aria-expanded={isUserMenuOpen}
-            aria-haspopup="menu"
-            aria-label="Открыть меню пользователя"
-            onClick={() => setIsUserMenuOpen(current => !current)}
-            sx={{
-              '&:hover': { backgroundColor: '#25263E' },
-              backgroundColor: '#25263E',
-              borderRadius: '12px',
-              height: '52px',
-              padding: 0,
-              position: 'relative',
-              width: '52px',
-              zIndex: 20,
-            }}
-            type="button"
-          >
-            <MemberIcon sx={{ color: '#FFFFFF' }} />
-          </IconButton>
+        <Box sx={{ alignItems: 'center', display: 'flex', flexShrink: 0, gap: 2 }}>
+          {isInRoom && (
+            <Button
+              color="inherit"
+              onClick={() => navigate(routes.rooms)}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  borderColor: '#FFFFFF',
+                },
+                borderColor: '#FFFFFF',
+                borderRadius: '12px',
+                borderWidth: '2px',
+                color: '#FFFFFF',
+                height: '52px',
+                textTransform: 'uppercase',
+                width: '215px',
+              }}
+              variant="outlined"
+            >
+              Покинуть комнату
+            </Button>
+          )}
 
-          {isUserMenuOpen && <UserMenu />}
+          <Box sx={{ position: 'relative' }}>
+            <IconButton
+              aria-expanded={isUserMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Открыть меню пользователя"
+              onClick={() => setIsUserMenuOpen(current => !current)}
+              sx={{
+                '&:hover': { backgroundColor: '#FFFFFF' },
+                backgroundColor: '#FFFFFF',
+                borderRadius: '8px',
+                height: '52px',
+                padding: 0,
+                position: 'relative',
+                width: '52px',
+                zIndex: 20,
+              }}
+              type="button"
+            >
+              <MemberIcon
+                sx={{
+                  '& path': { fill: '#6F70E7' },
+                  height: '22px',
+                  width: '18px',
+                }}
+              />
+            </IconButton>
+
+            {isUserMenuOpen && <UserMenu />}
+          </Box>
         </Box>
       </Toolbar>
     </AppBar>

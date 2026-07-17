@@ -10,7 +10,9 @@ import { appTheme } from '../styles/theme'
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider theme={appTheme}>
-      <GlobalStyles styles={{ body: { color: '#25263E' } }} />
+      <GlobalStyles
+        styles={{ body: { backgroundColor: '#3F3F59', color: '#25263E' } }}
+      />
       <ToastContainer
         autoClose={5000}
         closeOnClick
