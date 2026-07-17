@@ -73,6 +73,12 @@ export function ProfileOnboardingDialog({
   })
 
   useEffect(() => {
+    if (user?.isAnonymous && !avatarFile && !selectedPresetId) {
+      setValue('presetAvatarId', 'pulse', { shouldValidate: true })
+    }
+  }, [avatarFile, selectedPresetId, setValue, user?.isAnonymous])
+
+  useEffect(() => {
     if (!avatarFile) {
       setAvatarPreviewUrl(null)
       return
@@ -164,7 +170,7 @@ export function ProfileOnboardingDialog({
             marginBottom: '18px',
           }}
         >
-          Вы зарегистрированы
+          {user?.isAnonymous ? 'Вход в комнату' : 'Вы зарегистрированы'}
         </Typography>
 
         <Box
@@ -331,28 +337,30 @@ export function ProfileOnboardingDialog({
             </Box>
           </Box>
 
-          <Button
-            component="label"
-            disabled={isSubmitting}
-            fullWidth
-            sx={{
-              '&.MuiButton-colorPrimary.MuiButton-outlined': {
-                borderColor: '#FFFFFF',
-                color: '#FFFFFF',
-              },
-              marginTop: '18px',
-              textTransform: 'uppercase',
-            }}
-            variant="outlined"
-          >
-            Загрузить свой аватар
-            <input
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={handleAvatarFile}
-              type="file"
-            />
-          </Button>
+          {!user?.isAnonymous && (
+            <Button
+              component="label"
+              disabled={isSubmitting}
+              fullWidth
+              sx={{
+                '&.MuiButton-colorPrimary.MuiButton-outlined': {
+                  borderColor: '#FFFFFF',
+                  color: '#FFFFFF',
+                },
+                marginTop: '18px',
+                textTransform: 'uppercase',
+              }}
+              variant="outlined"
+            >
+              Загрузить свой аватар
+              <input
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                onChange={handleAvatarFile}
+                type="file"
+              />
+            </Button>
+          )}
 
           {(formError || errors.presetAvatarId) && (
             <Typography
@@ -373,6 +381,8 @@ export function ProfileOnboardingDialog({
         >
           {isSubmitting ? (
             <CircularProgress color="inherit" size={22} />
+          ) : user?.isAnonymous ? (
+            'Войти в комнату'
           ) : (
             'Готово'
           )}

@@ -4,6 +4,11 @@ import { db, realtimeDb } from '@/shared/api/firebase'
 import { onValue, ref } from 'firebase/database'
 import { collection, onSnapshot } from 'firebase/firestore'
 
+import {
+  parseRoomSettings,
+  parseRoomStatus,
+  parseRoomVisibility,
+} from '../model/roomAccess'
 import type { Category, Room } from '../model/types'
 
 type RoomWithoutPresence = Omit<Room, 'participantCount'>
@@ -33,7 +38,10 @@ export function useRooms() {
             imageUrl: typeof data.imageUrl === 'string' ? data.imageUrl : '',
             name: typeof data.name === 'string' ? data.name : '',
             ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
+            settings: parseRoomSettings(data.settings),
+            status: parseRoomStatus(data.status),
             updatedAt: data.updatedAt,
+            visibility: parseRoomVisibility(data.visibility),
           } satisfies RoomWithoutPresence
         })
 

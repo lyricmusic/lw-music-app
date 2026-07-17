@@ -7,7 +7,7 @@ import { AppHeader } from '@/widgets/app-header'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
 import { CircularProgress } from '@mui/material'
 
-import { GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
+import { DirectRoomRoute, GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
 
 const NotFoundPage = lazy(() =>
   import('@/pages/not-found').then(module => ({
@@ -100,6 +100,11 @@ export function AppRouter() {
         <Route element={<ProtectedRoute />}>
           <Route element={<AuthenticatedLayout />}>
             <Route element={<RoomsPage />} path={routes.rooms} />
+          </Route>
+        </Route>
+
+        <Route element={<DirectRoomRoute />}>
+          <Route element={<AuthenticatedLayout />}>
             <Route element={<RoomPage />} path={routes.roomPattern} />
           </Route>
         </Route>

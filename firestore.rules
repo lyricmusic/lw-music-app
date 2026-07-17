@@ -6,6 +6,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAnonymous() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -67,7 +72,11 @@ service cloud.firestore {
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 50
-        && request.resource.data.email == request.auth.token.email
+        && (
+          (isAnonymous() && request.resource.data.email == '')
+          || (!isAnonymous()
+            && request.resource.data.email == request.auth.token.email)
+        )
         && request.resource.data.onboardingCompleted is bool
         && (request.resource.data.photoURL == null
           || (request.resource.data.photoURL is string
@@ -97,6 +106,146 @@ service cloud.firestore {
         && (categories.size() < 3 || hasValidCategory(categories[2]));
     }
 
+    function hasValidRoomSettings(settings) {
+      return settings is map
+        && settings.keys().hasAll([
+          'allowGuestChat',
+          'allowGuestQueue',
+          'slowModeSeconds'
+        ])
+        && settings.keys().hasOnly([
+          'allowGuestChat',
+          'allowGuestQueue',
+          'slowModeSeconds'
+        ])
+        && settings.allowGuestChat is bool
+        && settings.allowGuestQueue is bool
+        && settings.slowModeSeconds is int
+        && settings.slowModeSeconds >= 0
+        && settings.slowModeSeconds <= 300;
+    }
+
+    function hasValidRoomMemberData(member) {
+      return member is map
+        && member.keys().hasAll([
+          'invitedBy',
+          'isGuest',
+          'joinedAt',
+          'role',
+          'status'
+        ])
+        && member.keys().hasOnly([
+          'invitedBy',
+          'isGuest',
+          'joinedAt',
+          'role',
+          'status'
+        ])
+        && (member.invitedBy == null
+          || (member.invitedBy is string
+            && member.invitedBy.size() > 0
+            && member.invitedBy.size() <= 128))
+        && member.isGuest is bool
+        && member.joinedAt is timestamp
+        && member.role in ['host', 'member', 'moderator', 'owner']
+        && member.status in ['active', 'left'];
+    }
+
+    function hasValidInitialOwnerMember(roomId) {
+      let ownerMember = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)
+      ).data;
+      return existsAfter(
+          /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)
+        )
+        && hasValidRoomMemberData(ownerMember)
+        && ownerMember.invitedBy == null
+        && ownerMember.isGuest == false
+        && ownerMember.joinedAt == request.time
+        && ownerMember.role == 'owner'
+        && ownerMember.status == 'active';
+    }
+
+    function isRoomActive(room) {
+      return !('status' in room) || room.status == 'active';
+    }
+
+    function isRoomOpenForDirectJoin(room) {
+      return isRoomActive(room)
+        && (!('visibility' in room)
+          || room.visibility in ['public', 'unlisted']);
+    }
+
+    function isActiveRoomMember(roomId) {
+      return isSignedIn()
+        && exists(
+          /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)
+        ).data.status == 'active';
+    }
+
+    function canAccessRoom(roomId) {
+      let roomPath = /databases/$(database)/documents/rooms/$(roomId);
+      return isSignedIn()
+        && (
+          !isAnonymous()
+          || (exists(roomPath)
+            && isRoomActive(get(roomPath).data)
+            && (isRoomOpenForDirectJoin(get(roomPath).data)
+              || isActiveRoomMember(roomId)))
+        );
+    }
+
+    function canParticipateInRoom(roomId) {
+      return canAccessRoom(roomId)
+        && (!isAnonymous() || isActiveRoomMember(roomId));
+    }
+
+    function guestCanChat(roomId) {
+      let room = get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data;
+      return !isAnonymous()
+        || !('settings' in room)
+        || room.settings.allowGuestChat == true;
+    }
+
+    function guestCanUseQueue(roomId) {
+      let room = get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data;
+      return !isAnonymous()
+        || !('settings' in room)
+        || room.settings.allowGuestQueue == true;
+    }
+
+    function hasValidSelfJoinedMember(roomId, memberId) {
+      let room = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data;
+      let member = request.resource.data;
+      return memberId == request.auth.uid
+        && existsAfter(
+          /databases/$(database)/documents/rooms/$(roomId)
+        )
+        && hasValidRoomMemberData(member)
+        && member.invitedBy == null
+        && member.joinedAt == request.time
+        && member.status == 'active'
+        && (
+          (!isAnonymous()
+            && room.ownerId == request.auth.uid
+            && member.isGuest == false
+            && member.role == 'owner')
+          || (room.ownerId != request.auth.uid
+            && isRoomOpenForDirectJoin(room)
+            && member.isGuest == isAnonymous()
+            && member.role == 'member')
+        );
+    }
+
     function hasValidRoom(roomId) {
       return request.resource.data.keys().hasAll([
           'categories',
@@ -106,7 +255,10 @@ service cloud.firestore {
           'name',
           'nameKey',
           'ownerId',
-          'updatedAt'
+          'settings',
+          'status',
+          'updatedAt',
+          'visibility'
         ])
         && request.resource.data.keys().hasOnly([
           'categories',
@@ -116,7 +268,10 @@ service cloud.firestore {
           'name',
           'nameKey',
           'ownerId',
-          'updatedAt'
+          'settings',
+          'status',
+          'updatedAt',
+          'visibility'
         ])
         && hasValidCategories()
         && request.resource.data.name is string
@@ -136,8 +291,11 @@ service cloud.firestore {
         )
         && request.resource.data.imageUrl.size() <= 2048
         && request.resource.data.ownerId is string
+        && hasValidRoomSettings(request.resource.data.settings)
+        && request.resource.data.status in ['active', 'archived']
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp
+        && request.resource.data.visibility in ['private', 'public', 'unlisted']
         && existsAfter(
           /databases/$(database)/documents/roomNames/$(request.resource.data.nameKey)
         )
@@ -473,9 +631,12 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId} {
-      allow read: if isSignedIn();
+      allow get: if canAccessRoom(roomId);
+      allow list: if isSignedIn() && !isAnonymous();
       allow create: if isSignedIn()
+        && !isAnonymous()
         && hasValidRoom(roomId)
+        && hasValidInitialOwnerMember(roomId)
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
@@ -493,8 +654,15 @@ service cloud.firestore {
           ));
     }
 
+    match /rooms/{roomId}/members/{memberId} {
+      allow read: if canAccessRoom(roomId);
+      allow create: if isSignedIn()
+        && hasValidSelfJoinedMember(roomId, memberId);
+      allow update, delete: if false;
+    }
+
     match /roomNames/{roomNameId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && !isAnonymous();
       allow create: if isSignedIn()
         && hasValidRoomNameReservation(roomNameId);
       allow update: if false;
@@ -505,21 +673,22 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/playback/{stateId} {
-      allow read: if isSignedIn() && stateId == 'current';
-      allow create: if isSignedIn()
+      allow read: if canAccessRoom(roomId) && stateId == 'current';
+      allow create: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && hasValidPlaybackState()
         && request.resource.data.revision == 1;
-      allow update: if isSignedIn()
+      allow update: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && hasValidPlaybackState()
         && request.resource.data.revision == resource.data.revision + 1;
-      allow delete: if isSignedIn() && stateId == 'current';
+      allow delete: if canParticipateInRoom(roomId) && stateId == 'current';
     }
 
     match /rooms/{roomId}/queueState/{stateId} {
-      allow read: if isSignedIn() && stateId == 'current';
-      allow create: if isSignedIn()
+      allow read: if canAccessRoom(roomId) && stateId == 'current';
+      allow create: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
         && stateId == 'current'
         && exists(/databases/$(database)/documents/rooms/$(roomId))
         && hasValidQueueState()
@@ -527,7 +696,8 @@ service cloud.firestore {
         && request.resource.data.lastPosition == 1
         && request.resource.data.itemIds.size() == 1
         && hasInitialQueueItem(roomId);
-      allow update: if isSignedIn()
+      allow update: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
         && stateId == 'current'
         && hasValidQueueState()
         && hasValidQueueStateUpdate(roomId);
@@ -535,34 +705,40 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId}/queue/{itemId} {
-      allow read: if isSignedIn()
+      allow read: if canAccessRoom(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId));
-      allow create: if isSignedIn()
+      allow create: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId))
         && itemId.matches('[0-9]{12}')
         && hasValidQueueItem(roomId, itemId);
       allow update: if false;
-      allow delete: if isSignedIn() && canDeleteQueueItem(roomId, itemId);
+      allow delete: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
+        && canDeleteQueueItem(roomId, itemId);
     }
 
     match /rooms/{roomId}/queueMembers/{memberId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
+      allow read: if canAccessRoom(roomId);
+      allow create: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
         && !exists(
           /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(memberId)
         )
         && hasValidQueueMember(roomId, memberId);
       allow update: if false;
-      allow delete: if isSignedIn()
+      allow delete: if canParticipateInRoom(roomId)
+        && guestCanUseQueue(roomId)
         && !existsAfter(
           /databases/$(database)/documents/rooms/$(roomId)/queue/$(resource.data.itemId)
         );
     }
 
     match /rooms/{roomId}/messages/{messageId} {
-      allow read: if isSignedIn()
+      allow read: if canAccessRoom(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId));
-      allow create: if isSignedIn()
+      allow create: if canParticipateInRoom(roomId)
+        && guestCanChat(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId))
         && exists(
           /databases/$(database)/documents/users/$(request.auth.uid)

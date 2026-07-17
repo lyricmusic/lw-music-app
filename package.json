@@ -21,6 +21,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "verify:room-model-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-model-rules.mjs\"",
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\""
   },
   "dependencies": {

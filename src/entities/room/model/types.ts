@@ -9,7 +9,32 @@ export type Room = {
   name: string
   ownerId: string
   participantCount: number
+  settings: RoomSettings
+  status: RoomStatus
   updatedAt: Timestamp
+  visibility: RoomVisibility
+}
+
+export type RoomVisibility = 'private' | 'public' | 'unlisted'
+
+export type RoomStatus = 'active' | 'archived'
+
+export type RoomSettings = {
+  allowGuestChat: boolean
+  allowGuestQueue: boolean
+  slowModeSeconds: number
+}
+
+export type RoomMemberRole = 'host' | 'member' | 'moderator' | 'owner'
+
+export type RoomMemberStatus = 'active' | 'left'
+
+export type RoomMember = {
+  invitedBy: null | string
+  isGuest: boolean
+  joinedAt: Timestamp
+  role: RoomMemberRole
+  status: RoomMemberStatus
 }
 
 export type Category = {

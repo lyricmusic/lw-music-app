@@ -111,6 +111,29 @@ users/{uid}
   createdAt: timestamp
   updatedAt: timestamp
 
+rooms/{roomId}
+  categories: Category[]
+  imagePath: string
+  imageUrl: string
+  name: string
+  nameKey: string
+  ownerId: uid
+  visibility: "public" | "unlisted" | "private"
+  status: "active" | "archived"
+  settings:
+    allowGuestChat: boolean
+    allowGuestQueue: boolean
+    slowModeSeconds: integer
+  createdAt: timestamp
+  updatedAt: timestamp
+
+rooms/{roomId}/members/{uid}
+  invitedBy: uid | null
+  isGuest: boolean
+  joinedAt: timestamp
+  role: "owner" | "host" | "moderator" | "member"
+  status: "active" | "left"
+
 rooms/{roomId}/playback/current
   videoId: string
   status: "playing" | "paused"
@@ -141,13 +164,12 @@ YouTube-видеопоток через Firebase не передаётся. Ка
 
 Запись выполняется транзакцией с последовательным увеличением `revision`. События, вызванные удалённой синхронизацией, временно не отправляются обратно, чтобы не возникал цикл play/pause.
 
-Текущая роль ведущего — режим MVP для разработки: любой авторизованный клиент технически может записать корректное состояние плеера. Следующий этап — коллекции `members` и `queue`, назначение `controllerUid` транзакцией и проверка контроллера в Security Rules.
+Текущая роль ведущего — режим MVP для разработки: любой участник комнаты технически может записать корректное состояние плеера. Владелец получает membership при создании комнаты. Пользователь, открывший прямую ссылку на публичную или скрытую комнату без аккаунта, входит через Firebase Anonymous Auth, завершает облегчённый профиль и получает роль `member`. Приватная или архивная комната не допускает самостоятельное гостевое присоединение.
 
 ## Следующие этапы
 
-1. Реализовать участников комнаты и очередь роликов.
-2. Ограничить запись playback только активным участником очереди.
-3. Добавить online presence через Firebase Realtime Database и `onDisconnect`.
-4. Добавить удаление старого пользовательского аватара при его замене.
-5. Добавить Firebase Emulator Suite и автоматические тесты Security Rules.
-6. Включить App Check перед публичным запуском.
+1. Добавить приглашения в приватные комнаты и восстановление membership со статусом `left`.
+2. Применить `visibility` при чтении списка комнат: публичные показывать всем зарегистрированным пользователям, скрытые открывать только по ссылке, приватные — только участникам.
+3. Добавить управление ролями владельца, ведущего и модератора.
+4. Ограничить запись playback ролью или активной позицией очереди.
+5. Добавить жалобы, блокировки, rate limiting и App Check.

@@ -8,6 +8,9 @@ import {
 } from 'firebase/firestore'
 
 import {
+  DEFAULT_ROOM_SETTINGS,
+  DEFAULT_ROOM_STATUS,
+  DEFAULT_ROOM_VISIBILITY,
   getRoomNameKey,
   normalizeRoomName,
   ROOM_NAME_MAX_LENGTH,
@@ -46,6 +49,7 @@ export async function createRoom({ categories, image, name }: CreateRoomInput) {
   }
 
   const roomRef = doc(collection(db, 'rooms'))
+  const ownerMemberRef = doc(db, 'rooms', roomRef.id, 'members', user.uid)
   const nameKey = getRoomNameKey(normalizedName)
   const roomNameRef = doc(db, 'roomNames', nameKey)
   let uploadedObjectKey: null | string = null
@@ -98,7 +102,17 @@ export async function createRoom({ categories, image, name }: CreateRoomInput) {
         name: normalizedName,
         nameKey,
         ownerId: user.uid,
+        settings: DEFAULT_ROOM_SETTINGS,
+        status: DEFAULT_ROOM_STATUS,
         updatedAt: serverTimestamp(),
+        visibility: DEFAULT_ROOM_VISIBILITY,
+      })
+      transaction.set(ownerMemberRef, {
+        invitedBy: null,
+        isGuest: user.isAnonymous,
+        joinedAt: serverTimestamp(),
+        role: 'owner',
+        status: 'active',
       })
     })
 
