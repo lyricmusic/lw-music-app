@@ -134,10 +134,10 @@
 :root {
   --color-accent: #b79eff;
   --color-auth-card: #2a2b47;
-  --color-auth-google-background-default: transparent;
-  --color-auth-google-background-hover: #fff;
-  --color-auth-google-background-pressed: #fff;
-  --color-auth-google-border: #fff;
+  --color-auth-provider-background-default: transparent;
+  --color-auth-provider-background-hover: #fff;
+  --color-auth-provider-background-pressed: #fff;
+  --color-auth-provider-border: #fff;
   --color-auth-muted: #8d8bb3;
   --color-auth-text: #fff;
   --color-brand: #25263e;

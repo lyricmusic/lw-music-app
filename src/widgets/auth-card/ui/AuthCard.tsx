@@ -1,15 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 
 import {
   SignInForm,
   SignUpForm,
+  getAuthDestination,
   getAuthErrorMessage,
-  signInWithGoogle,
+  signInWithYandex,
 } from '@/features/auth'
-import { routes } from '@/shared/config/routes'
-import { GoogleIcon } from '@/shared/ui/icons'
+import { YandexIcon } from '@/shared/ui/icons'
 import { Button, CircularProgress } from '@mui/material'
 import logo from '@assets/lw.svg'
 
@@ -18,18 +18,19 @@ interface AuthCardProps {
 }
 
 export function AuthCard({ mode }: AuthCardProps) {
+  const location = useLocation()
   const navigate = useNavigate()
-  const [googleLoading, setGoogleLoading] = useState(false)
+  const [yandexLoading, setYandexLoading] = useState(false)
 
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true)
+  const handleYandexLogin = async () => {
+    setYandexLoading(true)
     try {
-      await signInWithGoogle()
-      navigate(routes.rooms, { replace: true })
+      await signInWithYandex()
+      navigate(getAuthDestination(location.state), { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))
     } finally {
-      setGoogleLoading(false)
+      setYandexLoading(false)
     }
   }
 
@@ -48,22 +49,22 @@ export function AuthCard({ mode }: AuthCardProps) {
       {mode === 'sign-in' ? <SignInForm /> : <SignUpForm />}
 
       <Button
-        disabled={googleLoading}
-        onClick={handleGoogleLogin}
+        disabled={yandexLoading}
+        onClick={handleYandexLogin}
         sx={{
           '&.MuiButton-colorPrimary.MuiButton-outlined': {
             '&:active, &:active:hover': {
-              backgroundColor: 'var(--color-auth-google-background-pressed)',
-              borderColor: 'var(--color-auth-google-border)',
+              backgroundColor: 'var(--color-auth-provider-background-pressed)',
+              borderColor: 'var(--color-auth-provider-border)',
               color: 'var(--color-auth-card)',
             },
             '&:hover': {
-              backgroundColor: 'var(--color-auth-google-background-hover)',
-              borderColor: 'var(--color-auth-google-border)',
+              backgroundColor: 'var(--color-auth-provider-background-hover)',
+              borderColor: 'var(--color-auth-provider-border)',
               color: 'var(--color-auth-card)',
             },
-            backgroundColor: 'var(--color-auth-google-background-default)',
-            border: '2px solid var(--color-auth-google-border)',
+            backgroundColor: 'var(--color-auth-provider-background-default)',
+            border: '2px solid var(--color-auth-provider-border)',
             color: 'var(--color-auth-text)',
           },
           borderRadius: '12px',
@@ -73,12 +74,14 @@ export function AuthCard({ mode }: AuthCardProps) {
         }}
         variant="outlined"
       >
-        {googleLoading ? (
+        {yandexLoading ? (
           <CircularProgress color="inherit" size={22} />
         ) : (
           <>
-            <GoogleIcon className="mr-3" />
-            Войти через Google
+            <YandexIcon className="mr-3" />
+            {mode === 'sign-in'
+              ? 'Войти через Яндекс'
+              : 'Зарегистрироваться через Яндекс'}
           </>
         )}
       </Button>

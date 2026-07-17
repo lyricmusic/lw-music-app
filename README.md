@@ -22,7 +22,7 @@ src/
 
 ## Что уже работает
 
-- Firebase Authentication: регистрация и вход по e-mail/паролю, вход через Google, восстановление сессии и выход.
+- Firebase Authentication: регистрация и вход по e-mail/паролю, вход через Яндекс ID посредством Firebase custom token, восстановление сессии и выход.
 - Профили пользователей и обязательный онбординг после регистрации в Cloud Firestore (`users/{uid}`).
 - Все пользовательские формы работают через React Hook Form; для текущих простых правил отдельный слой Zod не используется.
 - Защищённые маршруты комнат.
@@ -63,7 +63,25 @@ pnpm dlx firebase-tools deploy --only firestore:rules
 
 В репозитории уже указан проект `lwmusic-ffe83`. Web-конфигурация из `src/shared/api/firebase` используется как fallback; для другого проекта скопируйте `.env.example` в `.env.local` и заполните переменные.
 
-В Firebase Console должны быть включены Authentication → Email/Password и, если нужен такой способ входа, Google. Firestore Database должна быть создана.
+В Firebase Console должен быть включён Authentication → Email/Password. Для входа через Яндекс отдельный Firebase-провайдер не требуется: серверная функция проверяет Яндекс ID и выпускает Firebase custom token.
+
+## Вход через Яндекс ID
+
+1. Создайте приложение в [Яндекс OAuth](https://oauth.yandex.ru/client/new/) для веб-сервиса и разрешите доступы `login:email`, `login:info`, `login:avatar`.
+2. Создайте JSON-ключ сервисного аккаунта Firebase с правами Firebase Authentication Admin. Не добавляйте ключ в репозиторий.
+3. Перед деплоем функции задайте секреты только в текущей PowerShell-сессии:
+
+```powershell
+$env:SYNC_YANDEX_CLIENT_ID='идентификатор-приложения'
+$env:SYNC_YANDEX_CLIENT_SECRET='секрет-приложения'
+$env:SYNC_FIREBASE_SERVICE_ACCOUNT_PATH='C:\secure\firebase-service-account.json'
+./scripts/deploy-yandex-auth.ps1
+```
+
+4. Скрипт вернёт `redirectUri`. Добавьте его в Яндекс OAuth как точный Redirect URI.
+5. Запишите выведенную строку `VITE_YANDEX_AUTH_URL=...` в `.env.local` и перезапустите Vite. Для production передайте эту же переменную на этапе сборки frontend.
+
+OAuth-код и секрет Яндекса обрабатываются только в Yandex Cloud Function. В браузер возвращается одноразовый Firebase custom token через проверенный `postMessage`; OAuth-токен Яндекса в URL приложения и хранилище браузера не попадает.
 
 ## Как проверить синхронизацию локально
 

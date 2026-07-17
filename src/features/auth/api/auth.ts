@@ -1,11 +1,9 @@
 import { FirebaseError } from 'firebase/app'
 import {
-  GoogleAuthProvider,
   User,
   createUserWithEmailAndPassword,
-  getAdditionalUserInfo,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithCustomToken,
   signOut,
   updateProfile,
 } from 'firebase/auth'
@@ -13,8 +11,46 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 
 import { auth, db } from '@/shared/api/firebase'
 
-const googleProvider = new GoogleAuthProvider()
-googleProvider.setCustomParameters({ prompt: 'select_account' })
+const YANDEX_AUTH_MESSAGE_TYPE = 'syncly:yandex-auth'
+const yandexAuthUrl = import.meta.env.VITE_YANDEX_AUTH_URL
+
+interface YandexAuthMessage {
+  error?: string
+  state?: string
+  token?: string
+  type?: string
+}
+
+class AuthFlowError extends Error {
+  constructor(public readonly code: string) {
+    super(code)
+    this.name = 'AuthFlowError'
+  }
+}
+
+function encodeBase64Url(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  bytes.forEach(byte => {
+    binary += String.fromCharCode(byte)
+  })
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+}
+
+function createYandexState() {
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(24))
+  const nonce = Array.from(nonceBytes, byte =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
+
+  return encodeBase64Url(
+    JSON.stringify({ nonce, origin: window.location.origin }),
+  )
+}
 
 async function saveUserProfile(
   user: User,
@@ -87,14 +123,86 @@ export async function signInWithEmail(email: string, password: string) {
   return credential.user
 }
 
-export async function signInWithGoogle() {
-  const credential = await signInWithPopup(auth, googleProvider)
-  await saveUserProfile(
-    credential.user,
-    undefined,
-    getAdditionalUserInfo(credential)?.isNewUser ?? false,
+export function signInWithYandex() {
+  if (!yandexAuthUrl) {
+    return Promise.reject(new AuthFlowError('yandex/not-configured'))
+  }
+
+  const state = createYandexState()
+  const authEndpoint = new URL(yandexAuthUrl)
+  authEndpoint.searchParams.set('state', state)
+
+  const popup = window.open(
+    authEndpoint,
+    'syncly-yandex-auth',
+    'popup=yes,width=520,height=720',
   )
-  return credential.user
+
+  if (!popup) {
+    return Promise.reject(new AuthFlowError('yandex/popup-blocked'))
+  }
+
+  const expectedOrigin = authEndpoint.origin
+
+  return new Promise<User>((resolve, reject) => {
+    let completed = false
+
+    const cleanup = () => {
+      completed = true
+      window.clearInterval(popupClosedInterval)
+      window.clearTimeout(timeout)
+      window.removeEventListener('message', handleMessage)
+    }
+
+    const fail = (code: string) => {
+      if (completed) return
+      cleanup()
+      popup.close()
+      reject(new AuthFlowError(code))
+    }
+
+    const handleMessage = async (event: MessageEvent<YandexAuthMessage>) => {
+      if (
+        completed ||
+        event.origin !== expectedOrigin ||
+        event.data?.type !== YANDEX_AUTH_MESSAGE_TYPE ||
+        event.data.state !== state
+      ) {
+        return
+      }
+
+      if (event.data.error) {
+        fail(`yandex/${event.data.error}`)
+        return
+      }
+      if (!event.data.token) {
+        fail('yandex/invalid-response')
+        return
+      }
+
+      cleanup()
+      popup.close()
+
+      try {
+        const credential = await signInWithCustomToken(auth, event.data.token)
+        await saveUserProfile(credential.user)
+        resolve(credential.user)
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    const popupClosedInterval = window.setInterval(() => {
+      if (popup.closed) fail('yandex/popup-closed')
+    }, 500)
+    const timeout = window.setTimeout(
+      () => fail('yandex/timeout'),
+      5 * 60 * 1000,
+    )
+
+    window.addEventListener('message', handleMessage)
+    popup.focus()
+  })
 }
 
 export function signOutCurrentUser() {
@@ -102,18 +210,30 @@ export function signOutCurrentUser() {
 }
 
 const errorMessages: Record<string, string> = {
+  'auth/account-exists-with-different-credential':
+    'Аккаунт с таким e-mail уже существует. Войдите прежним способом.',
   'auth/email-already-in-use': 'Пользователь с таким e-mail уже существует.',
   'auth/invalid-credential': 'Неверный e-mail или пароль.',
   'auth/invalid-email': 'Введите корректный e-mail.',
   'auth/network-request-failed':
     'Не удалось связаться с Firebase. Проверьте интернет-соединение.',
-  'auth/popup-blocked': 'Браузер заблокировал окно входа через Google.',
-  'auth/popup-closed-by-user': 'Окно входа через Google было закрыто.',
   'auth/too-many-requests': 'Слишком много попыток. Попробуйте ещё раз позже.',
   'auth/weak-password': 'Пароль должен содержать не менее 6 символов.',
+  'yandex/access_denied': 'Вы отменили вход через Яндекс.',
+  'yandex/invalid-response': 'Яндекс вернул некорректный ответ.',
+  'yandex/not-configured': 'Вход через Яндекс ещё не настроен.',
+  'yandex/oauth-failed': 'Яндекс не подтвердил вход. Попробуйте ещё раз.',
+  'yandex/popup-blocked': 'Браузер заблокировал окно входа через Яндекс.',
+  'yandex/popup-closed': 'Окно входа через Яндекс было закрыто.',
+  'yandex/server-error': 'Сервис входа через Яндекс временно недоступен.',
+  'yandex/timeout': 'Время ожидания входа через Яндекс истекло.',
 }
 
 export function getAuthErrorMessage(error: unknown) {
+  if (error instanceof AuthFlowError) {
+    return errorMessages[error.code] ?? errorMessages['yandex/server-error']
+  }
+
   if (error instanceof FirebaseError) {
     return (
       errorMessages[error.code] ??

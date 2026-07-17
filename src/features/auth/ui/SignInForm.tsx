@@ -7,6 +7,7 @@ import { TextField } from '@/shared/ui/text-field'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 import { getAuthErrorMessage, signInWithEmail } from '../api/auth'
+import { getAuthDestination } from '../model/getAuthDestination'
 import { authSubmitButtonSx } from './authFormStyles'
 
 export function SignInForm() {
@@ -29,15 +30,7 @@ export function SignInForm() {
   }) => {
     try {
       await signInWithEmail(email, password)
-      const from = (
-        location.state as {
-          from?: { hash?: string; pathname?: string; search?: string }
-        } | null
-      )?.from
-      const destination = from?.pathname
-        ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
-        : routes.rooms
-      navigate(destination, { replace: true })
+      navigate(getAuthDestination(location.state), { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))
     }
