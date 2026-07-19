@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { toast } from 'react-toastify'
-
 import {
-  createRoomInvite,
-  getRoomInviteUrl,
   useCurrentRoomMember,
   useRoomExists,
   useRoomMembership,
@@ -12,6 +8,7 @@ import {
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
 import {
+  RoomInviteDialog,
   RoomRestrictionsDialog,
   RoomSettingsDialog,
 } from '@/features/manage-room'
@@ -60,7 +57,7 @@ export function RoomPage() {
   const [searchParams] = useSearchParams()
   const { roomId = 'demo-room' } = useParams<{ roomId: string }>()
   const { profile, user } = useSession()
-  const [inviteCreating, setInviteCreating] = useState(false)
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [restrictionsOpen, setRestrictionsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const inviteId = searchParams.get('invite')?.trim() || undefined
@@ -79,26 +76,6 @@ export function RoomPage() {
     navigate(user?.isAnonymous ? routes.signIn : routes.rooms, {
       replace: true,
     })
-
-  const handleCreateInvite = async () => {
-    setInviteCreating(true)
-    try {
-      const inviteId = await createRoomInvite({
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        roomId,
-      })
-      await navigator.clipboard.writeText(getRoomInviteUrl(inviteId))
-      toast.success('Ссылка-приглашение скопирована. Она действует 24 часа.')
-    } catch (reason) {
-      toast.error(
-        reason instanceof Error
-          ? reason.message
-          : 'Не удалось создать приглашение.',
-      )
-    } finally {
-      setInviteCreating(false)
-    }
-  }
 
   if (
     room.error === 'forbidden' &&
@@ -240,12 +217,11 @@ export function RoomPage() {
       )}
       {['host', 'moderator', 'owner'].includes(currentMember.role) && (
         <Button
-          disabled={inviteCreating}
-          onClick={handleCreateInvite}
+          onClick={() => setInviteDialogOpen(true)}
           size="small"
           variant="contained"
         >
-          {inviteCreating ? 'Создаём ссылку…' : 'Пригласить'}
+          {room.access?.visibility === 'private' ? 'Пригласить' : 'Ссылка'}
         </Button>
       )}
     </Box>
@@ -288,6 +264,16 @@ export function RoomPage() {
           roomId={roomId}
         />
       )}
+      {currentMember &&
+        ['host', 'moderator', 'owner'].includes(currentMember.role) &&
+        room.access && (
+          <RoomInviteDialog
+            onClose={() => setInviteDialogOpen(false)}
+            open={inviteDialogOpen}
+            roomId={roomId}
+            visibility={room.access.visibility}
+          />
+        )}
       {currentMember && ['moderator', 'owner'].includes(currentMember.role) && (
         <RoomRestrictionsDialog
           onClose={() => setRestrictionsOpen(false)}

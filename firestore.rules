@@ -1005,9 +1005,7 @@ service cloud.firestore {
         && (!exists(/databases/$(database)/documents/rooms/$(roomId))
           || canAccessRoom(roomId));
       allow list: if isSignedIn()
-        && !isAnonymous()
-        && resource.data.visibility == 'public'
-        && resource.data.status == 'active';
+        && resource.data.visibility == 'public';
       allow create: if isSignedIn()
         && !isAnonymous()
         && hasValidRoom(roomId)

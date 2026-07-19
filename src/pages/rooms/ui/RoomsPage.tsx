@@ -9,7 +9,7 @@ import { Button } from '@mui/material'
 
 export function RoomsPage() {
   const navigate = useNavigate()
-  const { error, loading, rooms } = useRooms()
+  const { error, hasMore, loadMore, loading, loadingMore, rooms } = useRooms()
   const [isOpen, setIsOpen] = useState(false)
 
   const handleOpenRoom = (room: Room) => {
@@ -39,6 +39,17 @@ export function RoomsPage() {
             room={room}
           />
         ))}
+
+        {!loading && hasMore && (
+          <Button
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+            sx={{ alignSelf: 'center', marginTop: 2 }}
+            variant="outlined"
+          >
+            {loadingMore ? 'Загружаем…' : 'Показать ещё'}
+          </Button>
+        )}
       </div>
 
       <CreateRoomDialog

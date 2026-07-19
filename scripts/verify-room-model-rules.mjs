@@ -117,24 +117,10 @@ async function readDocument(path, token) {
 async function queryRooms(token, constrained) {
   const where = constrained
     ? {
-        compositeFilter: {
-          filters: [
-            {
-              fieldFilter: {
-                field: { fieldPath: 'visibility' },
-                op: 'EQUAL',
-                value: stringValue('public'),
-              },
-            },
-            {
-              fieldFilter: {
-                field: { fieldPath: 'status' },
-                op: 'EQUAL',
-                value: stringValue('active'),
-              },
-            },
-          ],
-          op: 'AND',
+        fieldFilter: {
+          field: { fieldPath: 'visibility' },
+          op: 'EQUAL',
+          value: stringValue('public'),
         },
       }
     : undefined
@@ -145,6 +131,17 @@ async function queryRooms(token, constrained) {
         structuredQuery: {
           from: [{ collectionId: 'rooms' }],
           ...(where ? { where } : {}),
+          ...(constrained
+            ? {
+                limit: 20,
+                orderBy: [
+                  {
+                    direction: 'DESCENDING',
+                    field: { fieldPath: 'createdAt' },
+                  },
+                ],
+              }
+            : {}),
         },
       }),
       headers: {
@@ -276,6 +273,13 @@ assert.equal(
 const publicRoomList = await queryRooms(otherUser.idToken, true)
 assert.equal(publicRoomList.ok, true, JSON.stringify(publicRoomList))
 
+const anonymousPublicRoomList = await queryRooms(anonymousUser.idToken, true)
+assert.equal(
+  anonymousPublicRoomList.ok,
+  true,
+  JSON.stringify(anonymousPublicRoomList),
+)
+
 const publicRoomMemberReadBeforeJoin = await readDocument(
   `rooms/${validRoom.roomId}/members/${owner.uid}`,
   otherUser.idToken,
@@ -329,6 +333,40 @@ const anonymousMembership = await commit(
   anonymousUser.idToken,
 )
 assert.equal(anonymousMembership.ok, true, JSON.stringify(anonymousMembership))
+
+const unlistedRoom = roomCreationWrites({
+  ownerId: owner.uid,
+  suffix: `${runId}-unlisted`,
+  visibility: 'unlisted',
+})
+const unlistedRoomCreate = await commit(unlistedRoom.writes, owner.idToken)
+assert.equal(unlistedRoomCreate.ok, true, JSON.stringify(unlistedRoomCreate))
+
+const unlistedRoomList = await queryRooms(otherUser.idToken, true)
+assert.equal(unlistedRoomList.ok, true, JSON.stringify(unlistedRoomList))
+assert.equal(
+  JSON.stringify(unlistedRoomList.body).includes(unlistedRoom.roomId),
+  false,
+  JSON.stringify(unlistedRoomList),
+)
+
+const unlistedRoomRead = await readDocument(
+  `rooms/${unlistedRoom.roomId}`,
+  otherUser.idToken,
+)
+assert.equal(unlistedRoomRead.ok, true, JSON.stringify(unlistedRoomRead))
+
+const unlistedMembership = await commit(
+  [
+    update(
+      `rooms/${unlistedRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({ isGuest: false, role: 'member' }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(unlistedMembership.ok, true, JSON.stringify(unlistedMembership))
 
 const promoteGuest = await commit(
   [
@@ -771,6 +809,26 @@ assert.equal(
   JSON.stringify(registeredPrivateMembership),
 )
 
+const privateMessageReadBeforeInvite = await readDocument(
+  `rooms/${privateRoom.roomId}/messages/not-created`,
+  invitee.idToken,
+)
+assert.equal(
+  privateMessageReadBeforeInvite.status,
+  403,
+  JSON.stringify(privateMessageReadBeforeInvite),
+)
+
+const privateQueueReadBeforeInvite = await readDocument(
+  `rooms/${privateRoom.roomId}/queue/not-created`,
+  invitee.idToken,
+)
+assert.equal(
+  privateQueueReadBeforeInvite.status,
+  403,
+  JSON.stringify(privateQueueReadBeforeInvite),
+)
+
 const inviteId = `invite-${runId}`
 const inviteExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 const inviteCreate = await commit(
@@ -862,6 +920,124 @@ assert.equal(
   invitedPrivateRoomRead.ok,
   true,
   JSON.stringify(invitedPrivateRoomRead),
+)
+
+const privateMessageReadAfterInvite = await readDocument(
+  `rooms/${privateRoom.roomId}/messages/not-created`,
+  invitee.idToken,
+)
+assert.equal(
+  privateMessageReadAfterInvite.status,
+  404,
+  JSON.stringify(privateMessageReadAfterInvite),
+)
+
+const privateQueueReadAfterInvite = await readDocument(
+  `rooms/${privateRoom.roomId}/queue/not-created`,
+  invitee.idToken,
+)
+assert.equal(
+  privateQueueReadAfterInvite.status,
+  404,
+  JSON.stringify(privateQueueReadAfterInvite),
+)
+
+const exhaustedInviteRedemption = await commit(
+  [
+    patch(`roomInvites/${inviteId}`, { uses: integerValue(3) }, ['uses']),
+    update(
+      `roomInviteRedemptions/${otherUser.uid}`,
+      {
+        inviteId: stringValue(inviteId),
+        roomId: stringValue(privateRoom.roomId),
+      },
+      [requestTime('redeemedAt')],
+    ),
+    update(
+      `rooms/${privateRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({
+        invitedBy: owner.uid,
+        isGuest: false,
+        role: 'member',
+      }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  exhaustedInviteRedemption.ok,
+  false,
+  JSON.stringify(exhaustedInviteRedemption),
+)
+
+const revokedInviteId = `revoked-invite-${runId}`
+const revokedInviteCreate = await commit(
+  [
+    update(
+      `roomInvites/${revokedInviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        expiresAt: timestampValue(inviteExpiresAt),
+        maxUses: integerValue(1),
+        participantCount: integerValue(3),
+        revokedAt: nullValue(),
+        roomId: stringValue(privateRoom.roomId),
+        roomImageUrl: stringValue(
+          `https://storage.yandexcloud.net/test-bucket/room-covers/${privateRoom.roomId}/cover.png`,
+        ),
+        roomName: stringValue(`Room model ${runId}-private`),
+        uses: integerValue(0),
+      },
+      [requestTime('createdAt')],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(revokedInviteCreate.ok, true, JSON.stringify(revokedInviteCreate))
+
+const inviteRevocation = await commit(
+  [
+    patch(
+      `roomInvites/${revokedInviteId}`,
+      {},
+      ['revokedAt'],
+      [requestTime('revokedAt')],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(inviteRevocation.ok, true, JSON.stringify(inviteRevocation))
+
+const revokedInviteRedemption = await commit(
+  [
+    patch(`roomInvites/${revokedInviteId}`, { uses: integerValue(1) }, [
+      'uses',
+    ]),
+    update(
+      `roomInviteRedemptions/${otherUser.uid}`,
+      {
+        inviteId: stringValue(revokedInviteId),
+        roomId: stringValue(privateRoom.roomId),
+      },
+      [requestTime('redeemedAt')],
+    ),
+    update(
+      `rooms/${privateRoom.roomId}/members/${otherUser.uid}`,
+      memberFields({
+        invitedBy: owner.uid,
+        isGuest: false,
+        role: 'member',
+      }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  revokedInviteRedemption.ok,
+  false,
+  JSON.stringify(revokedInviteRedemption),
 )
 
 const slowRoom = roomCreationWrites({
@@ -1049,5 +1225,5 @@ assert.equal(
 )
 
 console.log(
-  'Room model rules verification passed: public invite previews, guest onboarding and upgrade, membership lifecycle, role restrictions, private invites, bans, mutes, blocks, and slow mode.',
+  'Room model rules verification passed: paginated public listing, unlisted direct access, private content membership, invite limits and revocation, guest onboarding and upgrade, roles, bans, mutes, blocks, and slow mode.',
 )
