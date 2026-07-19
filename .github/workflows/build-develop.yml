@@ -1,0 +1,156 @@
+name: Build develop
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-develop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEPLOY_FINGERPRINT: SHA256:h2kMHh2yj5IWfR7M/nYkvOisclCEI7GRHajEaGIeiJo
+  DEPLOY_HOST: 109.172.7.119
+  DEPLOY_PATH: /home/coolspectre/lyricweb-deploy
+  DEPLOY_USER: coolspectre
+
+jobs:
+  build:
+    name: Lint, build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        env:
+          VITE_ROOM_COVER_UPLOAD_URL: ${{ secrets.VITE_ROOM_COVER_UPLOAD_URL }}
+        run: |
+          if [ -z "$VITE_ROOM_COVER_UPLOAD_URL" ]; then
+            echo "VITE_ROOM_COVER_UPLOAD_URL is not configured."
+            exit 1
+          fi
+
+          pnpm build
+
+      - name: Upload production build
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Package deployment files
+        run: |
+          tar -czf dist.tar.gz -C dist .
+          cp deploy/release-syncly.sh deploy-release.sh
+          cp deploy/ensure-syncly-https.sh ensure-syncly-https.sh
+
+      - name: Upload release to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
+          source: dist.tar.gz,deploy-release.sh,ensure-syncly-https.sh
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: Activate release
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          SUDO_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
+          envs: SUDO_PASSWORD
+          command_timeout: 2m
+          script: |
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/deploy-release.sh"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/ensure-syncly-https.sh"
+
+      - name: Notify Telegram
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are not configured."
+            exit 1
+          fi
+
+          case "$JOB_STATUS" in
+            success)
+              icon="✅"
+              title="Build and deploy succeeded"
+              ;;
+            failure)
+              icon="❌"
+              title="Build or deploy failed"
+              ;;
+            cancelled)
+              icon="⚪"
+              title="Build cancelled"
+              ;;
+            *)
+              icon="ℹ️"
+              title="Build finished: $JOB_STATUS"
+              ;;
+          esac
+
+          short_sha="${GITHUB_SHA::7}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          message=$(printf '%s %s\n\nRepository: %s\nBranch: %s\nCommit: %s\nAuthor: %s\nRun: %s' \
+            "$icon" \
+            "$title" \
+            "$GITHUB_REPOSITORY" \
+            "$GITHUB_REF_NAME" \
+            "$short_sha" \
+            "$GITHUB_ACTOR" \
+            "$run_url")
+
+          if ! response=$(curl --silent --show-error \
+              --request POST \
+              --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+              --data-urlencode "text=${message}" \
+              --data-urlencode "disable_web_page_preview=true"); then
+            echo "Telegram request failed before receiving an API response."
+            exit 1
+          fi
+
+          if printf '%s' "$response" | grep --quiet '"ok":true'; then
+            echo "Telegram notification sent successfully."
+          else
+            echo "Telegram API error: $response"
+            exit 1
+          fi

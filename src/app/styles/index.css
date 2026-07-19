@@ -1,0 +1,295 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './preflight.scss' layer(base);
+@import 'react-toastify/dist/ReactToastify.css' layer(components);
+
+@theme static {
+  --color-accent: #b79eff;
+  --color-auth-card: #2a2b47;
+  --color-auth-muted: #8d8bb3;
+  --color-brand-color: #25263e;
+  --color-gray-block: #ecedf2;
+  --color-hover-brand: #e9e2ff;
+  --color-light-brand: #8b8db3;
+  --color-secondary-text: #5c5d7e;
+}
+
+/* Golos Text Regular */
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-400-normal.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-cyrillic-400-normal.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-latin-ext-400-normal.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-latin-400-normal.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+/* Golos Text Medium */
+@font-face {
+  font-family: 'Golos Text Medium';
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-500-normal.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: 'Golos Text Medium';
+  src: url('../../../assets/fonts/golos-text-cyrillic-500-normal.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: 'Golos Text Medium';
+  src: url('../../../assets/fonts/golos-text-latin-ext-500-normal.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Golos Text Medium';
+  src: url('../../../assets/fonts/golos-text-latin-500-normal.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+/* Golos Text Bold */
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-cyrillic-ext-700-normal.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-cyrillic-700-normal.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-latin-ext-700-normal.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Golos Text';
+  src: url('../../../assets/fonts/golos-text-latin-700-normal.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --color-auth-provider-background-default: transparent;
+  --color-auth-provider-background-hover: #fff;
+  --color-auth-provider-background-pressed: #fff;
+  --color-auth-provider-border: #fff;
+  --color-auth-text: #fff;
+  --color-input-background: #d7dbf0;
+  --color-input-placeholder: #8d8bb3;
+  --color-primary-background-default: #6f70e7;
+  --color-primary-background-hover: #8282e9;
+  --color-primary-background-pressed: #3031a5;
+  --color-primary-background-disabled: #6f70e7;
+  --color-primary-text-default: #fff;
+  --color-primary-text-hover: #fff;
+  --color-primary-text-pressed: #fff;
+  --color-primary-text-disabled: rgb(255 255 255 / 50%);
+  /*--toastify-text-color-light: #333F48;*/
+}
+
+.font-basic {
+  font-family: 'Golos Text', sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.font-medium {
+  font-family: 'Golos Text Medium', sans-serif;
+  font-weight: 500;
+  font-style: normal;
+}
+
+.btn-loading {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  &::before {
+    position: absolute;
+    content: '';
+    display: block;
+    width: 101%;
+    height: 160%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      red,
+      red,
+      red,
+      red,
+      transparent
+    );
+    /*animation: rotation_481 5000ms infinite linear;*/
+  }
+}
+
+@keyframes rotation_481 {
+  0% {
+    transform: rotateZ(0deg);
+  }
+
+  0% {
+    transform: rotateZ(360deg);
+  }
+}
+
+body {
+  font-family: 'Golos Text', sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Golos Text', sans-serif;
+  font-weight: 700;
+}
+
+.room-content-grid {
+  display: grid;
+  /* 1104px / 324px in the 1440px-wide layout, excluding the 4px gap. */
+  grid-template-columns:
+    minmax(0, calc(77.3109% - 3.0924px))
+    minmax(0, calc(22.6891% - 0.9076px));
+  grid-template-areas: 'player chat';
+  grid-template-rows: minmax(0, 1fr);
+  gap: 4px;
+  height: 100%;
+  min-height: 0;
+}
+
+.room-player-column,
+.room-chat-column {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.room-player-column {
+  grid-area: player;
+}
+
+.room-chat-column {
+  grid-area: chat;
+}
+
+.room-player-layout {
+  display: grid;
+  grid-template-areas: 'queue';
+  grid-template-rows: minmax(0, 1fr);
+  gap: 4px;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.room-player-layout--with-video {
+  /* 620px / 308px in the 1024px-high layout, excluding the 4px gap. */
+  grid-template-areas:
+    'video'
+    'queue';
+  grid-template-rows:
+    minmax(0, calc(66.8103% - 2.6724px))
+    minmax(0, calc(33.1897% - 1.3276px));
+}
+
+.room-video-panel {
+  grid-area: video;
+}
+
+.room-queue-panel {
+  grid-area: queue;
+}

@@ -1,0 +1,29 @@
+<svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g clip-path="url(#clip)">
+    <rect width="60" height="60" fill="#2C277F"/>
+    <rect width="10" height="10" fill="#F3EDFF"/>
+    <rect x="10" width="10" height="10" fill="#6966CC"/>
+    <rect x="20" width="10" height="10" fill="#58C9D3"/>
+    <rect x="40" width="10" height="10" fill="#27235E"/>
+    <rect x="50" width="10" height="10" fill="#F3EDFF"/>
+    <rect y="10" width="10" height="10" fill="#6966CC"/>
+    <rect x="20" y="10" width="10" height="10" fill="#F3EDFF"/>
+    <rect x="30" y="10" width="10" height="10" fill="#27235E"/>
+    <rect x="50" y="10" width="10" height="10" fill="#58C9D3"/>
+    <rect x="10" y="20" width="10" height="10" fill="#58C9D3"/>
+    <rect x="30" y="20" width="10" height="10" fill="#6966CC"/>
+    <rect x="40" y="20" width="10" height="10" fill="#F3EDFF"/>
+    <rect y="30" width="10" height="10" fill="#27235E"/>
+    <rect x="20" y="30" width="10" height="10" fill="#58C9D3"/>
+    <rect x="40" y="30" width="10" height="10" fill="#6966CC"/>
+    <rect x="50" y="30" width="10" height="10" fill="#27235E"/>
+    <rect x="10" y="40" width="10" height="10" fill="#F3EDFF"/>
+    <rect x="20" y="40" width="10" height="10" fill="#6966CC"/>
+    <rect x="30" y="40" width="10" height="10" fill="#27235E"/>
+    <rect y="50" width="10" height="10" fill="#58C9D3"/>
+    <rect x="20" y="50" width="10" height="10" fill="#27235E"/>
+    <rect x="40" y="50" width="10" height="10" fill="#F3EDFF"/>
+    <rect x="50" y="50" width="10" height="10" fill="#6966CC"/>
+  </g>
+  <defs><clipPath id="clip"><rect width="60" height="60" rx="16" fill="white"/></clipPath></defs>
+</svg>
