@@ -28,9 +28,12 @@ export {
   createRoomInvite,
   getRoomInvitePreview,
   getRoomInviteUrl,
+  hashRoomInviteToken,
   isRoomInviteAvailable,
   redeemRoomInvite,
   revokeRoomInvite,
+  subscribeRoomInvites,
+  type RoomInviteListItem,
   type RoomInvitePreview,
 } from './api/roomInvites'
 export {

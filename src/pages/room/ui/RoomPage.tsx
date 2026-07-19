@@ -31,7 +31,7 @@ function RoomEntryState({
   return (
     <Box
       alignItems="center"
-      className="h-full rounded-[20px] bg-[#ECEDF2]"
+      className="h-full rounded-[20px] border border-[#4A2B6D] bg-[#1B0C32]"
       display="flex"
       flexDirection="column"
       gap={3}
@@ -39,8 +39,8 @@ function RoomEntryState({
       padding={3}
       textAlign="center"
     >
-      {pending && <CircularProgress sx={{ color: '#6F70E7' }} />}
-      <Typography color="#25263E" maxWidth={520} variant="h5">
+      {pending && <CircularProgress sx={{ color: '#B88CFF' }} />}
+      <Typography color="#F8F3FF" maxWidth={520} variant="h5">
         {message}
       </Typography>
       {actionLabel && onAction && (
@@ -221,7 +221,7 @@ export function RoomPage() {
           size="small"
           variant="contained"
         >
-          {room.access?.visibility === 'private' ? 'Пригласить' : 'Ссылка'}
+          Пригласить
         </Button>
       )}
     </Box>
@@ -229,7 +229,7 @@ export function RoomPage() {
 
   return (
     <Box
-      className="relative h-full min-h-0 overflow-hidden bg-[#3F3F59] px-1"
+      className="relative h-full min-h-0 overflow-hidden bg-[#160B2D] px-1"
       component="main"
     >
       <Box className="room-content-grid">

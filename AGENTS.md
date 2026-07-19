@@ -1,5 +1,11 @@
 # Repository instructions
 
+## UI and responsive design
+
+- Make all new functionality responsive across mobile, tablet, and desktop layouts.
+- Build all new or changed UI in the project's dark-purple color scheme.
+- In any UI touched by the change, replace existing light background colors with the corresponding dark-purple background colors; do not retain or introduce light backgrounds.
+
 ## Firestore changes
 
 - Treat client code and `firestore.rules` as a single change whenever a task adds, removes, or renames Firestore fields, documents, collections, or write operations.

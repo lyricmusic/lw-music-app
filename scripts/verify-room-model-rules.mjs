@@ -155,6 +155,33 @@ async function queryRooms(token, constrained) {
   return { body, ok: response.ok, status: response.status }
 }
 
+async function queryCollectionByField(collectionId, fieldPath, value, token) {
+  const headers = { 'content-type': 'application/json' }
+  if (token) headers.authorization = `Bearer ${token}`
+
+  const response = await fetch(
+    `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+    {
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath },
+              op: 'EQUAL',
+              value: stringValue(value),
+            },
+          },
+        },
+      }),
+      headers,
+      method: 'POST',
+    },
+  )
+  const body = await response.json()
+  return { body, ok: response.ok, status: response.status }
+}
+
 const requestTime = fieldPath => ({
   fieldPath,
   setToServerValue: 'REQUEST_TIME',
@@ -829,7 +856,8 @@ assert.equal(
   JSON.stringify(privateQueueReadBeforeInvite),
 )
 
-const inviteId = `invite-${runId}`
+const inviteId = 'a'.repeat(64)
+const inviteToken = 'A'.repeat(43)
 const inviteExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 const inviteCreate = await commit(
   [
@@ -846,7 +874,18 @@ const inviteCreate = await commit(
           `https://storage.yandexcloud.net/test-bucket/room-covers/${privateRoom.roomId}/cover.png`,
         ),
         roomName: stringValue(`Room model ${runId}-private`),
+        tokenHash: stringValue(inviteId),
         uses: integerValue(0),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `roomInviteSecrets/${inviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        roomId: stringValue(privateRoom.roomId),
+        token: stringValue(inviteToken),
+        tokenHash: stringValue(inviteId),
       },
       [requestTime('createdAt')],
     ),
@@ -858,17 +897,54 @@ assert.equal(inviteCreate.ok, true, JSON.stringify(inviteCreate))
 const publicInvitePreview = await readDocument(`roomInvites/${inviteId}`)
 assert.equal(publicInvitePreview.ok, true, JSON.stringify(publicInvitePreview))
 
-const inviteRedemption = await commit(
+const ownerInviteList = await queryCollectionByField(
+  'roomInvites',
+  'roomId',
+  privateRoom.roomId,
+  owner.idToken,
+)
+assert.equal(ownerInviteList.ok, true, JSON.stringify(ownerInviteList))
+
+const inviteeInviteList = await queryCollectionByField(
+  'roomInvites',
+  'roomId',
+  privateRoom.roomId,
+  invitee.idToken,
+)
+assert.equal(inviteeInviteList.ok, false, JSON.stringify(inviteeInviteList))
+
+const ownerSecretList = await queryCollectionByField(
+  'roomInviteSecrets',
+  'roomId',
+  privateRoom.roomId,
+  owner.idToken,
+)
+assert.equal(ownerSecretList.ok, true, JSON.stringify(ownerSecretList))
+
+const ownerSecretRead = await readDocument(
+  `roomInviteSecrets/${inviteId}`,
+  owner.idToken,
+)
+assert.equal(ownerSecretRead.ok, true, JSON.stringify(ownerSecretRead))
+
+const inviteeSecretRead = await readDocument(
+  `roomInviteSecrets/${inviteId}`,
+  invitee.idToken,
+)
+assert.equal(inviteeSecretRead.ok, false, JSON.stringify(inviteeSecretRead))
+
+const unauthenticatedSecretRead = await readDocument(
+  `roomInviteSecrets/${inviteId}`,
+)
+assert.equal(
+  unauthenticatedSecretRead.ok,
+  false,
+  JSON.stringify(unauthenticatedSecretRead),
+)
+
+const clientInviteRedemption = await commit(
   [
     patch(`roomInvites/${inviteId}`, { uses: integerValue(1) }, ['uses']),
-    update(
-      `roomInviteRedemptions/${invitee.uid}`,
-      {
-        inviteId: stringValue(inviteId),
-        roomId: stringValue(privateRoom.roomId),
-      },
-      [requestTime('redeemedAt')],
-    ),
     update(
       `rooms/${privateRoom.roomId}/members/${invitee.uid}`,
       memberFields({
@@ -881,19 +957,21 @@ const inviteRedemption = await commit(
   ],
   invitee.idToken,
 )
-assert.equal(inviteRedemption.ok, true, JSON.stringify(inviteRedemption))
+assert.equal(
+  clientInviteRedemption.ok,
+  false,
+  JSON.stringify(clientInviteRedemption),
+)
 
-const anonymousInviteRedemption = await commit(
+const ownerUsesUpdate = await commit(
+  [patch(`roomInvites/${inviteId}`, { uses: integerValue(1) }, ['uses'])],
+  owner.idToken,
+)
+assert.equal(ownerUsesUpdate.ok, false, JSON.stringify(ownerUsesUpdate))
+
+const anonymousClientRedemption = await commit(
   [
-    patch(`roomInvites/${inviteId}`, { uses: integerValue(2) }, ['uses']),
-    update(
-      `roomInviteRedemptions/${anonymousUser.uid}`,
-      {
-        inviteId: stringValue(inviteId),
-        roomId: stringValue(privateRoom.roomId),
-      },
-      [requestTime('redeemedAt')],
-    ),
+    patch(`roomInvites/${inviteId}`, { uses: integerValue(1) }, ['uses']),
     update(
       `rooms/${privateRoom.roomId}/members/${anonymousUser.uid}`,
       memberFields({
@@ -907,71 +985,42 @@ const anonymousInviteRedemption = await commit(
   anonymousUser.idToken,
 )
 assert.equal(
-  anonymousInviteRedemption.ok,
-  true,
-  JSON.stringify(anonymousInviteRedemption),
+  anonymousClientRedemption.ok,
+  false,
+  JSON.stringify(anonymousClientRedemption),
 )
 
-const invitedPrivateRoomRead = await readDocument(
+const privateRoomReadWithoutServerRedemption = await readDocument(
   `rooms/${privateRoom.roomId}`,
   invitee.idToken,
 )
 assert.equal(
-  invitedPrivateRoomRead.ok,
-  true,
-  JSON.stringify(invitedPrivateRoomRead),
+  privateRoomReadWithoutServerRedemption.ok,
+  false,
+  JSON.stringify(privateRoomReadWithoutServerRedemption),
 )
 
-const privateMessageReadAfterInvite = await readDocument(
-  `rooms/${privateRoom.roomId}/messages/not-created`,
-  invitee.idToken,
-)
-assert.equal(
-  privateMessageReadAfterInvite.status,
-  404,
-  JSON.stringify(privateMessageReadAfterInvite),
-)
-
-const privateQueueReadAfterInvite = await readDocument(
-  `rooms/${privateRoom.roomId}/queue/not-created`,
-  invitee.idToken,
-)
-assert.equal(
-  privateQueueReadAfterInvite.status,
-  404,
-  JSON.stringify(privateQueueReadAfterInvite),
-)
-
-const exhaustedInviteRedemption = await commit(
+const invalidInviteCreate = await commit(
   [
-    patch(`roomInvites/${inviteId}`, { uses: integerValue(3) }, ['uses']),
     update(
-      `roomInviteRedemptions/${otherUser.uid}`,
+      `roomInvites/${'c'.repeat(64)}`,
       {
-        inviteId: stringValue(inviteId),
+        createdBy: stringValue(owner.uid),
+        expiresAt: timestampValue(inviteExpiresAt),
+        maxUses: integerValue(1),
+        revokedAt: nullValue(),
         roomId: stringValue(privateRoom.roomId),
+        uses: integerValue(0),
       },
-      [requestTime('redeemedAt')],
-    ),
-    update(
-      `rooms/${privateRoom.roomId}/members/${otherUser.uid}`,
-      memberFields({
-        invitedBy: owner.uid,
-        isGuest: false,
-        role: 'member',
-      }),
-      [requestTime('joinedAt')],
+      [requestTime('createdAt')],
     ),
   ],
-  otherUser.idToken,
+  owner.idToken,
 )
-assert.equal(
-  exhaustedInviteRedemption.ok,
-  false,
-  JSON.stringify(exhaustedInviteRedemption),
-)
+assert.equal(invalidInviteCreate.ok, false, JSON.stringify(invalidInviteCreate))
 
-const revokedInviteId = `revoked-invite-${runId}`
+const revokedInviteId = 'b'.repeat(64)
+const revokedInviteToken = 'B'.repeat(43)
 const revokedInviteCreate = await commit(
   [
     update(
@@ -987,7 +1036,18 @@ const revokedInviteCreate = await commit(
           `https://storage.yandexcloud.net/test-bucket/room-covers/${privateRoom.roomId}/cover.png`,
         ),
         roomName: stringValue(`Room model ${runId}-private`),
+        tokenHash: stringValue(revokedInviteId),
         uses: integerValue(0),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `roomInviteSecrets/${revokedInviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        roomId: stringValue(privateRoom.roomId),
+        token: stringValue(revokedInviteToken),
+        tokenHash: stringValue(revokedInviteId),
       },
       [requestTime('createdAt')],
     ),
@@ -1004,6 +1064,7 @@ const inviteRevocation = await commit(
       ['revokedAt'],
       [requestTime('revokedAt')],
     ),
+    remove(`roomInviteSecrets/${revokedInviteId}`),
   ],
   owner.idToken,
 )
@@ -1014,23 +1075,6 @@ const revokedInviteRedemption = await commit(
     patch(`roomInvites/${revokedInviteId}`, { uses: integerValue(1) }, [
       'uses',
     ]),
-    update(
-      `roomInviteRedemptions/${otherUser.uid}`,
-      {
-        inviteId: stringValue(revokedInviteId),
-        roomId: stringValue(privateRoom.roomId),
-      },
-      [requestTime('redeemedAt')],
-    ),
-    update(
-      `rooms/${privateRoom.roomId}/members/${otherUser.uid}`,
-      memberFields({
-        invitedBy: owner.uid,
-        isGuest: false,
-        role: 'member',
-      }),
-      [requestTime('joinedAt')],
-    ),
   ],
   otherUser.idToken,
 )
@@ -1225,5 +1269,5 @@ assert.equal(
 )
 
 console.log(
-  'Room model rules verification passed: paginated public listing, unlisted direct access, private content membership, invite limits and revocation, guest onboarding and upgrade, roles, bans, mutes, blocks, and slow mode.',
+  'Room model rules verification passed: paginated public listing, unlisted direct access, private content membership, hashed invite creation and manager listing, client redemption denial, revocation, guest onboarding and upgrade, roles, bans, mutes, blocks, and slow mode.',
 )

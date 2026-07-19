@@ -67,6 +67,7 @@ export type RoomInvite = {
   roomId: string
   roomImageUrl?: string
   roomName?: string
+  tokenHash: string
   uses: number
 }
 

@@ -51,6 +51,8 @@ pnpm dev
 ```bash
 pnpm lint
 pnpm build
+pnpm verify:room-model-rules
+pnpm verify:room-invite-function
 ```
 
 ## Применение Firestore Rules
@@ -84,6 +86,18 @@ $env:SYNC_FIREBASE_SERVICE_ACCOUNT_PATH='C:\secure\firebase-service-account.json
 5. Запишите выведенную строку `VITE_YANDEX_AUTH_URL=...` в `.env.local` и перезапустите Vite. Для production передайте эту же переменную на этапе сборки frontend.
 
 OAuth-код и секрет Яндекса обрабатываются только в Yandex Cloud Function. В браузер возвращается одноразовый Firebase custom token через проверенный `postMessage`; OAuth-токен Яндекса в URL приложения и хранилище браузера не попадает.
+
+## Серверное погашение приглашений
+
+Приватное приглашение погашается только функцией `serverless/room-invites`: она проверяет Firebase ID token, SHA-256 хеш bearer-токена, срок, лимит использований и бан, после чего одной Firestore-транзакцией увеличивает `uses` и создаёт membership с ролью `member`. Исходный токен доступен только управляющим комнатой в `roomInviteSecrets`; публичный preview хранит только его хеш.
+
+Функция использует Firebase service account из существующего Lockbox-секрета `lw-music-yandex-auth` и разворачивается командой:
+
+```powershell
+./scripts/deploy-room-invites.ps1
+```
+
+Запишите выведенную строку `VITE_ROOM_INVITE_API_URL=...` в `.env.local` или в production-окружение сборки frontend. Интеграционная проверка функции запускается командой `pnpm verify:room-invite-function`.
 
 ## Как проверить синхронизацию локально
 
@@ -155,8 +169,16 @@ roomInvites/{inviteId}
   participantCount: integer
   roomImageUrl: string
   roomName: string
+  tokenHash: sha256(inviteToken)
   uses: integer
   revokedAt: timestamp | null
+  createdAt: timestamp
+
+roomInviteSecrets/{tokenHash}
+  roomId: string
+  createdBy: uid
+  token: string
+  tokenHash: sha256(token)
   createdAt: timestamp
 
 users/{uid}/blockedUsers/{blockedUid}
@@ -194,7 +216,7 @@ YouTube-видеопоток через Firebase не передаётся. Ка
 
 Доступ к содержимому комнаты получают только активные участники. Публичные комнаты показываются в общем списке, скрытые открываются по прямой постоянной ссылке, приватные — активным участникам или по действующему приглашению. Каталог запрашивает только `public`-комнаты, сортирует их по `createdAt desc` и загружает по 20 документов через cursor-пагинацию. `roomId` не считается секретом: приватные данные защищены membership-проверками Firestore Rules. Владелец получает membership при создании комнаты. Invite-документ хранит минимальный публичный preview комнаты, поэтому экран ссылки может показать название, обложку и число участников до авторизации. Приглашение ограничивается сроком и числом активаций и может быть отозвано. После нажатия «Присоединиться» новый пользователь входит через Firebase Anonymous Auth, выбирает никнейм и базовый аватар, а затем атомарно получает роль `member`.
 
-Приглашения принимаются атомарно: одна транзакция увеличивает `uses`, сохраняет подтверждение использования и создаёт membership. Гость не может создавать комнаты и получать управляющую роль, а минимальный интервал его сообщений составляет 10 секунд даже при отключённом общем slow mode. Баны закрывают чтение и участие в комнате, муты запрещают отправку сообщений, а `slowModeSeconds` проверяется Security Rules через `messageActivity`. Пользовательские блокировки скрывают сообщения заблокированных авторов на клиенте.
+Приватные приглашения принимаются атомарно серверной функцией: транзакция увеличивает `uses` и создаёт membership с ролью `member`; клиентские Firestore Rules запрещают выполнить эти записи напрямую. Гость не может создавать комнаты и получать управляющую роль, а минимальный интервал его сообщений составляет 10 секунд даже при отключённом общем slow mode. Баны закрывают чтение и участие в комнате, муты запрещают отправку сообщений, а `slowModeSeconds` проверяется Security Rules через `messageActivity`. Пользовательские блокировки скрывают сообщения заблокированных авторов на клиенте.
 
 При «Сохранить профиль» email/password связываются через Firebase `linkWithCredential`. Для Яндекс ID функция сначала проверяет ID token текущего anonymous-пользователя, подписывает OAuth state и сохраняет серверное соответствие Яндекс ID → прежний Firebase UID в `authProviderLinks`. Обновление frontend без повторного развёртывания `serverless/yandex-auth` не включит этот сценарий для Яндекс ID.
 

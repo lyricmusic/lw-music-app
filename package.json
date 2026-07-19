@@ -23,6 +23,7 @@
     "migrate:room-model": "node scripts/migrate-room-model.mjs",
     "preview": "vite preview",
     "verify:room-model-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-model-rules.mjs\"",
+    "verify:room-invite-function": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-invite-function.mjs\"",
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\""
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^7.3.4",
     "firebase": "^12.15.0",
+    "qrcode.react": "4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.81.0",
@@ -48,8 +50,8 @@
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
-    "firebase-tools": "^15.24.0",
     "firebase-admin": "^13.5.0",
+    "firebase-tools": "^15.24.0",
     "picomatch": "^2.3.2",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",

@@ -297,38 +297,6 @@ service cloud.firestore {
         );
     }
 
-    function hasValidInviteJoin(roomId, memberId) {
-      let redemption = getAfter(
-        /databases/$(database)/documents/roomInviteRedemptions/$(memberId)
-      ).data;
-      let inviteBefore = get(
-        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
-      ).data;
-      let inviteAfter = getAfter(
-        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
-      ).data;
-      let member = request.resource.data;
-      let room = getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data;
-      return memberId == request.auth.uid
-        && isRoomActive(room)
-        && !isActivelyBanned(roomId, memberId)
-        && hasValidRoomMemberData(member)
-        && member.invitedBy == inviteBefore.createdBy
-        && member.isGuest == isAnonymous()
-        && member.joinedAt == request.time
-        && member.role == 'member'
-        && member.status == 'active'
-        && redemption.roomId == roomId
-        && redemption.redeemedAt == request.time
-        && inviteBefore.roomId == roomId
-        && inviteBefore.revokedAt == null
-        && inviteBefore.expiresAt > request.time
-        && inviteBefore.uses < inviteBefore.maxUses
-        && inviteAfter.uses == inviteBefore.uses + 1;
-    }
-
     function isValidSelfLeave(memberId) {
       return memberId == request.auth.uid
         && resource.data.role != 'owner'
@@ -822,7 +790,7 @@ service cloud.firestore {
         && respectsSlowMode;
     }
 
-    function hasValidRoomInvite() {
+    function hasValidRoomInvite(inviteId) {
       return request.resource.data.keys().hasAll([
           'createdAt',
           'createdBy',
@@ -830,6 +798,7 @@ service cloud.firestore {
           'maxUses',
           'revokedAt',
           'roomId',
+          'tokenHash',
           'uses'
         ])
         && request.resource.data.keys().hasOnly([
@@ -842,6 +811,7 @@ service cloud.firestore {
           'roomId',
           'roomImageUrl',
           'roomName',
+          'tokenHash',
           'uses'
         ])
         && request.resource.data.createdAt is timestamp
@@ -854,6 +824,9 @@ service cloud.firestore {
         && (request.resource.data.revokedAt == null
           || request.resource.data.revokedAt is timestamp)
         && request.resource.data.roomId is string
+        && request.resource.data.tokenHash == inviteId
+        && request.resource.data.tokenHash is string
+        && request.resource.data.tokenHash.matches('^[a-f0-9]{64}$')
         && request.resource.data.uses is int
         && request.resource.data.uses >= 0
         && request.resource.data.uses <= request.resource.data.maxUses
@@ -875,54 +848,30 @@ service cloud.firestore {
         );
     }
 
-    function hasValidInviteRedemption(inviteId) {
-      let member = getAfter(
-        /databases/$(database)/documents/rooms/$(resource.data.roomId)/members/$(request.auth.uid)
+    function hasValidRoomInviteSecret(inviteId) {
+      let invite = getAfter(
+        /databases/$(database)/documents/roomInvites/$(inviteId)
       ).data;
-      return resource.data.revokedAt == null
-        && resource.data.expiresAt > request.time
-        && resource.data.uses < resource.data.maxUses
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['uses'])
-        && request.resource.data.uses == resource.data.uses + 1
+      return request.resource.data.keys().hasAll([
+          'createdAt', 'createdBy', 'roomId', 'token', 'tokenHash'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt', 'createdBy', 'roomId', 'token', 'tokenHash'
+        ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.roomId is string
+        && request.resource.data.token is string
+        && request.resource.data.token.matches('^[A-Za-z0-9_-]{43,128}$')
+        && request.resource.data.tokenHash == inviteId
+        && request.resource.data.tokenHash.matches('^[a-f0-9]{64}$')
         && existsAfter(
-          /databases/$(database)/documents/roomInviteRedemptions/$(request.auth.uid)
+          /databases/$(database)/documents/roomInvites/$(inviteId)
         )
-        && getAfter(
-          /databases/$(database)/documents/roomInviteRedemptions/$(request.auth.uid)
-        ).data.inviteId == inviteId
-        && member.status == 'active'
-        && member.role == 'member'
-        && member.invitedBy == resource.data.createdBy
-        && member.joinedAt == request.time;
-    }
-
-    function hasValidRedemptionProof(userId) {
-      let redemption = request.resource.data;
-      let inviteBefore = get(
-        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
-      ).data;
-      let inviteAfter = getAfter(
-        /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
-      ).data;
-      let member = getAfter(
-        /databases/$(database)/documents/rooms/$(redemption.roomId)/members/$(userId)
-      ).data;
-      return userId == request.auth.uid
-        && redemption.keys().hasAll(['inviteId', 'redeemedAt', 'roomId'])
-        && redemption.keys().hasOnly(['inviteId', 'redeemedAt', 'roomId'])
-        && redemption.inviteId is string
-        && redemption.redeemedAt == request.time
-        && redemption.roomId is string
-        && inviteBefore.roomId == redemption.roomId
-        && inviteBefore.revokedAt == null
-        && inviteBefore.expiresAt > request.time
-        && inviteBefore.uses < inviteBefore.maxUses
-        && inviteAfter.uses == inviteBefore.uses + 1
-        && member.status == 'active'
-        && member.role == 'member'
-        && member.invitedBy == inviteBefore.createdBy
-        && member.joinedAt == request.time;
+        && invite.createdAt == request.time
+        && invite.createdBy == request.auth.uid
+        && invite.roomId == request.resource.data.roomId
+        && invite.tokenHash == inviteId;
     }
 
     function hasValidBanData(roomId, memberId) {
@@ -1032,15 +981,12 @@ service cloud.firestore {
         || canReadRoomContent(roomId);
       allow list: if canReadRoomContent(roomId);
       allow create: if isSignedIn()
-        && (hasValidSelfJoinedMember(roomId, memberId)
-          || hasValidInviteJoin(roomId, memberId));
+        && hasValidSelfJoinedMember(roomId, memberId);
       allow update: if isSignedIn()
         && hasValidRoomMemberData(request.resource.data)
         && (isValidSelfLeave(memberId)
           || (resource.data.status == 'left'
             && hasValidSelfJoinedMember(roomId, memberId))
-          || (resource.data.status == 'left'
-            && hasValidInviteJoin(roomId, memberId))
           || isValidGuestAccountUpgrade(memberId)
           || isValidOwnerRoleChange(roomId)
           || isValidRoomKick(roomId, memberId)
@@ -1079,33 +1025,38 @@ service cloud.firestore {
     }
 
     match /roomInvites/{inviteId} {
-      // The random invite id is the bearer secret. Listing stays forbidden;
-      // a direct get powers the pre-auth join preview.
+      // Private bearer tokens are hashed before becoming document ids. A
+      // direct get powers the pre-auth preview; only room managers may list.
       allow get: if true;
-      allow list: if false;
+      allow list: if isSignedIn()
+        && canInviteToRoom(resource.data.roomId);
       allow create: if isSignedIn()
-        && hasValidRoomInvite()
+        && !isAnonymous()
+        && hasValidRoomInvite(inviteId)
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.revokedAt == null
         && request.resource.data.uses == 0
         && canInviteToRoom(request.resource.data.roomId);
       allow update: if isSignedIn()
-        && hasValidRoomInvite()
-        && (hasValidInviteRedemption(inviteId)
-          || (canInviteToRoom(resource.data.roomId)
-            && resource.data.revokedAt == null
-            && request.resource.data.revokedAt == request.time
-            && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['revokedAt'])));
+        && canInviteToRoom(resource.data.roomId)
+        && resource.data.revokedAt == null
+        && request.resource.data.revokedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['revokedAt']);
       allow delete: if false;
     }
 
-    match /roomInviteRedemptions/{userId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isSignedIn()
-        && hasValidRedemptionProof(userId);
-      allow delete: if false;
+    match /roomInviteSecrets/{inviteId} {
+      allow get, list: if isSignedIn()
+        && canInviteToRoom(resource.data.roomId);
+      allow create: if isSignedIn()
+        && !isAnonymous()
+        && hasValidRoomInviteSecret(inviteId)
+        && canInviteToRoom(request.resource.data.roomId);
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && canInviteToRoom(resource.data.roomId);
     }
 
     match /rooms/{roomId}/playback/{stateId} {
