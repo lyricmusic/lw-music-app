@@ -62,8 +62,11 @@ export type RoomInvite = {
   expiresAt: Timestamp
   id: string
   maxUses: number
+  participantCount?: number
   revokedAt: null | Timestamp
   roomId: string
+  roomImageUrl?: string
+  roomName?: string
   uses: number
 }
 

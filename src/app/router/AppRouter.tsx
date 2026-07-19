@@ -14,6 +14,9 @@ const NotFoundPage = lazy(() =>
     default: module.NotFoundPage,
   })),
 )
+const JoinPage = lazy(() =>
+  import('@/pages/join').then(module => ({ default: module.JoinPage })),
+)
 const RoomPage = lazy(() =>
   import('@/pages/room').then(module => ({ default: module.RoomPage })),
 )
@@ -87,6 +90,8 @@ export function AppRouter() {
             />
           </>
         )}
+
+        <Route element={<JoinPage />} path={routes.joinPattern} />
 
         <Route element={<GuestOnlyRoute />}>
           <Route element={<SignInPage />} path={routes.signIn} />

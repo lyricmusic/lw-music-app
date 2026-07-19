@@ -26,8 +26,12 @@ export {
 } from './api/roomMembership'
 export {
   createRoomInvite,
+  getRoomInvitePreview,
   getRoomInviteUrl,
+  isRoomInviteAvailable,
+  redeemRoomInvite,
   revokeRoomInvite,
+  type RoomInvitePreview,
 } from './api/roomInvites'
 export {
   banRoomUser,

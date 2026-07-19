@@ -7,6 +7,7 @@ import { doc, onSnapshot } from 'firebase/firestore'
 import type { RoomMemberRole, RoomMemberStatus } from '../model/types'
 
 export interface CurrentRoomMember {
+  isGuest: boolean
   role: RoomMemberRole
   status: RoomMemberStatus
 }
@@ -37,7 +38,7 @@ export function useCurrentRoomMember(roomId: string) {
         setMember(
           ROOM_MEMBER_ROLES.includes(role) &&
             (status === 'active' || status === 'left')
-            ? { role, status }
+            ? { isGuest: data?.isGuest === true, role, status }
             : null,
         )
       },

@@ -15,6 +15,7 @@ import { Avatar, Box, CircularProgress, Paper, Typography } from '@mui/material'
 
 interface RoomChatProps {
   actions?: ReactNode
+  chatEnabled?: boolean
   roomId: string
 }
 
@@ -117,7 +118,11 @@ function MessageItem({
   )
 }
 
-export function RoomChat({ actions, roomId }: RoomChatProps) {
+export function RoomChat({
+  actions,
+  chatEnabled = true,
+  roomId,
+}: RoomChatProps) {
   const { profile, user } = useSession()
   const { error, loading, messages } = useRoomMessages(roomId)
   const blockedUserIds = useBlockedUsers()
@@ -169,7 +174,7 @@ export function RoomChat({ actions, roomId }: RoomChatProps) {
     }
   }
 
-  const inputDisabled = !profile || !user
+  const inputDisabled = !chatEnabled || !profile || !user
   const submitDisabled = inputDisabled || isSubmitting || !draft.trim()
 
   return (
@@ -249,6 +254,15 @@ export function RoomChat({ actions, roomId }: RoomChatProps) {
             />
           ))}
       </Box>
+
+      {!chatEnabled && (
+        <Typography
+          className="mb-2 text-xs leading-4"
+          sx={{ color: '#D7DBF0' }}
+        >
+          Владелец комнаты отключил чат для гостей.
+        </Typography>
+      )}
 
       {(error || errors.message?.message) && (
         <Typography

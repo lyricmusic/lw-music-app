@@ -72,6 +72,25 @@ async function createAnonymousUser() {
   return { idToken: body.idToken, uid: body.localId }
 }
 
+async function upgradeAnonymousUser(user, label) {
+  const response = await fetch(
+    `http://${authHost}/identitytoolkit.googleapis.com/v1/accounts:update?key=fake`,
+    {
+      body: JSON.stringify({
+        email: `${label}-${Date.now()}@example.test`,
+        idToken: user.idToken,
+        password: 'upgraded-guest-password',
+        returnSecureToken: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    },
+  )
+  const body = await response.json()
+  assert.equal(response.ok, true, JSON.stringify(body))
+  return { idToken: body.idToken, uid: body.localId }
+}
+
 async function commit(writes, token) {
   const response = await fetch(firestoreUrl, {
     body: JSON.stringify({ writes }),
@@ -86,11 +105,10 @@ async function commit(writes, token) {
 }
 
 async function readDocument(path, token) {
+  const headers = token ? { authorization: `Bearer ${token}` } : undefined
   const response = await fetch(
     `http://${firestoreHost}/v1/${documentPath(path)}`,
-    {
-      headers: { authorization: `Bearer ${token}` },
-    },
+    { headers },
   )
   const body = await response.json()
   return { body, ok: response.ok, status: response.status }
@@ -312,6 +330,18 @@ const anonymousMembership = await commit(
 )
 assert.equal(anonymousMembership.ok, true, JSON.stringify(anonymousMembership))
 
+const promoteGuest = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${anonymousUser.uid}`,
+      { role: stringValue('moderator') },
+      ['role'],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(promoteGuest.ok, false, JSON.stringify(promoteGuest))
+
 const anonymousMessage = await commit(
   [
     update(
@@ -335,6 +365,32 @@ const anonymousMessage = await commit(
   anonymousUser.idToken,
 )
 assert.equal(anonymousMessage.ok, true, JSON.stringify(anonymousMessage))
+
+const secondAnonymousMessage = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/messages/guest-second-${runId}`,
+      {
+        authorId: stringValue(anonymousUser.uid),
+        authorName: stringValue('Guest'),
+        authorPhotoURL: stringValue('/avatars/pulse.svg'),
+        text: stringValue('Guest anti-spam check'),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `rooms/${validRoom.roomId}/messageActivity/${anonymousUser.uid}`,
+      { messageId: stringValue(`guest-second-${runId}`) },
+      [requestTime('lastMessageAt')],
+    ),
+  ],
+  anonymousUser.idToken,
+)
+assert.equal(
+  secondAnonymousMessage.ok,
+  false,
+  JSON.stringify(secondAnonymousMessage),
+)
 
 const registeredMembership = await commit(
   [
@@ -724,9 +780,14 @@ const inviteCreate = await commit(
       {
         createdBy: stringValue(owner.uid),
         expiresAt: timestampValue(inviteExpiresAt),
-        maxUses: integerValue(1),
+        maxUses: integerValue(2),
+        participantCount: integerValue(1),
         revokedAt: nullValue(),
         roomId: stringValue(privateRoom.roomId),
+        roomImageUrl: stringValue(
+          `https://storage.yandexcloud.net/test-bucket/room-covers/${privateRoom.roomId}/cover.png`,
+        ),
+        roomName: stringValue(`Room model ${runId}-private`),
         uses: integerValue(0),
       },
       [requestTime('createdAt')],
@@ -735,6 +796,9 @@ const inviteCreate = await commit(
   owner.idToken,
 )
 assert.equal(inviteCreate.ok, true, JSON.stringify(inviteCreate))
+
+const publicInvitePreview = await readDocument(`roomInvites/${inviteId}`)
+assert.equal(publicInvitePreview.ok, true, JSON.stringify(publicInvitePreview))
 
 const inviteRedemption = await commit(
   [
@@ -760,6 +824,35 @@ const inviteRedemption = await commit(
   invitee.idToken,
 )
 assert.equal(inviteRedemption.ok, true, JSON.stringify(inviteRedemption))
+
+const anonymousInviteRedemption = await commit(
+  [
+    patch(`roomInvites/${inviteId}`, { uses: integerValue(2) }, ['uses']),
+    update(
+      `roomInviteRedemptions/${anonymousUser.uid}`,
+      {
+        inviteId: stringValue(inviteId),
+        roomId: stringValue(privateRoom.roomId),
+      },
+      [requestTime('redeemedAt')],
+    ),
+    update(
+      `rooms/${privateRoom.roomId}/members/${anonymousUser.uid}`,
+      memberFields({
+        invitedBy: owner.uid,
+        isGuest: true,
+        role: 'member',
+      }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  anonymousUser.idToken,
+)
+assert.equal(
+  anonymousInviteRedemption.ok,
+  true,
+  JSON.stringify(anonymousInviteRedemption),
+)
 
 const invitedPrivateRoomRead = await readDocument(
   `rooms/${privateRoom.roomId}`,
@@ -935,6 +1028,26 @@ assert.equal(
   JSON.stringify(foreignOwnerMembership),
 )
 
+const upgradedAnonymousUser = await upgradeAnonymousUser(
+  anonymousUser,
+  'upgraded-guest',
+)
+const guestMembershipUpgrade = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${anonymousUser.uid}`,
+      { isGuest: booleanValue(false) },
+      ['isGuest'],
+    ),
+  ],
+  upgradedAnonymousUser.idToken,
+)
+assert.equal(
+  guestMembershipUpgrade.ok,
+  true,
+  JSON.stringify(guestMembershipUpgrade),
+)
+
 console.log(
-  'Room model rules verification passed: public listing, membership lifecycle, role-based kicks, private invites, bans, mutes, blocks, and slow mode.',
+  'Room model rules verification passed: public invite previews, guest onboarding and upgrade, membership lifecycle, role restrictions, private invites, bans, mutes, blocks, and slow mode.',
 )

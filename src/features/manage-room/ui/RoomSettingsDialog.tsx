@@ -164,7 +164,7 @@ export function RoomSettingsDialog({
             error={Boolean(errors.slowModeSeconds)}
             helperText={
               errors.slowModeSeconds?.message ??
-              '0 отключает ограничение. Максимум — 300 секунд.'
+              '0 отключает ограничение для сохранённых профилей. Для гостей минимум — 10 секунд.'
             }
             inputProps={{ max: 300, min: 0, step: 1 }}
             label="Интервал сообщений, секунд"

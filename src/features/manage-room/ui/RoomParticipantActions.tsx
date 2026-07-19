@@ -208,29 +208,38 @@ export function RoomParticipantActions({
         onClose={closeMenu}
         open={Boolean(anchorElement)}
       >
-        {canAssignRole && [
-          <MenuItem
-            disabled={participant.role === 'host'}
-            key="host"
-            onClick={() => void handleRoleChange('host')}
-          >
-            Сделать ведущим
-          </MenuItem>,
-          <MenuItem
-            disabled={participant.role === 'moderator'}
-            key="moderator"
-            onClick={() => void handleRoleChange('moderator')}
-          >
-            Сделать модератором
-          </MenuItem>,
-          <MenuItem
-            disabled={participant.role === 'member'}
-            key="member"
-            onClick={() => void handleRoleChange('member')}
-          >
-            Сделать участником
-          </MenuItem>,
-        ]}
+        {canAssignRole &&
+          !participant.isGuest && [
+            <MenuItem
+              disabled={participant.role === 'host'}
+              key="host"
+              onClick={() => void handleRoleChange('host')}
+            >
+              Сделать ведущим
+            </MenuItem>,
+            <MenuItem
+              disabled={participant.role === 'moderator'}
+              key="moderator"
+              onClick={() => void handleRoleChange('moderator')}
+            >
+              Сделать модератором
+            </MenuItem>,
+            <MenuItem
+              disabled={participant.role === 'member'}
+              key="member"
+              onClick={() => void handleRoleChange('member')}
+            >
+              Сделать участником
+            </MenuItem>,
+          ]}
+
+        {canAssignRole &&
+          participant.isGuest &&
+          participant.role !== 'member' && (
+            <MenuItem onClick={() => void handleRoleChange('member')}>
+              Сделать участником
+            </MenuItem>
+          )}
 
         {canAssignRole && (canModerate || canKick) && <Divider />}
 

@@ -87,6 +87,9 @@ export async function setRoomMemberRole(
     if (memberSnapshot.data().role === 'owner') {
       throw new Error('Роль владельца нельзя изменить.')
     }
+    if (memberSnapshot.data().isGuest === true && role !== 'member') {
+      throw new Error('Гостя нельзя назначить ведущим или модератором.')
+    }
 
     transaction.update(memberRef, { role })
   })

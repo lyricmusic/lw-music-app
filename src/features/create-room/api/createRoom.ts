@@ -45,6 +45,11 @@ export async function createRoom({
 }: CreateRoomInput) {
   const user = auth.currentUser
   if (!user) throw new Error('Чтобы создать комнату, войдите в аккаунт.')
+  if (user.isAnonymous) {
+    throw new Error(
+      'Сначала сохраните гостевой профиль, чтобы создать комнату.',
+    )
+  }
 
   const normalizedName = normalizeRoomName(name)
   if (!normalizedName) throw new Error('Введите название комнаты.')

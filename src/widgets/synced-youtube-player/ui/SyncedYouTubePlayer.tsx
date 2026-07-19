@@ -40,6 +40,7 @@ import { AddToQueueDialog } from './AddToQueueDialog'
 
 interface SyncedYouTubePlayerProps {
   currentMemberRole?: null | RoomMemberRole
+  queueEnabled?: boolean
   roomId: string
   syncEnabled?: boolean
 }
@@ -234,6 +235,7 @@ function getExpectedPosition(state: PlaybackState) {
 
 export function SyncedYouTubePlayer({
   currentMemberRole = null,
+  queueEnabled = true,
   roomId,
   syncEnabled = true,
 }: SyncedYouTubePlayerProps) {
@@ -588,6 +590,7 @@ export function SyncedYouTubePlayer({
   const queueButtonDisabled =
     queueLoading ||
     queueLeaving ||
+    !queueEnabled ||
     !user ||
     currentUserQueueItem?.pending ||
     (!currentUserAlreadyQueued && !profile)
@@ -833,6 +836,12 @@ export function SyncedYouTubePlayer({
                 sx={{ color: '#FF9BAD' }}
               >
                 {queueError}
+              </Typography>
+            )}
+
+            {!queueEnabled && (
+              <Typography className="mt-2 text-sm" sx={{ color: '#D7DBF0' }}>
+                Владелец комнаты отключил очередь для гостей.
               </Typography>
             )}
 

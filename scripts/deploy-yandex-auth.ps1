@@ -97,28 +97,39 @@ $yandexClientId = $env:SYNC_YANDEX_CLIENT_ID
 $yandexClientSecret = $env:SYNC_YANDEX_CLIENT_SECRET
 $firebaseServiceAccountPath = $env:SYNC_FIREBASE_SERVICE_ACCOUNT_PATH
 
-if (-not $yandexClientId) {
-  throw 'Set SYNC_YANDEX_CLIENT_ID before deploying.'
-}
-if (-not $yandexClientSecret) {
-  throw 'Set SYNC_YANDEX_CLIENT_SECRET before deploying.'
-}
-if (-not $firebaseServiceAccountPath) {
-  throw 'Set SYNC_FIREBASE_SERVICE_ACCOUNT_PATH before deploying.'
-}
-if (-not (Test-Path -LiteralPath $firebaseServiceAccountPath)) {
-  throw "Firebase service account file not found: $firebaseServiceAccountPath"
+$hasAnyLocalSecretInput = [bool](
+  $yandexClientId -or $yandexClientSecret -or $firebaseServiceAccountPath
+)
+$hasAllLocalSecretInputs = [bool](
+  $yandexClientId -and $yandexClientSecret -and $firebaseServiceAccountPath
+)
+
+if ($hasAnyLocalSecretInput -and -not $hasAllLocalSecretInputs) {
+  throw @'
+Set SYNC_YANDEX_CLIENT_ID, SYNC_YANDEX_CLIENT_SECRET and
+SYNC_FIREBASE_SERVICE_ACCOUNT_PATH together, or leave all three unset to reuse
+the current version of the existing Lockbox secret.
+'@
 }
 
-$firebaseServiceAccountJson = (
-  Get-Content -LiteralPath $firebaseServiceAccountPath -Raw
-).Trim()
-$firebaseServiceAccountJson | ConvertFrom-Json | Out-Null
+$firebaseServiceAccountJson = $null
+if ($hasAllLocalSecretInputs) {
+  if (-not (Test-Path -LiteralPath $firebaseServiceAccountPath)) {
+    throw "Firebase service account file not found: $firebaseServiceAccountPath"
+  }
+
+  $firebaseServiceAccountJson = (
+    Get-Content -LiteralPath $firebaseServiceAccountPath -Raw
+  ).Trim()
+  $firebaseServiceAccountJson | ConvertFrom-Json | Out-Null
+}
 
 $serviceAccountName = 'lw-music-auth'
 $secretName = 'lw-music-yandex-auth'
 $functionName = 'lw-music-yandex-auth'
-$functionSource = Join-Path $PSScriptRoot '..\serverless\yandex-auth'
+$functionSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\yandex-auth')
+).Path
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -157,6 +168,14 @@ $secretPayload = @(
 
 $secret = Find-YcJson @('lockbox', 'secret', 'get', '--name', $secretName)
 if (-not $secret) {
+  if (-not $hasAllLocalSecretInputs) {
+    throw @'
+The Lockbox secret does not exist. Set SYNC_YANDEX_CLIENT_ID,
+SYNC_YANDEX_CLIENT_SECRET and SYNC_FIREBASE_SERVICE_ACCOUNT_PATH for the first
+deployment.
+'@
+  }
+
   $secret = Invoke-YcJson -Arguments @(
     'lockbox', 'secret', 'create',
     '--name', $secretName,
@@ -164,30 +183,55 @@ if (-not $secret) {
     '--payload', '-'
   ) -InputText $secretPayload
   $secretVersionId = $secret.current_version.id
-} else {
+} elseif ($hasAllLocalSecretInputs) {
   $secretVersion = Invoke-YcJson -Arguments @(
     'lockbox', 'secret', 'add-version',
     '--id', $secret.id,
     '--payload', '-'
   ) -InputText $secretPayload
   $secretVersionId = $secretVersion.id
+} else {
+  $secretVersionId = $secret.current_version.id
+  if (-not $secretVersionId) {
+    throw 'The existing Lockbox secret has no current version.'
+  }
 }
 
 $allowedOriginsValue = $AllowedOrigins -join ';'
-Invoke-YcJson @(
-  'serverless', 'function', 'version', 'create',
-  '--function-id', $function.id,
-  '--runtime', 'nodejs22',
-  '--entrypoint', 'index.handler',
-  '--memory', '256MB',
-  '--execution-timeout', '15s',
-  '--service-account-id', $serviceAccount.id,
-  '--source-path', $functionSource,
-  '--environment', "YANDEX_REDIRECT_URI=$redirectUri,ALLOWED_ORIGINS=$allowedOriginsValue",
-  '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_ID,environment-variable=YANDEX_CLIENT_ID",
-  '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_SECRET,environment-variable=YANDEX_CLIENT_SECRET",
-  '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
-) | Out-Null
+$deploymentSource = Join-Path (
+  [System.IO.Path]::GetTempPath()
+) "lw-music-yandex-auth-$([guid]::NewGuid().ToString('N'))"
+$sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
+
+New-Item -ItemType Directory -Path $deploymentSource | Out-Null
+try {
+  foreach ($sourceFile in $sourceFiles) {
+    $sourcePath = Join-Path $functionSource $sourceFile
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+      throw "Function source file not found: $sourcePath"
+    }
+    Copy-Item -LiteralPath $sourcePath -Destination $deploymentSource
+  }
+
+  Invoke-YcJson @(
+    'serverless', 'function', 'version', 'create',
+    '--function-id', $function.id,
+    '--runtime', 'nodejs22',
+    '--entrypoint', 'index.handler',
+    '--memory', '256MB',
+    '--execution-timeout', '15s',
+    '--service-account-id', $serviceAccount.id,
+    '--source-path', $deploymentSource,
+    '--environment', "YANDEX_REDIRECT_URI=$redirectUri,ALLOWED_ORIGINS=$allowedOriginsValue",
+    '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_ID,environment-variable=YANDEX_CLIENT_ID",
+    '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_SECRET,environment-variable=YANDEX_CLIENT_SECRET",
+    '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
+  ) | Out-Null
+} finally {
+  if (Test-Path -LiteralPath $deploymentSource) {
+    Remove-Item -LiteralPath $deploymentSource -Recurse -Force
+  }
+}
 
 Invoke-YcCommand @(
   'serverless', 'function', 'allow-unauthenticated-invoke', $function.id
@@ -198,4 +242,5 @@ Invoke-YcCommand @(
   functionUrl = $redirectUri
   redirectUri = $redirectUri
   viteVariable = "VITE_YANDEX_AUTH_URL=$redirectUri"
+  secretSource = if ($hasAllLocalSecretInputs) { 'new-version' } else { 'existing-version' }
 } | ConvertTo-Json

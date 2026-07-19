@@ -1,4 +1,5 @@
 export {
+  GUEST_MESSAGE_MIN_INTERVAL_SECONDS,
   ROOM_MESSAGE_MAX_LENGTH,
   RoomSlowModeError,
   sendRoomMessage,

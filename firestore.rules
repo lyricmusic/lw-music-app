@@ -277,6 +277,7 @@ service cloud.firestore {
       ).data;
       let member = request.resource.data;
       return memberId == request.auth.uid
+        && !isActivelyBanned(roomId, memberId)
         && existsAfter(
           /databases/$(database)/documents/rooms/$(roomId)
         )
@@ -307,7 +308,12 @@ service cloud.firestore {
         /databases/$(database)/documents/roomInvites/$(redemption.inviteId)
       ).data;
       let member = request.resource.data;
+      let room = getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data;
       return memberId == request.auth.uid
+        && isRoomActive(room)
+        && !isActivelyBanned(roomId, memberId)
         && hasValidRoomMemberData(member)
         && member.invitedBy == inviteBefore.createdBy
         && member.isGuest == isAnonymous()
@@ -336,8 +342,19 @@ service cloud.firestore {
       return hasActiveRoomRole(roomId, ['owner'])
         && resource.data.role != 'owner'
         && request.resource.data.role in ['host', 'member', 'moderator']
+        && (!resource.data.isGuest
+          || request.resource.data.role == 'member')
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['role']);
+    }
+
+    function isValidGuestAccountUpgrade(memberId) {
+      return memberId == request.auth.uid
+        && !isAnonymous()
+        && resource.data.isGuest == true
+        && request.resource.data.isGuest == false
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isGuest']);
     }
 
     function hasRoomKickAuthority(roomId, memberId, memberRole) {
@@ -786,10 +803,15 @@ service cloud.firestore {
       let message = getAfter(
         /databases/$(database)/documents/rooms/$(roomId)/messages/$(request.resource.data.messageId)
       ).data;
+      let configuredSlowModeSeconds = room.settings.slowModeSeconds;
+      let requiredSlowModeSeconds = isGuestRoomMember(roomId)
+          && configuredSlowModeSeconds < 10
+        ? 10
+        : configuredSlowModeSeconds;
       let respectsSlowMode = !exists(
           /databases/$(database)/documents/rooms/$(roomId)/messageActivity/$(memberId)
         ) || request.time >= resource.data.lastMessageAt
-          + duration.value(room.settings.slowModeSeconds, 's');
+          + duration.value(requiredSlowModeSeconds, 's');
       return memberId == request.auth.uid
         && request.resource.data.keys().hasAll(['lastMessageAt', 'messageId'])
         && request.resource.data.keys().hasOnly(['lastMessageAt', 'messageId'])
@@ -815,8 +837,11 @@ service cloud.firestore {
           'createdBy',
           'expiresAt',
           'maxUses',
+          'participantCount',
           'revokedAt',
           'roomId',
+          'roomImageUrl',
+          'roomName',
           'uses'
         ])
         && request.resource.data.createdAt is timestamp
@@ -831,7 +856,23 @@ service cloud.firestore {
         && request.resource.data.roomId is string
         && request.resource.data.uses is int
         && request.resource.data.uses >= 0
-        && request.resource.data.uses <= request.resource.data.maxUses;
+        && request.resource.data.uses <= request.resource.data.maxUses
+        && (
+          !request.resource.data.keys().hasAny([
+            'participantCount', 'roomImageUrl', 'roomName'
+          ])
+          || (request.resource.data.keys().hasAll([
+              'participantCount', 'roomImageUrl', 'roomName'
+            ])
+            && request.resource.data.participantCount is int
+            && request.resource.data.participantCount >= 0
+            && request.resource.data.roomImageUrl is string
+            && request.resource.data.roomImageUrl.size() > 0
+            && request.resource.data.roomImageUrl.size() <= 2048
+            && request.resource.data.roomName is string
+            && request.resource.data.roomName.size() > 0
+            && request.resource.data.roomName.size() <= 80)
+        );
     }
 
     function hasValidInviteRedemption(inviteId) {
@@ -1002,6 +1043,7 @@ service cloud.firestore {
             && hasValidSelfJoinedMember(roomId, memberId))
           || (resource.data.status == 'left'
             && hasValidInviteJoin(roomId, memberId))
+          || isValidGuestAccountUpgrade(memberId)
           || isValidOwnerRoleChange(roomId)
           || isValidRoomKick(roomId, memberId)
           || isValidModerationRemoval(roomId, memberId));
@@ -1039,7 +1081,9 @@ service cloud.firestore {
     }
 
     match /roomInvites/{inviteId} {
-      allow get: if isSignedIn();
+      // The random invite id is the bearer secret. Listing stays forbidden;
+      // a direct get powers the pre-auth join preview.
+      allow get: if true;
       allow list: if false;
       allow create: if isSignedIn()
         && hasValidRoomInvite()

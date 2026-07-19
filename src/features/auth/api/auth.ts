@@ -1,7 +1,9 @@
 import { FirebaseError } from 'firebase/app'
 import {
+  EmailAuthProvider,
   User,
   createUserWithEmailAndPassword,
+  linkWithCredential,
   signInWithEmailAndPassword,
   signInWithCustomToken,
   signOut,
@@ -111,6 +113,10 @@ export async function signUpWithEmail({
   email: string
   password: string
 }) {
+  if (auth.currentUser?.isAnonymous) {
+    return saveAnonymousUserWithEmail({ email, password })
+  }
+
   const credential = await createUserWithEmailAndPassword(
     auth,
     email.trim(),
@@ -127,6 +133,24 @@ export async function signUpWithEmail({
   return credential.user
 }
 
+export async function saveAnonymousUserWithEmail({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}) {
+  const anonymousUser = auth.currentUser
+  if (!anonymousUser?.isAnonymous) {
+    throw new AuthFlowError('auth/requires-anonymous-user')
+  }
+
+  const credential = EmailAuthProvider.credential(email.trim(), password)
+  const linkedCredential = await linkWithCredential(anonymousUser, credential)
+  await saveUserProfile(linkedCredential.user)
+  return linkedCredential.user
+}
+
 export async function signInWithEmail(email: string, password: string) {
   const credential = await signInWithEmailAndPassword(
     auth,
@@ -138,14 +162,29 @@ export async function signInWithEmail(email: string, password: string) {
   return credential.user
 }
 
-export function signInWithYandex() {
+export async function signInWithYandex({
+  linkAnonymousUser,
+}: { linkAnonymousUser?: boolean } = {}) {
   if (!yandexAuthUrl) {
-    return Promise.reject(new AuthFlowError('yandex/not-configured'))
+    throw new AuthFlowError('yandex/not-configured')
   }
 
   const state = createYandexState()
   const authEndpoint = new URL(yandexAuthUrl)
   authEndpoint.searchParams.set('state', state)
+
+  const shouldLinkAnonymousUser =
+    linkAnonymousUser ?? auth.currentUser?.isAnonymous === true
+  const anonymousUser = shouldLinkAnonymousUser ? auth.currentUser : null
+  if (shouldLinkAnonymousUser) {
+    if (!anonymousUser?.isAnonymous) {
+      throw new AuthFlowError('auth/requires-anonymous-user')
+    }
+
+    const firebaseToken = await anonymousUser.getIdToken()
+    authEndpoint.searchParams.set('mode', 'link')
+    authEndpoint.hash = new URLSearchParams({ firebaseToken }).toString()
+  }
 
   const popup = window.open(
     authEndpoint,
@@ -200,6 +239,10 @@ export function signInWithYandex() {
 
       try {
         const credential = await signInWithCustomToken(auth, event.data.token)
+        if (anonymousUser && credential.user.uid !== anonymousUser.uid) {
+          await signOut(auth)
+          throw new AuthFlowError('yandex/link-uid-mismatch')
+        }
         await saveUserProfile(credential.user, { skipOnboarding: true })
         resolve(credential.user)
       } catch (error) {
@@ -228,14 +271,23 @@ const errorMessages: Record<string, string> = {
   'auth/account-exists-with-different-credential':
     'Аккаунт с таким e-mail уже существует. Войдите прежним способом.',
   'auth/email-already-in-use': 'Пользователь с таким e-mail уже существует.',
+  'auth/credential-already-in-use':
+    'Этот способ входа уже подключён к другому аккаунту.',
   'auth/invalid-credential': 'Неверный e-mail или пароль.',
   'auth/invalid-email': 'Введите корректный e-mail.',
   'auth/network-request-failed':
     'Не удалось связаться с Firebase. Проверьте интернет-соединение.',
   'auth/too-many-requests': 'Слишком много попыток. Попробуйте ещё раз позже.',
+  'auth/requires-anonymous-user': 'Этот профиль уже сохранён.',
   'auth/weak-password': 'Пароль должен содержать не менее 6 символов.',
   'yandex/access_denied': 'Вы отменили вход через Яндекс.',
   'yandex/invalid-response': 'Яндекс вернул некорректный ответ.',
+  'yandex/credential-already-in-use':
+    'Этот Яндекс ID уже подключён к другому профилю.',
+  'yandex/link-start-failed':
+    'Не удалось начать сохранение профиля через Яндекс. Попробуйте ещё раз.',
+  'yandex/link-uid-mismatch':
+    'Не удалось сохранить текущий профиль через Яндекс. Войдите снова и повторите попытку.',
   'yandex/not-configured': 'Вход через Яндекс ещё не настроен.',
   'yandex/oauth-failed': 'Яндекс не подтвердил вход. Попробуйте ещё раз.',
   'yandex/popup-blocked': 'Браузер заблокировал окно входа через Яндекс.',

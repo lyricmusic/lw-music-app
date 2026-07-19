@@ -16,6 +16,7 @@ interface SendRoomMessageInput {
 }
 
 export const ROOM_MESSAGE_MAX_LENGTH = 1000
+export const GUEST_MESSAGE_MIN_INTERVAL_SECONDS = 10
 
 export class RoomSlowModeError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -44,22 +45,31 @@ export async function sendRoomMessage({
 
   const messageRef = doc(collection(db, 'rooms', roomId, 'messages'))
   const activityRef = doc(db, 'rooms', roomId, 'messageActivity', user.uid)
+  const memberRef = doc(db, 'rooms', roomId, 'members', user.uid)
   const roomRef = doc(db, 'rooms', roomId)
 
   await runTransaction(db, async transaction => {
-    const [roomSnapshot, activitySnapshot] = await Promise.all([
+    const [roomSnapshot, activitySnapshot, memberSnapshot] = await Promise.all([
       transaction.get(roomRef),
       transaction.get(activityRef),
+      transaction.get(memberRef),
     ])
     if (!roomSnapshot.exists()) throw new Error('Комната не найдена.')
 
     const slowModeSeconds = roomSnapshot.data().settings?.slowModeSeconds
-    const safeSlowModeSeconds =
+    const configuredSlowModeSeconds =
       typeof slowModeSeconds === 'number' &&
       Number.isInteger(slowModeSeconds) &&
       slowModeSeconds > 0
         ? slowModeSeconds
         : 0
+    const safeSlowModeSeconds =
+      memberSnapshot.data()?.isGuest === true
+        ? Math.max(
+            configuredSlowModeSeconds,
+            GUEST_MESSAGE_MIN_INTERVAL_SECONDS,
+          )
+        : configuredSlowModeSeconds
     const lastMessageAt = activitySnapshot.data()?.lastMessageAt
     if (safeSlowModeSeconds > 0 && lastMessageAt instanceof Timestamp) {
       const retryAfterMilliseconds =

@@ -87,7 +87,7 @@ export function RoomPage() {
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         roomId,
       })
-      await navigator.clipboard.writeText(getRoomInviteUrl(roomId, inviteId))
+      await navigator.clipboard.writeText(getRoomInviteUrl(inviteId))
       toast.success('Ссылка-приглашение скопирована. Она действует 24 часа.')
     } catch (reason) {
       toast.error(
@@ -261,11 +261,23 @@ export function RoomPage() {
           <SyncedYouTubePlayer
             currentMemberRole={currentMember?.role}
             key={roomId}
+            queueEnabled={
+              !currentMember?.isGuest ||
+              room.access?.settings.allowGuestQueue === true
+            }
             roomId={roomId}
           />
         </Box>
         <Box className="room-chat-column">
-          <RoomChat actions={roomActions} key={roomId} roomId={roomId} />
+          <RoomChat
+            actions={roomActions}
+            chatEnabled={
+              !currentMember?.isGuest ||
+              room.access?.settings.allowGuestChat === true
+            }
+            key={roomId}
+            roomId={roomId}
+          />
         </Box>
       </Box>
       {currentMember?.role === 'owner' && room.access && (

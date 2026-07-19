@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react'
 
+import { useSession } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
-import {
-  doc,
-  getDoc,
-  runTransaction,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore'
+import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
 
 import { parseRoomStatus, parseRoomVisibility } from '../model/roomAccess'
 import type { RoomMemberRole } from '../model/types'
+import { redeemRoomInvite } from './roomInvites'
 
 export type RoomMembershipStatus =
   'error' | 'forbidden' | 'idle' | 'joined' | 'joining'
@@ -30,83 +26,12 @@ class RoomMembershipError extends Error {
   }
 }
 
-function isInviteUsable(data: Record<string, unknown>) {
-  return (
-    data.revokedAt == null &&
-    data.expiresAt instanceof Timestamp &&
-    data.expiresAt.toMillis() > Date.now() &&
-    typeof data.maxUses === 'number' &&
-    Number.isInteger(data.maxUses) &&
-    typeof data.uses === 'number' &&
-    Number.isInteger(data.uses) &&
-    data.uses < data.maxUses
-  )
-}
-
-async function joinWithInvite(roomId: string, inviteId: string) {
-  const user = auth.currentUser
-  if (!user) throw new Error('Чтобы войти в комнату, авторизуйтесь.')
-
-  const inviteRef = doc(db, 'roomInvites', inviteId)
-  const memberRef = doc(db, 'rooms', roomId, 'members', user.uid)
-  const redemptionRef = doc(db, 'roomInviteRedemptions', user.uid)
-
-  const existingMember = await getDoc(memberRef).catch(() => null)
-  if (existingMember?.data()?.status === 'active') return
-
-  try {
-    await runTransaction(db, async transaction => {
-      const inviteSnapshot = await transaction.get(inviteRef)
-      if (!inviteSnapshot.exists()) {
-        throw new RoomMembershipError(
-          'Приглашение не найдено или уже удалено.',
-          'forbidden',
-        )
-      }
-
-      const invite = inviteSnapshot.data()
-      if (invite.roomId !== roomId || !isInviteUsable(invite)) {
-        throw new RoomMembershipError(
-          'Приглашение недействительно, отозвано или уже истекло.',
-          'forbidden',
-        )
-      }
-      if (typeof invite.createdBy !== 'string') {
-        throw new RoomMembershipError(
-          'Приглашение содержит некорректные данные.',
-          'forbidden',
-        )
-      }
-
-      transaction.update(inviteRef, { uses: invite.uses + 1 })
-      transaction.set(redemptionRef, {
-        inviteId,
-        redeemedAt: serverTimestamp(),
-        roomId,
-      })
-      transaction.set(memberRef, {
-        invitedBy: invite.createdBy,
-        isGuest: user.isAnonymous,
-        joinedAt: serverTimestamp(),
-        role: 'member',
-        status: 'active',
-      })
-    })
-  } catch (error) {
-    // React Strict Mode can start the same redemption twice in development.
-    // If one transaction has already succeeded, treat the second one as success.
-    const memberSnapshot = await getDoc(memberRef).catch(() => null)
-    if (memberSnapshot?.data()?.status === 'active') return
-    throw error
-  }
-}
-
 async function ensureRoomMembership(roomId: string, inviteId?: string) {
   const user = auth.currentUser
   if (!user) throw new Error('Чтобы войти в комнату, авторизуйтесь.')
 
   if (inviteId) {
-    await joinWithInvite(roomId, inviteId)
+    await redeemRoomInvite(inviteId, roomId)
     return
   }
 
@@ -127,7 +52,12 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
 
     const memberSnapshot = await transaction.get(memberRef)
     if (memberSnapshot.exists()) {
-      if (memberSnapshot.data().status === 'active') return
+      if (memberSnapshot.data().status === 'active') {
+        if (memberSnapshot.data().isGuest === true && !user.isAnonymous) {
+          transaction.update(memberRef, { isGuest: false })
+        }
+        return
+      }
     }
 
     if (!isOwner && parseRoomVisibility(room.visibility) === 'private') {
@@ -153,6 +83,7 @@ export function useRoomMembership(
   enabled: boolean,
   inviteId?: string,
 ): RoomMembershipState {
+  const { user } = useSession()
   const [state, setState] = useState<RoomMembershipState>({
     error: null,
     status: 'idle',
@@ -195,7 +126,7 @@ export function useRoomMembership(
     return () => {
       disposed = true
     }
-  }, [enabled, inviteId, roomId])
+  }, [enabled, inviteId, roomId, user?.isAnonymous])
 
   return state
 }
