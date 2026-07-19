@@ -1,2 +1,2 @@
-export { auth, db, firebaseFunctions, realtimeDb } from './firebase'
-export { callFirebaseFunction } from './callFirebaseFunction'
+export { auth, db, realtimeDb } from './firebase'
+export { callRoomManagementApi } from './callRoomManagementApi'

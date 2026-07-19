@@ -1,17 +1,53 @@
-const { initializeApp } = require('firebase-admin/app')
+/* global Buffer, console, exports, process, require */
+
+const { cert, getApps, initializeApp } = require('firebase-admin/app')
+const { getAuth } = require('firebase-admin/auth')
 const {
   FieldValue,
   Timestamp,
   getFirestore,
 } = require('firebase-admin/firestore')
-const { logger } = require('firebase-functions')
-const { HttpsError, onCall } = require('firebase-functions/v2/https')
-const { setGlobalOptions } = require('firebase-functions/v2/options')
+const HTTP_STATUS_BY_CODE = {
+  aborted: 409,
+  'already-exists': 409,
+  'failed-precondition': 409,
+  internal: 500,
+  'invalid-argument': 400,
+  'not-found': 404,
+  'permission-denied': 403,
+  unauthenticated: 401,
+}
 
-initializeApp()
-setGlobalOptions({ maxInstances: 20, region: 'europe-west1' })
+class HttpsError extends Error {
+  constructor(code, message) {
+    super(message)
+    this.code = code
+    this.statusCode = HTTP_STATUS_BY_CODE[code] ?? 400
+  }
+}
 
-const db = getFirestore()
+function requiredEnvironment(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(`Missing environment variable: ${name}`)
+  return value
+}
+
+function getFirebaseApp() {
+  if (getApps().length > 0) return getApps()[0]
+
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    return initializeApp({
+      projectId: process.env.FIREBASE_PROJECT_ID || 'demo-lwmusic',
+    })
+  }
+
+  const serviceAccount = JSON.parse(
+    requiredEnvironment('FIREBASE_SERVICE_ACCOUNT_JSON'),
+  )
+  return initializeApp({ credential: cert(serviceAccount) })
+}
+
+const db = getFirestore(getFirebaseApp())
 const SERVER_TIMESTAMP = FieldValue.serverTimestamp()
 const ASSIGNABLE_ROLES = new Set(['host', 'member', 'moderator'])
 const MODERATION_ROLES = new Set(['host', 'moderator', 'owner'])
@@ -238,18 +274,18 @@ function applyQueueRemoval(transaction, removal, changedBy) {
 }
 
 function callable(handler) {
-  return onCall(async request => {
+  return async request => {
     try {
       return await handler(request)
     } catch (error) {
       if (error instanceof HttpsError) throw error
-      logger.error('Room callable failed', error)
+      console.error('Room management operation failed:', error)
       throw new HttpsError(
         'internal',
         'Сервер не смог выполнить действие. Повторите попытку.',
       )
     }
-  })
+  }
 }
 
 exports.setRoomMemberRole = callable(async request => {
@@ -630,3 +666,136 @@ exports.reportRoomMessage = callable(async request => {
 
   return { ok: true }
 })
+
+const OPERATIONS = {
+  advanceRoomVideo: exports.advanceRoomVideo,
+  clearRoomRestriction: exports.clearRoomRestriction,
+  deleteRoomMessage: exports.deleteRoomMessage,
+  moderateRoomMember: exports.moderateRoomMember,
+  reportRoomMessage: exports.reportRoomMessage,
+  setRoomMemberRole: exports.setRoomMemberRole,
+  skipRoomVideo: exports.skipRoomVideo,
+  transferRoomOwnership: exports.transferRoomOwnership,
+}
+
+function getAllowedOrigins() {
+  return new Set(
+    requiredEnvironment('ALLOWED_ORIGINS')
+      .split(';')
+      .map(value => value.trim())
+      .filter(Boolean),
+  )
+}
+
+function getHeader(event, name) {
+  const normalizedName = name.toLowerCase()
+  return Object.entries(event.headers ?? {}).find(
+    ([key]) => key.toLowerCase() === normalizedName,
+  )?.[1]
+}
+
+function getCorsHeaders(event) {
+  const origin = getHeader(event, 'origin')
+  if (!origin || !getAllowedOrigins().has(origin)) {
+    throw new HttpsError('permission-denied', 'Источник запроса запрещён.')
+  }
+
+  return {
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Origin': origin,
+    'Cache-Control': 'no-store, max-age=0',
+    'Content-Type': 'application/json; charset=utf-8',
+    Vary: 'Origin',
+  }
+}
+
+function jsonResponse(statusCode, value, headers = {}) {
+  return {
+    body: JSON.stringify(value),
+    headers,
+    isBase64Encoded: false,
+    statusCode,
+  }
+}
+
+function parseJsonBody(event) {
+  if (!event.body) throw new HttpsError('invalid-argument', 'Пустой запрос.')
+  const body = event.isBase64Encoded
+    ? Buffer.from(event.body, 'base64').toString('utf8')
+    : event.body
+
+  try {
+    const parsed = JSON.parse(body)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid JSON object')
+    }
+    return parsed
+  } catch {
+    throw new HttpsError('invalid-argument', 'Некорректный запрос.')
+  }
+}
+
+async function authenticate(event) {
+  const authorization = getHeader(event, 'authorization')
+  const match = /^Bearer\s+(.+)$/i.exec(authorization ?? '')
+  if (!match) {
+    throw new HttpsError('unauthenticated', 'Авторизация обязательна.')
+  }
+
+  try {
+    return await getAuth(getFirebaseApp()).verifyIdToken(match[1], true)
+  } catch {
+    throw new HttpsError('unauthenticated', 'Сессия недействительна.')
+  }
+}
+
+exports.handler = async function handler(event) {
+  let corsHeaders
+  try {
+    corsHeaders = getCorsHeaders(event)
+    if (event.httpMethod === 'OPTIONS') {
+      return { body: '', headers: corsHeaders, statusCode: 204 }
+    }
+    if (event.httpMethod !== 'POST') {
+      throw new HttpsError(
+        'invalid-argument',
+        'Метод запроса не поддерживается.',
+      )
+    }
+
+    const decodedToken = await authenticate(event)
+    const body = parseJsonBody(event)
+    const operation =
+      typeof body.operation === 'string' ? body.operation.trim() : ''
+    const operationHandler = OPERATIONS[operation]
+    if (!operationHandler) {
+      throw new HttpsError('invalid-argument', 'Неизвестная операция.')
+    }
+
+    const data = { ...body }
+    delete data.operation
+    const result = await operationHandler({
+      auth: { uid: decodedToken.uid },
+      data,
+    })
+    return jsonResponse(200, result, corsHeaders)
+  } catch (error) {
+    const knownError = error instanceof HttpsError
+    if (!knownError) console.error('Room management request failed:', error)
+    const headers = corsHeaders ?? {
+      'Cache-Control': 'no-store, max-age=0',
+      'Content-Type': 'application/json; charset=utf-8',
+    }
+    return jsonResponse(
+      knownError ? error.statusCode : 500,
+      {
+        error: knownError ? error.code : 'internal',
+        message: knownError
+          ? error.message
+          : 'Сервер не смог выполнить действие. Повторите попытку.',
+      },
+      headers,
+    )
+  }
+}

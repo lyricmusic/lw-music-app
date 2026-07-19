@@ -1,4 +1,4 @@
-import { auth, callFirebaseFunction, db } from '@/shared/api/firebase'
+import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
 
 import type { RoomMemberRole } from '../model/types'
@@ -30,7 +30,7 @@ export async function kickRoomMember(roomId: string, memberId: string) {
   if (!roomId || !memberId) throw new Error('Участник комнаты не найден.')
   if (user.uid === memberId) throw new Error('Нельзя выгнать себя из комнаты.')
 
-  await callFirebaseFunction('moderateRoomMember', {
+  await callRoomManagementApi('moderateRoomMember', {
     action: 'kick',
     memberId,
     roomId,
@@ -48,7 +48,7 @@ export async function setRoomMemberRole(
     throw new Error('Эту роль нельзя назначить участнику.')
   }
 
-  await callFirebaseFunction('setRoomMemberRole', {
+  await callRoomManagementApi('setRoomMemberRole', {
     memberId,
     role,
     roomId,
@@ -60,7 +60,7 @@ export async function transferRoomOwnership(roomId: string, memberId: string) {
   if (!user) throw new Error('Чтобы передать комнату, авторизуйтесь.')
   if (user.uid === memberId) throw new Error('Вы уже владелец этой комнаты.')
 
-  await callFirebaseFunction('transferRoomOwnership', { memberId, roomId })
+  await callRoomManagementApi('transferRoomOwnership', { memberId, roomId })
 }
 
 export async function restorePublicRoomMembership(roomId: string) {

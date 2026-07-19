@@ -1,13 +1,22 @@
 /* global console, fetch, process */
 
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import { getApps, initializeApp } from 'firebase-admin/app'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099'
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080'
-const functionsHost = '127.0.0.1:5001'
+const allowedOrigin = 'http://localhost:5173'
 const databaseRoot = `projects/${projectId}/databases/(default)/documents`
 const firestoreUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents`
+
+process.env.FIREBASE_PROJECT_ID = projectId
+process.env.ALLOWED_ORIGINS = allowedOrigin
+
+getApps()[0] ?? initializeApp({ projectId })
+const require = createRequire(import.meta.url)
+const { handler } = require('../serverless/room-management/index.js')
 
 const stringValue = value => ({ stringValue: value })
 const integerValue = value => ({ integerValue: String(value) })
@@ -67,19 +76,21 @@ async function readDocument(path) {
 }
 
 async function callFunction(name, data, token) {
-  const response = await fetch(
-    `http://${functionsHost}/${projectId}/europe-west1/${name}`,
-    {
-      body: JSON.stringify({ data }),
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      method: 'POST',
+  const response = await handler({
+    body: JSON.stringify({ ...data, operation: name }),
+    headers: {
+      authorization: `Bearer ${token}`,
+      origin: allowedOrigin,
     },
-  )
-  const body = await response.json()
-  return { body, ok: response.ok, status: response.status }
+    httpMethod: 'POST',
+    isBase64Encoded: false,
+  })
+  const body = JSON.parse(response.body)
+  return {
+    body,
+    ok: response.statusCode >= 200 && response.statusCode < 300,
+    status: response.statusCode,
+  }
 }
 
 const owner = await createAuthUser('owner')
@@ -232,5 +243,5 @@ const nextOwner = await readDocument(
 assert.equal(nextOwner.role.stringValue, 'owner')
 
 console.log(
-  'Room functions verification passed: role denial/assignment, host mute, skip authority and atomic queue advance, report, message deletion, and ownership transfer.',
+  'Room management verification passed: role denial/assignment, host mute, skip authority and atomic queue advance, report, message deletion, and ownership transfer.',
 )

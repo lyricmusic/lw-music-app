@@ -24,7 +24,7 @@
     "preview": "vite preview",
     "verify:room-model-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-model-rules.mjs\"",
     "verify:room-invite-function": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-invite-function.mjs\"",
-    "verify:room-functions": "firebase emulators:exec --only auth,firestore,functions --project demo-lwmusic \"node scripts/verify-room-functions.mjs\"",
+    "verify:room-functions": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-functions.mjs\"",
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\""
   },
   "dependencies": {

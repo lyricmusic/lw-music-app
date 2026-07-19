@@ -1,4 +1,4 @@
-import { auth, callFirebaseFunction } from '@/shared/api/firebase'
+import { auth, callRoomManagementApi } from '@/shared/api/firebase'
 
 interface ModerateRoomUserInput {
   expiresAt?: Date | null
@@ -24,7 +24,7 @@ async function moderateRoomUser(
   if (!user) throw new Error('Чтобы модерировать комнату, авторизуйтесь.')
   if (user.uid === userId) throw new Error('Нельзя применить действие к себе.')
 
-  await callFirebaseFunction('moderateRoomMember', {
+  await callRoomManagementApi('moderateRoomMember', {
     action,
     expiresAtMillis: expiresAt?.getTime() ?? null,
     memberId: userId,
@@ -49,7 +49,7 @@ async function clearRoomRestriction(
   if (!auth.currentUser) {
     throw new Error('Чтобы изменить ограничения, авторизуйтесь.')
   }
-  await callFirebaseFunction('clearRoomRestriction', {
+  await callRoomManagementApi('clearRoomRestriction', {
     action,
     memberId: userId,
     roomId,

@@ -1,4 +1,4 @@
-import { auth, callFirebaseFunction, db } from '@/shared/api/firebase'
+import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
 import {
   doc,
   runTransaction,
@@ -197,7 +197,7 @@ export async function advanceRoomQueue({
   const user = auth.currentUser
   if (!user || !roomId || !/^[\w-]{11}$/.test(finishedVideoId)) return false
 
-  const result = await callFirebaseFunction<{ advanced: boolean }>(
+  const result = await callRoomManagementApi<{ advanced: boolean }>(
     'advanceRoomVideo',
     { finishedVideoId, roomId },
   )
@@ -208,7 +208,7 @@ export async function skipRoomVideo(roomId: string) {
   if (!auth.currentUser) {
     throw new Error('Чтобы пропустить видео, авторизуйтесь.')
   }
-  await callFirebaseFunction('skipRoomVideo', { roomId })
+  await callRoomManagementApi('skipRoomVideo', { roomId })
 }
 
 export async function setRoomPlaybackStatus({

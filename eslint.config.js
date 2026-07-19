@@ -25,7 +25,7 @@ function restrictLayers(layers) {
 
 export default [
   {
-    ignores: ['dist/**', 'functions/**', 'node_modules/**', 'server/**'],
+    ignores: ['dist/**', 'node_modules/**', 'server/**', 'serverless/**'],
   },
   js.configs.recommended,
   {
