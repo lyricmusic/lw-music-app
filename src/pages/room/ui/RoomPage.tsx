@@ -12,6 +12,7 @@ import {
   RoomRestrictionsDialog,
   RoomSettingsDialog,
 } from '@/features/manage-room'
+import { ReportDialog } from '@/features/report-content'
 import { routes } from '@/shared/config/routes'
 import { RoomChat } from '@/widgets/room-chat'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
@@ -60,6 +61,9 @@ export function RoomPage() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [restrictionsOpen, setRestrictionsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [reportTarget, setReportTarget] = useState<'cover' | 'room' | null>(
+    null,
+  )
   const inviteId = searchParams.get('invite')?.trim() || undefined
   const membership = useRoomMembership(
     roomId,
@@ -193,6 +197,28 @@ export function RoomPage() {
         justifyContent: 'flex-end',
       }}
     >
+      {currentMember.role !== 'owner' && (
+        <>
+          <Button
+            color="inherit"
+            onClick={() => setReportTarget('room')}
+            size="small"
+            sx={outlinedActionSx}
+            variant="outlined"
+          >
+            Жалоба на комнату
+          </Button>
+          <Button
+            color="inherit"
+            onClick={() => setReportTarget('cover')}
+            size="small"
+            sx={outlinedActionSx}
+            variant="outlined"
+          >
+            Жалоба на обложку
+          </Button>
+        </>
+      )}
       {currentMember.role === 'owner' && (
         <Button
           color="inherit"
@@ -283,6 +309,18 @@ export function RoomPage() {
             roomId={roomId}
           />
         )}
+      <ReportDialog
+        description={
+          reportTarget === 'cover'
+            ? 'Текущая обложка и данные комнаты будут сохранены в снимке жалобы.'
+            : 'Название, владелец, статус и обложка комнаты будут сохранены в снимке жалобы.'
+        }
+        onClose={() => setReportTarget(null)}
+        open={reportTarget !== null}
+        roomId={roomId}
+        targetId={roomId}
+        targetType={reportTarget ?? 'room'}
+      />
     </Box>
   )
 }

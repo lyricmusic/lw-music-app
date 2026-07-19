@@ -1,5 +1,6 @@
 param(
   [string]$YcPath = 'yc',
+  [bool]$EnforceAppCheck = $false,
   [string[]]$AllowedOrigins = @(
     'https://syncly.lyricweb.ru',
     'https://lwmusic-ffe83.web.app',
@@ -114,6 +115,7 @@ $deploymentSource = Join-Path (
 ) "lw-music-room-management-$([guid]::NewGuid().ToString('N'))"
 $sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
 $allowedOriginsValue = $AllowedOrigins -join ';'
+$enforceAppCheckValue = $EnforceAppCheck.ToString().ToLowerInvariant()
 
 New-Item -ItemType Directory -Path $deploymentSource | Out-Null
 try {
@@ -134,7 +136,7 @@ try {
     '--execution-timeout', '20s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

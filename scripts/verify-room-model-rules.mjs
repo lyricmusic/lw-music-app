@@ -287,7 +287,9 @@ const validRoom = roomCreationWrites({
   ownerId: owner.uid,
   suffix: `${runId}-valid`,
 })
-const validCreate = await commit(validRoom.writes, owner.idToken)
+const clientRoomCreate = await commit(validRoom.writes, owner.idToken)
+assert.equal(clientRoomCreate.ok, false, JSON.stringify(clientRoomCreate))
+const validCreate = await commit(validRoom.writes, 'owner')
 assert.equal(validCreate.ok, true, JSON.stringify(validCreate))
 
 const unconstrainedRoomList = await queryRooms(otherUser.idToken, false)
@@ -366,7 +368,7 @@ const unlistedRoom = roomCreationWrites({
   suffix: `${runId}-unlisted`,
   visibility: 'unlisted',
 })
-const unlistedRoomCreate = await commit(unlistedRoom.writes, owner.idToken)
+const unlistedRoomCreate = await commit(unlistedRoom.writes, 'owner')
 assert.equal(unlistedRoomCreate.ok, true, JSON.stringify(unlistedRoomCreate))
 
 const unlistedRoomList = await queryRooms(otherUser.idToken, true)
@@ -429,7 +431,7 @@ const anonymousMessage = await commit(
   ],
   anonymousUser.idToken,
 )
-assert.equal(anonymousMessage.ok, true, JSON.stringify(anonymousMessage))
+assert.equal(anonymousMessage.ok, false, JSON.stringify(anonymousMessage))
 
 const secondAnonymousMessage = await commit(
   [
@@ -866,7 +868,7 @@ const privateRoom = roomCreationWrites({
   suffix: `${runId}-private`,
   visibility: 'private',
 })
-const privateRoomCreate = await commit(privateRoom.writes, owner.idToken)
+const privateRoomCreate = await commit(privateRoom.writes, 'owner')
 assert.equal(privateRoomCreate.ok, true, JSON.stringify(privateRoomCreate))
 
 const registeredPrivateRoomRead = await readDocument(
@@ -944,7 +946,7 @@ assert.equal(
 const inviteId = 'a'.repeat(64)
 const inviteToken = 'A'.repeat(43)
 const inviteExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
-const inviteCreate = await commit(
+const clientInviteCreate = await commit(
   [
     update(
       `roomInvites/${inviteId}`,
@@ -976,6 +978,40 @@ const inviteCreate = await commit(
     ),
   ],
   owner.idToken,
+)
+assert.equal(clientInviteCreate.ok, false, JSON.stringify(clientInviteCreate))
+const inviteCreate = await commit(
+  [
+    update(
+      `roomInvites/${inviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        expiresAt: timestampValue(inviteExpiresAt),
+        maxUses: integerValue(2),
+        participantCount: integerValue(1),
+        revokedAt: nullValue(),
+        roomId: stringValue(privateRoom.roomId),
+        roomImageUrl: stringValue(
+          `https://storage.yandexcloud.net/test-bucket/room-covers/${privateRoom.roomId}/cover.png`,
+        ),
+        roomName: stringValue(`Room model ${runId}-private`),
+        tokenHash: stringValue(inviteId),
+        uses: integerValue(0),
+      },
+      [requestTime('createdAt')],
+    ),
+    update(
+      `roomInviteSecrets/${inviteId}`,
+      {
+        createdBy: stringValue(owner.uid),
+        roomId: stringValue(privateRoom.roomId),
+        token: stringValue(inviteToken),
+        tokenHash: stringValue(inviteId),
+      },
+      [requestTime('createdAt')],
+    ),
+  ],
+  'owner',
 )
 assert.equal(inviteCreate.ok, true, JSON.stringify(inviteCreate))
 
@@ -1137,11 +1173,11 @@ const revokedInviteCreate = await commit(
       [requestTime('createdAt')],
     ),
   ],
-  owner.idToken,
+  'owner',
 )
 assert.equal(revokedInviteCreate.ok, true, JSON.stringify(revokedInviteCreate))
 
-const inviteRevocation = await commit(
+const clientInviteRevocation = await commit(
   [
     patch(
       `roomInvites/${revokedInviteId}`,
@@ -1152,6 +1188,23 @@ const inviteRevocation = await commit(
     remove(`roomInviteSecrets/${revokedInviteId}`),
   ],
   owner.idToken,
+)
+assert.equal(
+  clientInviteRevocation.ok,
+  false,
+  JSON.stringify(clientInviteRevocation),
+)
+const inviteRevocation = await commit(
+  [
+    patch(
+      `roomInvites/${revokedInviteId}`,
+      {},
+      ['revokedAt'],
+      [requestTime('revokedAt')],
+    ),
+    remove(`roomInviteSecrets/${revokedInviteId}`),
+  ],
+  'owner',
 )
 assert.equal(inviteRevocation.ok, true, JSON.stringify(inviteRevocation))
 
@@ -1174,7 +1227,7 @@ const slowRoom = roomCreationWrites({
   slowModeSeconds: 30,
   suffix: `${runId}-slow-mode`,
 })
-const slowRoomCreate = await commit(slowRoom.writes, owner.idToken)
+const slowRoomCreate = await commit(slowRoom.writes, 'owner')
 assert.equal(slowRoomCreate.ok, true, JSON.stringify(slowRoomCreate))
 
 const slowRoomMembership = await commit(
@@ -1210,7 +1263,7 @@ const firstSlowMessage = await commit(
   ],
   otherUser.idToken,
 )
-assert.equal(firstSlowMessage.ok, true, JSON.stringify(firstSlowMessage))
+assert.equal(firstSlowMessage.ok, false, JSON.stringify(firstSlowMessage))
 
 const secondSlowMessageId = `slow-second-${runId}`
 const secondSlowMessage = await commit(
@@ -1242,7 +1295,7 @@ const archivedRoom = roomCreationWrites({
   status: 'archived',
   suffix: `${runId}-archived`,
 })
-const archivedRoomCreate = await commit(archivedRoom.writes, owner.idToken)
+const archivedRoomCreate = await commit(archivedRoom.writes, 'owner')
 assert.equal(archivedRoomCreate.ok, true, JSON.stringify(archivedRoomCreate))
 
 const registeredArchivedRoomRead = await readDocument(

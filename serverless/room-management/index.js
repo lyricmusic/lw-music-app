@@ -1,6 +1,8 @@
 /* global Buffer, console, exports, process, require */
 
+const { createHash, randomBytes } = require('node:crypto')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
+const { getAppCheck } = require('firebase-admin/app-check')
 const { getAuth } = require('firebase-admin/auth')
 const {
   FieldValue,
@@ -55,6 +57,46 @@ const ROLE_RANK = { host: 2, member: 0, moderator: 1, owner: 3 }
 const RESTRICTION_ACTIONS = new Set(['ban', 'kick', 'mute'])
 const CLEAR_RESTRICTION_ACTIONS = new Set(['unban', 'unmute'])
 const MAX_REASON_LENGTH = 500
+const MAX_REPORT_COMMENT_LENGTH = 1000
+const MAX_MESSAGE_LENGTH = 1000
+const MAX_MESSAGE_LINKS = 2
+const MAX_MESSAGES_PER_WINDOW = 5
+const MESSAGE_WINDOW_MILLISECONDS = 20_000
+const REGISTERED_MESSAGE_INTERVAL_MILLISECONDS = 2_000
+const GUEST_MESSAGE_INTERVAL_MILLISECONDS = 5_000
+const GUEST_CHAT_DELAY_MILLISECONDS = 15_000
+const REPEATED_MESSAGE_WINDOW_MILLISECONDS = 120_000
+const MAX_ACTIVE_INVITES = 10
+const MAX_INVITES_PER_WINDOW = 5
+const INVITE_WINDOW_MILLISECONDS = 10 * 60_000
+const MAX_ROOMS_PER_USER = 10
+const MAX_REPORTS_PER_HOUR = 5
+const REPORT_WINDOW_MILLISECONDS = 60 * 60_000
+const REPORT_DUPLICATE_WINDOW_MILLISECONDS = 24 * 60 * 60_000
+const REPORT_TARGET_TYPES = new Set([
+  'cover',
+  'message',
+  'nickname',
+  'room',
+  'user',
+])
+const ROOM_VISIBILITIES = new Set(['private', 'public', 'unlisted'])
+const ROOM_CATEGORIES = new Map([
+  [1, 'Поп'],
+  [2, 'Рок'],
+  [3, 'Хип-хоп и рэп'],
+  [4, 'Электронная музыка'],
+  [5, 'R&B и соул'],
+  [6, 'Джаз и блюз'],
+  [7, 'Классическая музыка'],
+  [8, 'Инди'],
+  [9, 'Метал'],
+  [10, 'Панк'],
+  [11, 'Ретро'],
+  [12, 'Саундтреки'],
+  [13, 'Лоу-фай и чилл'],
+  [14, 'Другое'],
+])
 
 function requireAuth(request) {
   const userId = request.auth?.uid
@@ -86,6 +128,92 @@ function normalizedReason(data, { optional = false } = {}) {
     )
   }
   return value
+}
+
+function normalizedComment(data) {
+  const value = typeof data?.comment === 'string' ? data.comment.trim() : ''
+  if (value.length > MAX_REPORT_COMMENT_LENGTH) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Комментарий не может быть длиннее ${MAX_REPORT_COMMENT_LENGTH} символов.`,
+    )
+  }
+  return value
+}
+
+function normalizeRoomName(value) {
+  return typeof value === 'string'
+    ? value.normalize('NFKC').trim().replace(/\s+/gu, ' ')
+    : ''
+}
+
+function roomNameKey(value) {
+  return `v1:${encodeURIComponent(value.toLocaleLowerCase('ru-RU'))}`
+}
+
+function validatedCategories(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Выберите от одной до трёх категорий.',
+    )
+  }
+  const ids = new Set()
+  return value.map(category => {
+    const title = ROOM_CATEGORIES.get(category?.id)
+    if (!title || category?.title !== title || ids.has(category.id)) {
+      throw new HttpsError('invalid-argument', 'Категории комнаты некорректны.')
+    }
+    ids.add(category.id)
+    return { id: category.id, title }
+  })
+}
+
+function safeProfileSnapshot(snapshot) {
+  const profile = snapshot.data() ?? {}
+  return {
+    displayName:
+      typeof profile.displayName === 'string' ? profile.displayName : null,
+    photoURL: typeof profile.photoURL === 'string' ? profile.photoURL : null,
+    userId: snapshot.id,
+  }
+}
+
+function safeRoomSnapshot(snapshot) {
+  const room = snapshot.data() ?? {}
+  return {
+    imagePath: typeof room.imagePath === 'string' ? room.imagePath : null,
+    imageUrl: typeof room.imageUrl === 'string' ? room.imageUrl : null,
+    name: typeof room.name === 'string' ? room.name : null,
+    ownerId: typeof room.ownerId === 'string' ? room.ownerId : null,
+    roomId: snapshot.id,
+    status: typeof room.status === 'string' ? room.status : null,
+    visibility: typeof room.visibility === 'string' ? room.visibility : null,
+  }
+}
+
+function normalizeMessageText(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function messageFingerprint(value) {
+  return createHash('sha256')
+    .update(
+      value.normalize('NFKC').toLocaleLowerCase('ru-RU').replace(/\s+/gu, ' '),
+    )
+    .digest('hex')
+}
+
+function countLinks(value) {
+  return value.match(/(?:https?:\/\/|www\.)\S+/giu)?.length ?? 0
+}
+
+function retryAfterError(milliseconds, label) {
+  const seconds = Math.max(1, Math.ceil(milliseconds / 1000))
+  return new HttpsError(
+    'failed-precondition',
+    `${label} Подождите ещё ${seconds} сек.`,
+  )
 }
 
 function restrictionExpiration(data) {
@@ -287,6 +415,264 @@ function callable(handler) {
     }
   }
 }
+
+exports.createRoom = callable(async request => {
+  const actorId = requireAuth(request)
+  if (request.auth?.token?.firebase?.sign_in_provider === 'anonymous') {
+    throw new HttpsError(
+      'permission-denied',
+      'Гостевой аккаунт не может создавать комнаты.',
+    )
+  }
+
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  if (!/^[A-Za-z0-9_-]{10,40}$/.test(roomId)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Некорректный идентификатор комнаты.',
+    )
+  }
+  const name = normalizeRoomName(request.data?.name)
+  if (!name || name.length > 80) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Название комнаты должно содержать от 1 до 80 символов.',
+    )
+  }
+  const nameKey = roomNameKey(name)
+  const categories = validatedCategories(request.data?.categories)
+  const visibility = request.data?.visibility
+  if (!ROOM_VISIBILITIES.has(visibility)) {
+    throw new HttpsError('invalid-argument', 'Некорректная видимость комнаты.')
+  }
+
+  const imagePath =
+    typeof request.data?.imagePath === 'string' ? request.data.imagePath : ''
+  const imageUrl =
+    typeof request.data?.imageUrl === 'string' ? request.data.imageUrl : ''
+  const escapedRoomId = roomId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const imagePathPattern = new RegExp(
+    `^room-covers/${escapedRoomId}/cover-[0-9a-f-]{36}\\.(?:jpg|png|webp)$`,
+  )
+  const imageUrlPattern = new RegExp(
+    `^https://storage\\.yandexcloud\\.net/[^/]+/${imagePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+  )
+  if (
+    !imagePathPattern.test(imagePath) ||
+    imageUrl.length > 2048 ||
+    !imageUrlPattern.test(imageUrl)
+  ) {
+    throw new HttpsError('invalid-argument', 'Некорректная обложка комнаты.')
+  }
+
+  const roomRef = db.doc(`rooms/${roomId}`)
+  const nameRef = db.doc(`roomNames/${nameKey}`)
+  const ownerMemberRef = memberRef(roomId, actorId)
+  const ownerRoomsQuery = db.collection('rooms').where('ownerId', '==', actorId)
+
+  await db.runTransaction(async transaction => {
+    const [roomSnapshot, nameSnapshot, ownerRoomsSnapshot] = await Promise.all([
+      transaction.get(roomRef),
+      transaction.get(nameRef),
+      transaction.get(ownerRoomsQuery),
+    ])
+    if (roomSnapshot.exists) {
+      throw new HttpsError('already-exists', 'Комната уже существует.')
+    }
+    if (nameSnapshot.exists) {
+      throw new HttpsError(
+        'already-exists',
+        'Комната с таким названием уже существует.',
+      )
+    }
+    if (ownerRoomsSnapshot.size >= MAX_ROOMS_PER_USER) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Можно создать не больше ${MAX_ROOMS_PER_USER} комнат.`,
+      )
+    }
+
+    transaction.set(nameRef, {
+      createdAt: SERVER_TIMESTAMP,
+      name,
+      ownerId: actorId,
+      roomId,
+    })
+    transaction.set(roomRef, {
+      categories,
+      createdAt: SERVER_TIMESTAMP,
+      imagePath,
+      imageUrl,
+      name,
+      nameKey,
+      ownerId: actorId,
+      settings: {
+        allowGuestChat: true,
+        allowGuestQueue: true,
+        slowModeSeconds: 0,
+      },
+      status: 'active',
+      updatedAt: SERVER_TIMESTAMP,
+      visibility,
+    })
+    transaction.set(ownerMemberRef, {
+      invitedBy: null,
+      isGuest: false,
+      joinedAt: SERVER_TIMESTAMP,
+      role: 'owner',
+      status: 'active',
+    })
+  })
+
+  return { ok: true, roomId }
+})
+
+exports.createRoomInvite = callable(async request => {
+  const actorId = requireAuth(request)
+  if (request.auth?.token?.firebase?.sign_in_provider === 'anonymous') {
+    throw new HttpsError(
+      'permission-denied',
+      'Гостевой аккаунт не может создавать приглашения.',
+    )
+  }
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const expiresAtMillis = request.data?.expiresAtMillis
+  const maxUses = request.data?.maxUses ?? 1
+  if (
+    typeof expiresAtMillis !== 'number' ||
+    !Number.isSafeInteger(expiresAtMillis) ||
+    expiresAtMillis <= Date.now()
+  ) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Срок действия приглашения должен быть в будущем.',
+    )
+  }
+  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 100) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Количество использований должно быть от 1 до 100.',
+    )
+  }
+
+  const token = randomBytes(32).toString('base64url')
+  const tokenHash = createHash('sha256').update(token).digest('hex')
+  const inviteRef = db.doc(`roomInvites/${tokenHash}`)
+  const secretRef = db.doc(`roomInviteSecrets/${tokenHash}`)
+  const roomRef = db.doc(`rooms/${roomId}`)
+  const actorRef = memberRef(roomId, actorId)
+  const actorInvitesQuery = db
+    .collection('roomInvites')
+    .where('createdBy', '==', actorId)
+  const activeMembersQuery = db
+    .collection(`rooms/${roomId}/members`)
+    .where('status', '==', 'active')
+  const nowMillis = Date.now()
+
+  await db.runTransaction(async transaction => {
+    const [roomSnapshot, actorSnapshot, invitesSnapshot, membersSnapshot] =
+      await Promise.all([
+        transaction.get(roomRef),
+        transaction.get(actorRef),
+        transaction.get(actorInvitesQuery),
+        transaction.get(activeMembersQuery),
+      ])
+    const room = roomSnapshot.data()
+    const actor = actorSnapshot.data()
+    if (!roomSnapshot.exists || room?.visibility !== 'private') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Приглашения создаются только для приватных комнат.',
+      )
+    }
+    if (!actorSnapshot.exists || actor?.status !== 'active') {
+      throw new HttpsError('permission-denied', 'Вы не участвуете в комнате.')
+    }
+    requireRole(actor, MODERATION_ROLES, 'Недостаточно прав для приглашения.')
+
+    const invites = invitesSnapshot.docs.map(snapshot => snapshot.data())
+    const activeInviteCount = invites.filter(invite => {
+      const expiresAt = invite.expiresAt
+      return (
+        invite.revokedAt == null &&
+        expiresAt instanceof Timestamp &&
+        expiresAt.toMillis() > nowMillis &&
+        Number.isInteger(invite.uses) &&
+        Number.isInteger(invite.maxUses) &&
+        invite.uses < invite.maxUses
+      )
+    }).length
+    if (activeInviteCount >= MAX_ACTIVE_INVITES) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Можно держать не больше ${MAX_ACTIVE_INVITES} активных приглашений.`,
+      )
+    }
+    const recentInviteCount = invites.filter(
+      invite =>
+        invite.createdAt instanceof Timestamp &&
+        invite.createdAt.toMillis() > nowMillis - INVITE_WINDOW_MILLISECONDS,
+    ).length
+    if (recentInviteCount >= MAX_INVITES_PER_WINDOW) {
+      throw retryAfterError(
+        INVITE_WINDOW_MILLISECONDS,
+        'Слишком много приглашений.',
+      )
+    }
+
+    transaction.set(inviteRef, {
+      createdAt: SERVER_TIMESTAMP,
+      createdBy: actorId,
+      expiresAt: Timestamp.fromMillis(expiresAtMillis),
+      maxUses,
+      participantCount: membersSnapshot.size,
+      revokedAt: null,
+      roomId,
+      roomImageUrl: room.imageUrl,
+      roomName: room.name,
+      tokenHash,
+      uses: 0,
+    })
+    transaction.set(secretRef, {
+      createdAt: SERVER_TIMESTAMP,
+      createdBy: actorId,
+      roomId,
+      token,
+      tokenHash,
+    })
+  })
+
+  return { ok: true, token }
+})
+
+exports.revokeRoomInvite = callable(async request => {
+  const actorId = requireAuth(request)
+  const tokenHash = requiredId(request.data, 'tokenHash', 'Приглашение')
+  if (!/^[a-f0-9]{64}$/.test(tokenHash)) {
+    throw new HttpsError('invalid-argument', 'Некорректное приглашение.')
+  }
+  const inviteRef = db.doc(`roomInvites/${tokenHash}`)
+
+  await db.runTransaction(async transaction => {
+    const inviteSnapshot = await transaction.get(inviteRef)
+    if (!inviteSnapshot.exists) return
+    const invite = inviteSnapshot.data()
+    const roomId = invite?.roomId
+    if (typeof roomId !== 'string') {
+      throw new HttpsError('failed-precondition', 'Приглашение повреждено.')
+    }
+    const { member: actor } = await activeMember(transaction, roomId, actorId)
+    requireRole(
+      actor,
+      MODERATION_ROLES,
+      'Недостаточно прав для отзыва приглашения.',
+    )
+    transaction.update(inviteRef, { revokedAt: SERVER_TIMESTAMP })
+    transaction.delete(db.doc(`roomInviteSecrets/${tokenHash}`))
+  })
+
+  return { ok: true }
+})
 
 exports.setRoomMemberRole = callable(async request => {
   const actorId = requireAuth(request)
@@ -602,10 +988,171 @@ exports.skipRoomVideo = callable(async request => {
   return { ok: true, ...result }
 })
 
+exports.sendRoomMessage = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const text = normalizeMessageText(request.data?.text)
+  if (!text || text.length > MAX_MESSAGE_LENGTH) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Сообщение должно содержать от 1 до ${MAX_MESSAGE_LENGTH} символов.`,
+    )
+  }
+  if (countLinks(text) > MAX_MESSAGE_LINKS) {
+    throw new HttpsError(
+      'invalid-argument',
+      `В одном сообщении можно отправить не больше ${MAX_MESSAGE_LINKS} ссылок.`,
+    )
+  }
+
+  const now = Timestamp.now()
+  const nowMillis = now.toMillis()
+  const fingerprint = messageFingerprint(text)
+  const roomRef = db.doc(`rooms/${roomId}`)
+  const actorMemberRef = memberRef(roomId, actorId)
+  const profileRef = db.doc(`users/${actorId}`)
+  const muteRef = db.doc(`rooms/${roomId}/mutes/${actorId}`)
+  const activityRef = db.doc(`rooms/${roomId}/messageActivity/${actorId}`)
+  const messageRef = db.collection(`rooms/${roomId}/messages`).doc()
+
+  await db.runTransaction(async transaction => {
+    const [
+      roomSnapshot,
+      memberSnapshot,
+      profileSnapshot,
+      muteSnapshot,
+      activitySnapshot,
+    ] = await Promise.all([
+      transaction.get(roomRef),
+      transaction.get(actorMemberRef),
+      transaction.get(profileRef),
+      transaction.get(muteRef),
+      transaction.get(activityRef),
+    ])
+    const room = roomSnapshot.data()
+    const member = memberSnapshot.data()
+    const profile = profileSnapshot.data()
+    if (!roomSnapshot.exists || room?.status === 'archived') {
+      throw new HttpsError('failed-precondition', 'Комната закрыта.')
+    }
+    if (!memberSnapshot.exists || member?.status !== 'active') {
+      throw new HttpsError('permission-denied', 'Вы не участвуете в комнате.')
+    }
+    if (!profileSnapshot.exists || typeof profile?.displayName !== 'string') {
+      throw new HttpsError('failed-precondition', 'Сначала заполните профиль.')
+    }
+    if (member.isGuest === true && room.settings?.allowGuestChat !== true) {
+      throw new HttpsError(
+        'permission-denied',
+        'Владелец комнаты отключил чат для гостей.',
+      )
+    }
+
+    const mute = muteSnapshot.data()
+    if (
+      muteSnapshot.exists &&
+      (mute?.expiresAt == null ||
+        (mute.expiresAt instanceof Timestamp &&
+          mute.expiresAt.toMillis() > nowMillis))
+    ) {
+      throw new HttpsError(
+        'permission-denied',
+        'Модератор временно запретил вам писать в чат.',
+      )
+    }
+
+    if (member.isGuest === true && member.joinedAt instanceof Timestamp) {
+      const guestDelayRemaining =
+        member.joinedAt.toMillis() + GUEST_CHAT_DELAY_MILLISECONDS - nowMillis
+      if (guestDelayRemaining > 0) {
+        throw retryAfterError(
+          guestDelayRemaining,
+          'Гости могут писать не сразу после входа.',
+        )
+      }
+    }
+
+    const activity = activitySnapshot.data() ?? {}
+    const lastMessageAt = activity.lastMessageAt
+    const configuredSlowModeMilliseconds =
+      Number.isInteger(room.settings?.slowModeSeconds) &&
+      room.settings.slowModeSeconds > 0
+        ? room.settings.slowModeSeconds * 1000
+        : 0
+    const baseIntervalMilliseconds =
+      member.isGuest === true
+        ? GUEST_MESSAGE_INTERVAL_MILLISECONDS
+        : REGISTERED_MESSAGE_INTERVAL_MILLISECONDS
+    const requiredIntervalMilliseconds = Math.max(
+      baseIntervalMilliseconds,
+      configuredSlowModeMilliseconds,
+    )
+    if (lastMessageAt instanceof Timestamp) {
+      const intervalRemaining =
+        lastMessageAt.toMillis() + requiredIntervalMilliseconds - nowMillis
+      if (intervalRemaining > 0) {
+        throw retryAfterError(
+          intervalRemaining,
+          'Сообщения отправляются слишком часто.',
+        )
+      }
+    }
+
+    const previousMessages = Array.isArray(activity.recentMessages)
+      ? activity.recentMessages.filter(
+          entry =>
+            entry?.createdAt instanceof Timestamp &&
+            typeof entry.fingerprint === 'string' &&
+            entry.createdAt.toMillis() >
+              nowMillis - REPEATED_MESSAGE_WINDOW_MILLISECONDS,
+        )
+      : []
+    const burstMessages = previousMessages.filter(
+      entry =>
+        entry.createdAt.toMillis() > nowMillis - MESSAGE_WINDOW_MILLISECONDS,
+    )
+    if (burstMessages.length >= MAX_MESSAGES_PER_WINDOW) {
+      const retryAt =
+        burstMessages[0].createdAt.toMillis() + MESSAGE_WINDOW_MILLISECONDS
+      throw retryAfterError(
+        Math.max(1, retryAt - nowMillis),
+        `Можно отправить не больше ${MAX_MESSAGES_PER_WINDOW} сообщений за 20 секунд.`,
+      )
+    }
+    if (previousMessages.some(entry => entry.fingerprint === fingerprint)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Не отправляйте одно и то же сообщение повторно.',
+      )
+    }
+
+    transaction.set(messageRef, {
+      authorId: actorId,
+      authorName: profile.displayName,
+      authorPhotoURL:
+        typeof profile.photoURL === 'string' ? profile.photoURL : null,
+      createdAt: now,
+      text,
+    })
+    transaction.set(activityRef, {
+      lastMessageAt: now,
+      messageId: messageRef.id,
+      recentMessages: [
+        ...previousMessages.slice(-(MAX_MESSAGES_PER_WINDOW - 1)),
+        { createdAt: now, fingerprint },
+      ],
+    })
+  })
+
+  return { messageId: messageRef.id, ok: true }
+})
+
 exports.deleteRoomMessage = callable(async request => {
   const actorId = requireAuth(request)
   const roomId = requiredId(request.data, 'roomId', 'Комната')
   const messageId = requiredId(request.data, 'messageId', 'Сообщение')
+  const moderationLogRef = db.collection('moderationLogs').doc()
+  let deleted = false
 
   await db.runTransaction(async transaction => {
     const { member: actor } = await activeMember(transaction, roomId, actorId)
@@ -617,6 +1164,15 @@ exports.deleteRoomMessage = callable(async request => {
     const messageRef = db.doc(`rooms/${roomId}/messages/${messageId}`)
     const messageSnapshot = await transaction.get(messageRef)
     if (!messageSnapshot.exists) return
+    deleted = true
+    transaction.set(moderationLogRef, {
+      action: 'message_deleted',
+      actorId,
+      createdAt: SERVER_TIMESTAMP,
+      messageId,
+      original: messageSnapshot.data(),
+      roomId,
+    })
     transaction.delete(messageRef)
     writeAudit(transaction, roomId, {
       action: 'message_deleted',
@@ -626,53 +1182,174 @@ exports.deleteRoomMessage = callable(async request => {
     })
   })
 
-  return { ok: true }
+  return {
+    moderationLogId: deleted ? moderationLogRef.id : null,
+    ok: true,
+  }
 })
 
-exports.reportRoomMessage = callable(async request => {
+exports.createReport = callable(async request => {
   const actorId = requireAuth(request)
   const roomId = requiredId(request.data, 'roomId', 'Комната')
-  const messageId = requiredId(request.data, 'messageId', 'Сообщение')
+  const targetId = requiredId(request.data, 'targetId', 'Объект жалобы')
+  const targetType = request.data?.targetType
+  if (!REPORT_TARGET_TYPES.has(targetType)) {
+    throw new HttpsError('invalid-argument', 'Некорректный объект жалобы.')
+  }
   const reason = normalizedReason(request.data)
+  const comment = normalizedComment(request.data)
+  const reportRef = db.collection('reports').doc()
+  const reportActivityRef = db.doc(`reportActivity/${actorId}`)
+  const roomRef = db.doc(`rooms/${roomId}`)
+  const now = Timestamp.now()
+  const nowMillis = now.toMillis()
+  const duplicateKey = createHash('sha256')
+    .update(`${targetType}\u0000${targetId}\u0000${roomId}`)
+    .digest('hex')
 
   await db.runTransaction(async transaction => {
     await activeMember(transaction, roomId, actorId)
-    const messageRef = db.doc(`rooms/${roomId}/messages/${messageId}`)
-    const messageSnapshot = await transaction.get(messageRef)
-    if (!messageSnapshot.exists) {
-      throw new HttpsError('not-found', 'Сообщение уже удалено.')
-    }
-    if (messageSnapshot.data()?.authorId === actorId) {
-      throw new HttpsError('invalid-argument', 'Нельзя пожаловаться на себя.')
+    const [roomSnapshot, activitySnapshot] = await Promise.all([
+      transaction.get(roomRef),
+      transaction.get(reportActivityRef),
+    ])
+    if (!roomSnapshot.exists) {
+      throw new HttpsError('not-found', 'Комната не найдена.')
     }
 
-    const reportRef = db.doc(`rooms/${roomId}/reports/${messageId}_${actorId}`)
-    const reportSnapshot = await transaction.get(reportRef)
-    if (reportSnapshot.exists) {
+    const recentReports = Array.isArray(activitySnapshot.data()?.recentReports)
+      ? activitySnapshot
+          .data()
+          .recentReports.filter(
+            entry =>
+              entry?.createdAt instanceof Timestamp &&
+              typeof entry.duplicateKey === 'string' &&
+              entry.createdAt.toMillis() >
+                nowMillis - REPORT_DUPLICATE_WINDOW_MILLISECONDS,
+          )
+      : []
+    if (
+      recentReports.filter(
+        entry =>
+          entry.createdAt.toMillis() > nowMillis - REPORT_WINDOW_MILLISECONDS,
+      ).length >= MAX_REPORTS_PER_HOUR
+    ) {
       throw new HttpsError(
-        'already-exists',
-        'Вы уже отправили жалобу на это сообщение.',
+        'failed-precondition',
+        `Можно отправить не больше ${MAX_REPORTS_PER_HOUR} жалоб в час.`,
       )
     }
+    if (recentReports.some(entry => entry.duplicateKey === duplicateKey)) {
+      throw new HttpsError(
+        'already-exists',
+        'Вы уже отправляли жалобу на этот объект за последние сутки.',
+      )
+    }
+
+    let snapshot
+    if (targetType === 'message') {
+      const messageSnapshot = await transaction.get(
+        db.doc(`rooms/${roomId}/messages/${targetId}`),
+      )
+      if (!messageSnapshot.exists) {
+        throw new HttpsError('not-found', 'Сообщение уже удалено.')
+      }
+      const message = messageSnapshot.data()
+      if (message?.authorId === actorId) {
+        throw new HttpsError('invalid-argument', 'Нельзя пожаловаться на себя.')
+      }
+      snapshot = {
+        message: {
+          authorId: message?.authorId ?? null,
+          authorName: message?.authorName ?? null,
+          authorPhotoURL: message?.authorPhotoURL ?? null,
+          createdAt: message?.createdAt ?? null,
+          messageId: targetId,
+          text: message?.text ?? null,
+        },
+        room: safeRoomSnapshot(roomSnapshot),
+      }
+    } else if (targetType === 'user' || targetType === 'nickname') {
+      if (targetId === actorId) {
+        throw new HttpsError('invalid-argument', 'Нельзя пожаловаться на себя.')
+      }
+      const [targetMemberSnapshot, profileSnapshot] = await Promise.all([
+        transaction.get(memberRef(roomId, targetId)),
+        transaction.get(db.doc(`users/${targetId}`)),
+      ])
+      if (
+        !targetMemberSnapshot.exists ||
+        targetMemberSnapshot.data()?.status !== 'active' ||
+        !profileSnapshot.exists
+      ) {
+        throw new HttpsError('not-found', 'Пользователь не найден в комнате.')
+      }
+      snapshot = {
+        membership: {
+          isGuest: targetMemberSnapshot.data()?.isGuest === true,
+          role: targetMemberSnapshot.data()?.role ?? null,
+        },
+        profile: safeProfileSnapshot(profileSnapshot),
+        room: safeRoomSnapshot(roomSnapshot),
+      }
+    } else {
+      if (roomSnapshot.data()?.ownerId === actorId) {
+        throw new HttpsError(
+          'invalid-argument',
+          'Владелец не может пожаловаться на собственную комнату.',
+        )
+      }
+      if (targetId !== roomId) {
+        throw new HttpsError('invalid-argument', 'Некорректный объект жалобы.')
+      }
+      snapshot = { room: safeRoomSnapshot(roomSnapshot) }
+    }
+
     transaction.set(reportRef, {
-      createdAt: SERVER_TIMESTAMP,
-      messageId,
+      comment,
+      createdAt: now,
       reason,
-      reportedUserId: messageSnapshot.data()?.authorId ?? null,
       reporterId: actorId,
-      status: 'open',
+      roomId,
+      snapshot,
+      status: 'new',
+      targetId,
+      targetType,
+    })
+    transaction.set(reportActivityRef, {
+      recentReports: [
+        ...recentReports.slice(-(MAX_REPORTS_PER_HOUR * 2 - 1)),
+        { createdAt: now, duplicateKey },
+      ],
     })
   })
 
-  return { ok: true }
+  return { ok: true, reportId: reportRef.id }
 })
+
+exports.reportRoomMessage = callable(async request =>
+  exports.createReport({
+    ...request,
+    data: {
+      ...request.data,
+      comment: '',
+      targetId: request.data?.messageId,
+      targetType: 'message',
+    },
+  }),
+)
 
 const OPERATIONS = {
   advanceRoomVideo: exports.advanceRoomVideo,
   clearRoomRestriction: exports.clearRoomRestriction,
+  createReport: exports.createReport,
+  createRoom: exports.createRoom,
+  createRoomInvite: exports.createRoomInvite,
   deleteRoomMessage: exports.deleteRoomMessage,
   moderateRoomMember: exports.moderateRoomMember,
   reportRoomMessage: exports.reportRoomMessage,
+  revokeRoomInvite: exports.revokeRoomInvite,
+  sendRoomMessage: exports.sendRoomMessage,
   setRoomMemberRole: exports.setRoomMemberRole,
   skipRoomVideo: exports.skipRoomVideo,
   transferRoomOwnership: exports.transferRoomOwnership,
@@ -701,7 +1378,8 @@ function getCorsHeaders(event) {
   }
 
   return {
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers':
+      'Authorization, Content-Type, X-Firebase-AppCheck',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
     'Cache-Control': 'no-store, max-age=0',
@@ -744,8 +1422,31 @@ async function authenticate(event) {
   }
 
   try {
-    return await getAuth(getFirebaseApp()).verifyIdToken(match[1], true)
-  } catch {
+    const decodedToken = await getAuth(getFirebaseApp()).verifyIdToken(
+      match[1],
+      true,
+    )
+    const appCheckToken = getHeader(event, 'x-firebase-appcheck')
+    const enforceAppCheck = process.env.ENFORCE_APP_CHECK === 'true'
+    if (enforceAppCheck && !process.env.FIRESTORE_EMULATOR_HOST) {
+      if (!appCheckToken) {
+        throw new HttpsError(
+          'unauthenticated',
+          'Проверка подлинности приложения обязательна.',
+        )
+      }
+      try {
+        await getAppCheck(getFirebaseApp()).verifyToken(appCheckToken)
+      } catch {
+        throw new HttpsError(
+          'unauthenticated',
+          'Проверка подлинности приложения не пройдена.',
+        )
+      }
+    }
+    return decodedToken
+  } catch (error) {
+    if (error instanceof HttpsError) throw error
     throw new HttpsError('unauthenticated', 'Сессия недействительна.')
   }
 }
@@ -776,7 +1477,7 @@ exports.handler = async function handler(event) {
     const data = { ...body }
     delete data.operation
     const result = await operationHandler({
-      auth: { uid: decodedToken.uid },
+      auth: { token: decodedToken, uid: decodedToken.uid },
       data,
     })
     return jsonResponse(200, result, corsHeaders)

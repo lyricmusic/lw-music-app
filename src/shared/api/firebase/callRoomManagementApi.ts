@@ -1,4 +1,6 @@
-import { auth } from './firebase'
+import { getToken } from 'firebase/app-check'
+
+import { appCheck, auth } from './firebase'
 
 const roomManagementApiUrl = import.meta.env.VITE_ROOM_MANAGEMENT_API_URL
 
@@ -14,11 +16,15 @@ export async function callRoomManagementApi<
 
   let response: Response
   try {
+    const appCheckToken = appCheck ? await getToken(appCheck) : null
     response = await fetch(roomManagementApiUrl, {
       body: JSON.stringify({ ...input, operation }),
       headers: {
         Authorization: `Bearer ${await user.getIdToken()}`,
         'Content-Type': 'application/json',
+        ...(appCheckToken
+          ? { 'X-Firebase-AppCheck': appCheckToken.token }
+          : {}),
       },
       method: 'POST',
     })

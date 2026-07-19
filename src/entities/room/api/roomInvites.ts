@@ -1,17 +1,14 @@
-import { auth, db } from '@/shared/api/firebase'
+import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
 import { FirebaseError } from 'firebase/app'
 import {
   collection,
   doc,
-  getCountFromServer,
   getDoc,
   onSnapshot,
   query,
-  serverTimestamp,
   Timestamp,
   type Unsubscribe,
   where,
-  writeBatch,
 } from 'firebase/firestore'
 
 interface CreateRoomInviteInput {
@@ -127,18 +124,6 @@ function parseInviteSecret(data: Record<string, unknown>) {
   } satisfies InviteSecret
 }
 
-function generateInviteToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  let binary = ''
-  bytes.forEach(byte => {
-    binary += String.fromCharCode(byte)
-  })
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '')
-}
-
 export async function hashRoomInviteToken(token: string) {
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -204,57 +189,15 @@ export async function createRoomInvite({
     throw new Error('Срок действия приглашения должен быть в будущем.')
   }
 
-  const roomRef = doc(db, 'rooms', roomId)
-  const activeMembersQuery = query(
-    collection(db, 'rooms', roomId, 'members'),
-    where('status', '==', 'active'),
+  const result = await callRoomManagementApi<{ ok: true; token: string }>(
+    'createRoomInvite',
+    {
+      expiresAtMillis: expiresAt.getTime(),
+      maxUses,
+      roomId,
+    },
   )
-  const [roomSnapshot, memberCountSnapshot] = await Promise.all([
-    getDoc(roomRef),
-    getCountFromServer(activeMembersQuery),
-  ])
-  if (!roomSnapshot.exists()) throw new Error('Комната не найдена.')
-
-  const room = roomSnapshot.data()
-  if (
-    room.visibility !== 'private' ||
-    typeof room.name !== 'string' ||
-    !room.name ||
-    typeof room.imageUrl !== 'string' ||
-    !room.imageUrl
-  ) {
-    throw new Error('Токены создаются только для приватных комнат.')
-  }
-
-  const token = generateInviteToken()
-  const tokenHash = await hashRoomInviteToken(token)
-  const inviteRef = doc(db, 'roomInvites', tokenHash)
-  const secretRef = doc(db, 'roomInviteSecrets', tokenHash)
-  const batch = writeBatch(db)
-
-  batch.set(inviteRef, {
-    createdAt: serverTimestamp(),
-    createdBy: user.uid,
-    expiresAt: Timestamp.fromDate(expiresAt),
-    maxUses,
-    participantCount: memberCountSnapshot.data().count,
-    revokedAt: null,
-    roomId,
-    roomImageUrl: room.imageUrl,
-    roomName: room.name,
-    tokenHash,
-    uses: 0,
-  })
-  batch.set(secretRef, {
-    createdAt: serverTimestamp(),
-    createdBy: user.uid,
-    roomId,
-    token,
-    tokenHash,
-  })
-  await batch.commit()
-
-  return token
+  return result.token
 }
 
 export function subscribeRoomInvites(
@@ -327,12 +270,7 @@ export async function revokeRoomInvite(tokenHash: string) {
   const user = auth.currentUser
   if (!user) throw new Error('Чтобы отозвать приглашение, авторизуйтесь.')
 
-  const batch = writeBatch(db)
-  batch.update(doc(db, 'roomInvites', tokenHash), {
-    revokedAt: serverTimestamp(),
-  })
-  batch.delete(doc(db, 'roomInviteSecrets', tokenHash))
-  await batch.commit()
+  await callRoomManagementApi('revokeRoomInvite', { tokenHash })
 }
 
 export function getRoomInviteUrl(inviteToken: string) {

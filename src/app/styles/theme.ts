@@ -99,6 +99,26 @@ export const appTheme = createTheme({
         },
       },
     },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#24143D',
+          backgroundImage: 'none',
+          border: '1px solid #4A2B6D',
+          color: '#F8F3FF',
+        },
+      },
+    },
+    MuiMenu: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#24143D',
+          backgroundImage: 'none',
+          border: '1px solid #4A2B6D',
+          color: '#F8F3FF',
+        },
+      },
+    },
     MuiTypography: {
       styleOverrides: {
         h1: {

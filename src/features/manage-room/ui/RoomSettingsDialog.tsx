@@ -102,7 +102,22 @@ export function RoomSettingsDialog({
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
+    <Dialog
+      fullWidth
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
+      slotProps={{
+        paper: {
+          sx: {
+            backgroundColor: '#24143D',
+            backgroundImage: 'none',
+            border: '1px solid #4A2B6D',
+            color: '#F8F3FF',
+          },
+        },
+      }}
+    >
       <DialogTitle>Настройки комнаты</DialogTitle>
       <DialogContent sx={{ paddingTop: '12px !important' }}>
         <Box
@@ -164,7 +179,7 @@ export function RoomSettingsDialog({
             error={Boolean(errors.slowModeSeconds)}
             helperText={
               errors.slowModeSeconds?.message ??
-              '0 отключает ограничение для сохранённых профилей. Для гостей минимум — 10 секунд.'
+              '0 оставляет базовый интервал: 2 секунды для профилей и 5 секунд для гостей.'
             }
             inputProps={{ max: 300, min: 0, step: 1 }}
             label="Интервал сообщений, секунд"

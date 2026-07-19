@@ -18,7 +18,7 @@ import {
 import type { RoomMessage } from '@/entities/message'
 import type { RoomMemberRole } from '@/entities/room'
 import { useSession } from '@/entities/session'
-import { useBlockedUsers } from '@/entities/user'
+import { blockUser, useBlockedUsers } from '@/entities/user'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
 import {
@@ -88,7 +88,8 @@ function MessageItem({
     actorRole && ['host', 'moderator', 'owner'].includes(actorRole),
   )
   const canReport = !isOwn
-  const hasActions = canDelete || canReport
+  const canBlock = !isOwn
+  const hasActions = canBlock || canDelete || canReport
 
   const openMenu = (event: MouseEvent<HTMLElement>) => {
     setAnchorElement(event.currentTarget)
@@ -122,6 +123,23 @@ function MessageItem({
         reason instanceof Error
           ? reason.message
           : 'Не удалось выполнить действие.',
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const handleBlock = async () => {
+    setAnchorElement(null)
+    setPending(true)
+    try {
+      await blockUser(message.authorId)
+      toast.success(`Сообщения ${message.authorName} скрыты только для вас.`)
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось скрыть пользователя.',
       )
     } finally {
       setPending(false)
@@ -165,6 +183,11 @@ function MessageItem({
         {canReport && (
           <MenuItem onClick={() => openDialog('report')}>
             Пожаловаться…
+          </MenuItem>
+        )}
+        {canBlock && (
+          <MenuItem onClick={() => void handleBlock()}>
+            Скрыть пользователя
           </MenuItem>
         )}
       </Menu>
@@ -357,8 +380,6 @@ export function RoomChat({
 
     try {
       await sendRoomMessage({
-        authorName: profile.displayName,
-        authorPhotoURL: profile.photoURL,
         roomId,
         text: message,
       })
@@ -447,6 +468,20 @@ export function RoomChat({
         )}
 
         {!loading &&
+          !error &&
+          messages.length > 0 &&
+          visibleMessages.length === 0 && (
+            <Typography
+              className="m-auto px-3 text-center text-sm"
+              component="li"
+              sx={{ color: '#8B8DB3' }}
+            >
+              Сообщения скрытых пользователей не показываются. Совместное
+              присутствие в комнате сохраняется.
+            </Typography>
+          )}
+
+        {!loading &&
           visibleMessages.map(message => (
             <MessageItem
               actorRole={currentMemberRole}
@@ -499,7 +534,16 @@ export function RoomChat({
               maxLength: ROOM_MESSAGE_MAX_LENGTH,
             },
           }}
-          sx={{ flex: 1, minWidth: 0 }}
+          sx={{
+            '& .MuiFilledInput-input': { color: '#F8F3FF' },
+            '& .MuiFilledInput-root, & .MuiFilledInput-root:hover, & .MuiFilledInput-root.Mui-focused':
+              {
+                backgroundColor: '#1B0C32',
+              },
+            '& input::placeholder': { color: '#8B8DB3' },
+            flex: 1,
+            minWidth: 0,
+          }}
         />
         <Button
           aria-label="Отправить сообщение"

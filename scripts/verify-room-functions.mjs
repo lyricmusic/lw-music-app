@@ -112,8 +112,35 @@ const membership = (role, isGuest = false) => ({
 
 await commit([
   update(`rooms/${roomId}`, {
+    imagePath: stringValue(`room-covers/${roomId}/cover-test.jpg`),
+    imageUrl: stringValue(
+      `https://storage.yandexcloud.net/test/${roomId}/cover-test.jpg`,
+    ),
+    name: stringValue('Functions room'),
     ownerId: stringValue(owner.uid),
+    settings: {
+      mapValue: {
+        fields: {
+          allowGuestChat: booleanValue(true),
+          allowGuestQueue: booleanValue(true),
+          slowModeSeconds: integerValue(0),
+        },
+      },
+    },
     status: stringValue('active'),
+    visibility: stringValue('private'),
+  }),
+  update(`users/${owner.uid}`, {
+    displayName: stringValue('Owner'),
+    photoURL: nullValue(),
+  }),
+  update(`users/${futureOwner.uid}`, {
+    displayName: stringValue('Future owner'),
+    photoURL: nullValue(),
+  }),
+  update(`users/${member.uid}`, {
+    displayName: stringValue('Member'),
+    photoURL: nullValue(),
   }),
   update(`rooms/${roomId}/members/${owner.uid}`, membership('owner')),
   update(`rooms/${roomId}/members/${futureOwner.uid}`, membership('member')),
@@ -167,6 +194,69 @@ await commit([
   }),
 ])
 
+for (let index = 1; index < 10; index += 1) {
+  const limitedRoomId = `server-room-${Date.now()}-${index}`
+  const imagePath =
+    `room-covers/${limitedRoomId}/` +
+    'cover-12345678-1234-1234-1234-123456789abc.jpg'
+  const createRoom = await callFunction(
+    'createRoom',
+    {
+      categories: [{ id: 1, title: 'Поп' }],
+      imagePath,
+      imageUrl: `https://storage.yandexcloud.net/test/${imagePath}`,
+      name: `Server room ${Date.now()} ${index}`,
+      roomId: limitedRoomId,
+      visibility: 'public',
+    },
+    owner.idToken,
+  )
+  assert.equal(createRoom.ok, true, JSON.stringify(createRoom))
+}
+
+const overLimitRoomId = `server-room-${Date.now()}-limit`
+const overLimitImagePath =
+  `room-covers/${overLimitRoomId}/` +
+  'cover-12345678-1234-1234-1234-123456789abc.jpg'
+const roomLimit = await callFunction(
+  'createRoom',
+  {
+    categories: [{ id: 1, title: 'Поп' }],
+    imagePath: overLimitImagePath,
+    imageUrl: `https://storage.yandexcloud.net/test/${overLimitImagePath}`,
+    name: `Over limit ${Date.now()}`,
+    roomId: overLimitRoomId,
+    visibility: 'public',
+  },
+  owner.idToken,
+)
+assert.equal(roomLimit.ok, false, JSON.stringify(roomLimit))
+
+for (let index = 0; index < 5; index += 1) {
+  const invite = await callFunction(
+    'createRoomInvite',
+    {
+      expiresAtMillis: Date.now() + 60 * 60 * 1000,
+      maxUses: 1,
+      roomId,
+    },
+    owner.idToken,
+  )
+  assert.equal(invite.ok, true, JSON.stringify(invite))
+  assert.match(invite.body.token, /^[A-Za-z0-9_-]{43}$/)
+}
+
+const inviteLimit = await callFunction(
+  'createRoomInvite',
+  {
+    expiresAtMillis: Date.now() + 60 * 60 * 1000,
+    maxUses: 1,
+    roomId,
+  },
+  owner.idToken,
+)
+assert.equal(inviteLimit.ok, false, JSON.stringify(inviteLimit))
+
 const memberRoleEscalation = await callFunction(
   'setRoomMemberRole',
   { memberId: futureOwner.uid, role: 'host', roomId },
@@ -184,6 +274,21 @@ const ownerRoleAssignment = await callFunction(
   owner.idToken,
 )
 assert.equal(ownerRoleAssignment.ok, true, JSON.stringify(ownerRoleAssignment))
+
+const firstMessage = await callFunction(
+  'sendRoomMessage',
+  { roomId, text: 'Server-side anti-spam verification' },
+  futureOwner.idToken,
+)
+assert.equal(firstMessage.ok, true, JSON.stringify(firstMessage))
+await readDocument(`rooms/${roomId}/messages/${firstMessage.body.messageId}`)
+
+const tooFastMessage = await callFunction(
+  'sendRoomMessage',
+  { roomId, text: 'This message is too fast' },
+  futureOwner.idToken,
+)
+assert.equal(tooFastMessage.ok, false, JSON.stringify(tooFastMessage))
 
 const hostMute = await callFunction(
   'moderateRoomMember',
@@ -214,11 +319,25 @@ const playback = await readDocument(`rooms/${roomId}/playback/current`)
 assert.equal(playback.videoId.stringValue, secondVideoId)
 
 const report = await callFunction(
-  'reportRoomMessage',
-  { messageId: 'message-1', reason: 'Проверка жалобы', roomId },
+  'createReport',
+  {
+    comment: 'Snapshot verification',
+    reason: 'harassment',
+    roomId,
+    targetId: 'message-1',
+    targetType: 'message',
+  },
   member.idToken,
 )
 assert.equal(report.ok, true, JSON.stringify(report))
+const storedReport = await readDocument(`reports/${report.body.reportId}`)
+assert.equal(storedReport.status.stringValue, 'new')
+assert.equal(storedReport.targetType.stringValue, 'message')
+assert.equal(
+  storedReport.snapshot.mapValue.fields.message.mapValue.fields.text
+    .stringValue,
+  'Message under moderation',
+)
 
 const deleteMessage = await callFunction(
   'deleteRoomMessage',
@@ -226,6 +345,14 @@ const deleteMessage = await callFunction(
   futureOwner.idToken,
 )
 assert.equal(deleteMessage.ok, true, JSON.stringify(deleteMessage))
+const moderationLog = await readDocument(
+  `moderationLogs/${deleteMessage.body.moderationLogId}`,
+)
+assert.equal(moderationLog.messageId.stringValue, 'message-1')
+assert.equal(
+  moderationLog.original.mapValue.fields.text.stringValue,
+  'Message under moderation',
+)
 
 const transfer = await callFunction(
   'transferRoomOwnership',
@@ -243,5 +370,5 @@ const nextOwner = await readDocument(
 assert.equal(nextOwner.role.stringValue, 'owner')
 
 console.log(
-  'Room management verification passed: role denial/assignment, host mute, skip authority and atomic queue advance, report, message deletion, and ownership transfer.',
+  'Room management verification passed: room/invite limits, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, and ownership transfer.',
 )

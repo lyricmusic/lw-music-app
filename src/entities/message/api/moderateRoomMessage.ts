@@ -1,3 +1,4 @@
+import { createReport } from '@/entities/report'
 import { callRoomManagementApi } from '@/shared/api/firebase'
 
 export function deleteRoomMessage(roomId: string, messageId: string) {
@@ -14,9 +15,11 @@ export function reportRoomMessage(
   if (normalizedReason.length > 500) {
     throw new Error('Причина не может быть длиннее 500 символов.')
   }
-  return callRoomManagementApi('reportRoomMessage', {
-    messageId,
+  return createReport({
+    comment: '',
     reason: normalizedReason,
     roomId,
+    targetId: messageId,
+    targetType: 'message',
   })
 }

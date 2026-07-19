@@ -1,22 +1,13 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  runTransaction,
-  serverTimestamp,
-} from 'firebase/firestore'
+import { collection, doc } from 'firebase/firestore'
 
 import {
-  DEFAULT_ROOM_SETTINGS,
-  DEFAULT_ROOM_STATUS,
   DEFAULT_ROOM_VISIBILITY,
-  getRoomNameKey,
   normalizeRoomName,
   ROOM_NAME_MAX_LENGTH,
   type Category,
   type RoomVisibility,
 } from '@/entities/room'
-import { auth, db } from '@/shared/api/firebase'
+import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
 import {
   callMediaUploadApi,
   uploadMediaFile,
@@ -60,17 +51,9 @@ export async function createRoom({
   }
 
   const roomRef = doc(collection(db, 'rooms'))
-  const ownerMemberRef = doc(db, 'rooms', roomRef.id, 'members', user.uid)
-  const nameKey = getRoomNameKey(normalizedName)
-  const roomNameRef = doc(db, 'roomNames', nameKey)
   let uploadedObjectKey: null | string = null
 
   try {
-    const roomNameSnapshot = await getDoc(roomNameRef)
-    if (roomNameSnapshot.exists()) {
-      throw new RoomNameAlreadyExistsError()
-    }
-
     const signedUpload = await callMediaUploadApi<SignedMediaUpload>(user, {
       action: 'signUpload',
       contentType: image.type,
@@ -81,38 +64,13 @@ export async function createRoom({
     await uploadMediaFile(image, signedUpload)
     uploadedObjectKey = signedUpload.objectKey
 
-    await runTransaction(db, async transaction => {
-      const reservedRoomNameSnapshot = await transaction.get(roomNameRef)
-      if (reservedRoomNameSnapshot.exists()) {
-        throw new RoomNameAlreadyExistsError()
-      }
-
-      transaction.set(roomNameRef, {
-        createdAt: serverTimestamp(),
-        name: normalizedName,
-        ownerId: user.uid,
-        roomId: roomRef.id,
-      })
-      transaction.set(roomRef, {
-        categories,
-        createdAt: serverTimestamp(),
-        imagePath: signedUpload.objectKey,
-        imageUrl: signedUpload.publicUrl,
-        name: normalizedName,
-        nameKey,
-        ownerId: user.uid,
-        settings: DEFAULT_ROOM_SETTINGS,
-        status: DEFAULT_ROOM_STATUS,
-        updatedAt: serverTimestamp(),
-        visibility,
-      })
-      transaction.set(ownerMemberRef, {
-        invitedBy: null,
-        isGuest: user.isAnonymous,
-        joinedAt: serverTimestamp(),
-        role: 'owner',
-        status: 'active',
-      })
+    await callRoomManagementApi('createRoom', {
+      categories,
+      imagePath: signedUpload.objectKey,
+      imageUrl: signedUpload.publicUrl,
+      name: normalizedName,
+      roomId: roomRef.id,
+      visibility,
     })
 
     return roomRef.id
@@ -129,6 +87,12 @@ export async function createRoom({
           cleanupError,
         )
       }
+    }
+    if (
+      error instanceof Error &&
+      error.message === 'Комната с таким названием уже существует.'
+    ) {
+      throw new RoomNameAlreadyExistsError()
     }
     throw error
   }

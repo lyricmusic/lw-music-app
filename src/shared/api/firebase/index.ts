@@ -1,2 +1,2 @@
-export { auth, db, realtimeDb } from './firebase'
+export { appCheck, auth, db, realtimeDb } from './firebase'
 export { callRoomManagementApi } from './callRoomManagementApi'

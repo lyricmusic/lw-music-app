@@ -18,6 +18,7 @@ import {
   useRoomQueue,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import { useBlockedUsers } from '@/entities/user'
 import { RoomParticipantActions } from '@/features/manage-room'
 import { db } from '@/shared/api/firebase'
 import {
@@ -281,6 +282,7 @@ export function SyncedYouTubePlayer({
   syncEnabled = true,
 }: SyncedYouTubePlayerProps) {
   const { profile, user } = useSession()
+  const blockedUserIds = useBlockedUsers()
   const {
     error: participantsError,
     loading: participantsLoading,
@@ -1011,6 +1013,7 @@ export function SyncedYouTubePlayer({
                 actions={
                   <RoomParticipantActions
                     actorRole={currentMemberRole}
+                    blocked={blockedUserIds.has(participant.id)}
                     participant={participant}
                     roomId={roomId}
                   />

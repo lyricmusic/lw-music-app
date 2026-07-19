@@ -11,6 +11,8 @@ import {
   type RoomParticipant,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import { blockUser, unblockUser } from '@/entities/user'
+import { ReportDialog } from '@/features/report-content'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -27,6 +29,7 @@ import {
 
 interface RoomParticipantActionsProps {
   actorRole: null | RoomMemberRole
+  blocked: boolean
   participant: RoomParticipant
   roomId: string
 }
@@ -80,6 +83,7 @@ function getRestrictionExpiration(duration: RestrictionDuration) {
 
 export function RoomParticipantActions({
   actorRole,
+  blocked,
   participant,
   roomId,
 }: RoomParticipantActionsProps) {
@@ -95,6 +99,9 @@ export function RoomParticipantActions({
   const [reason, setReason] = useState('')
   const [formError, setFormError] = useState<null | string>(null)
   const [pending, setPending] = useState(false)
+  const [reportTarget, setReportTarget] = useState<'nickname' | 'user' | null>(
+    null,
+  )
 
   const isSelf = participant.id === user?.uid
   const canAssignRole =
@@ -109,9 +116,7 @@ export function RoomParticipantActions({
   )
   const canKick = canModerate
 
-  if (!canAssignRole && !canModerate && !canKick && !canTransferOwnership) {
-    return null
-  }
+  if (isSelf) return null
 
   const closeMenu = () => setAnchorElement(null)
 
@@ -132,6 +137,35 @@ export function RoomParticipantActions({
     } finally {
       setPending(false)
     }
+  }
+
+  const handlePersonalBlock = async () => {
+    closeMenu()
+    setPending(true)
+    try {
+      if (blocked) {
+        await unblockUser(participant.id)
+        toast.success(`${participant.displayName} снова отображается для вас.`)
+      } else {
+        await blockUser(participant.id)
+        toast.success(
+          `Сообщения ${participant.displayName} скрыты только для вас.`,
+        )
+      }
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось изменить личную блокировку.',
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const openReport = (target: 'nickname' | 'user') => {
+    closeMenu()
+    setReportTarget(target)
   }
 
   const openModerationDialog = (action: ModerationAction) => {
@@ -274,6 +308,20 @@ export function RoomParticipantActions({
           },
         }}
       >
+        <MenuItem onClick={() => void handlePersonalBlock()}>
+          {blocked ? 'Снять личную блокировку' : 'Скрыть пользователя'}
+        </MenuItem>
+        <MenuItem onClick={() => openReport('user')}>
+          Пожаловаться на пользователя…
+        </MenuItem>
+        <MenuItem onClick={() => openReport('nickname')}>
+          Пожаловаться на никнейм…
+        </MenuItem>
+
+        {(canAssignRole || canModerate || canKick || canTransferOwnership) && (
+          <Divider sx={{ borderColor: '#4A2B6D' }} />
+        )}
+
         {canAssignRole &&
           !participant.isGuest && [
             <MenuItem
@@ -335,6 +383,19 @@ export function RoomParticipantActions({
           </MenuItem>
         )}
       </Menu>
+
+      <ReportDialog
+        description={
+          reportTarget === 'nickname'
+            ? `Никнейм «${participant.displayName}» будет сохранён в снимке жалобы.`
+            : `Профиль ${participant.displayName} будет сохранён в снимке жалобы.`
+        }
+        onClose={() => setReportTarget(null)}
+        open={reportTarget !== null}
+        roomId={roomId}
+        targetId={participant.id}
+        targetType={reportTarget ?? 'user'}
+      />
 
       <Dialog
         fullWidth
