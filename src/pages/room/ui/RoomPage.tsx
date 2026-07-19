@@ -204,7 +204,7 @@ export function RoomPage() {
           Настройки
         </Button>
       )}
-      {['moderator', 'owner'].includes(currentMember.role) && (
+      {['host', 'moderator', 'owner'].includes(currentMember.role) && (
         <Button
           color="inherit"
           onClick={() => setRestrictionsOpen(true)}
@@ -251,6 +251,7 @@ export function RoomPage() {
               !currentMember?.isGuest ||
               room.access?.settings.allowGuestChat === true
             }
+            currentMemberRole={currentMember?.role}
             key={roomId}
             roomId={roomId}
           />
@@ -274,13 +275,14 @@ export function RoomPage() {
             visibility={room.access.visibility}
           />
         )}
-      {currentMember && ['moderator', 'owner'].includes(currentMember.role) && (
-        <RoomRestrictionsDialog
-          onClose={() => setRestrictionsOpen(false)}
-          open={restrictionsOpen}
-          roomId={roomId}
-        />
-      )}
+      {currentMember &&
+        ['host', 'moderator', 'owner'].includes(currentMember.role) && (
+          <RoomRestrictionsDialog
+            onClose={() => setRestrictionsOpen(false)}
+            open={restrictionsOpen}
+            roomId={roomId}
+          />
+        )}
     </Box>
   )
 }

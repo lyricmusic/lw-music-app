@@ -213,7 +213,7 @@ service cloud.firestore {
     }
 
     function canModerateRoom(roomId) {
-      return hasActiveRoomRole(roomId, ['moderator', 'owner']);
+      return hasActiveRoomRole(roomId, ['host', 'moderator', 'owner']);
     }
 
     function canInviteToRoom(roomId) {
@@ -306,16 +306,6 @@ service cloud.firestore {
           .hasOnly(['status']);
     }
 
-    function isValidOwnerRoleChange(roomId) {
-      return hasActiveRoomRole(roomId, ['owner'])
-        && resource.data.role != 'owner'
-        && request.resource.data.role in ['host', 'member', 'moderator']
-        && (!resource.data.isGuest
-          || request.resource.data.role == 'member')
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['role']);
-    }
-
     function isValidGuestAccountUpgrade(memberId) {
       return memberId == request.auth.uid
         && !isAnonymous()
@@ -323,47 +313,6 @@ service cloud.firestore {
         && request.resource.data.isGuest == false
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['isGuest']);
-    }
-
-    function hasRoomKickAuthority(roomId, memberId, memberRole) {
-      let actorPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid);
-      let actor = get(actorPath).data;
-      return isSignedIn()
-        && memberId != request.auth.uid
-        && exists(actorPath)
-        && actor.status == 'active'
-        && (
-          (actor.role == 'owner' && memberRole != 'owner')
-          || (actor.role in ['host', 'moderator'] && memberRole == 'member')
-        );
-    }
-
-    function isValidRoomKick(roomId, memberId) {
-      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
-      let memberBefore = get(memberPath).data;
-      let memberAfter = getAfter(memberPath).data;
-      return exists(memberPath)
-        && existsAfter(memberPath)
-        && hasRoomKickAuthority(roomId, memberId, memberBefore.role)
-        && memberBefore.status == 'active'
-        && memberAfter.status == 'left'
-        && memberAfter.diff(memberBefore).affectedKeys().hasOnly(['status']);
-    }
-
-    function isValidModerationRemoval(roomId, memberId) {
-      return canModerateRoom(roomId)
-        && resource.data.role != 'owner'
-        && resource.data.status == 'active'
-        && request.resource.data.status == 'left'
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status'])
-        && isActivelyBannedAfter(roomId, memberId);
-    }
-
-    function isActivelyBannedAfter(roomId, userId) {
-      let banPath = /databases/$(database)/documents/rooms/$(roomId)/bans/$(userId);
-      return existsAfter(banPath)
-        && isActiveRestriction(getAfter(banPath).data);
     }
 
     function hasValidRoom(roomId) {
@@ -494,6 +443,77 @@ service cloud.firestore {
         && request.resource.data.videoId.size() == 11;
     }
 
+    function canControlPlayback(roomId) {
+      return hasActiveRoomRole(roomId, ['host', 'owner']);
+    }
+
+    function isCurrentQueueParticipant(roomId) {
+      let statePath = /databases/$(database)/documents/rooms/$(roomId)/queueState/current;
+      let state = get(statePath).data;
+      let itemId = exists(statePath)
+          && state.itemIds is list
+          && state.itemIds.size() > 0
+        ? state.itemIds[0]
+        : '';
+      let itemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId);
+      return isSignedIn()
+        && itemId != ''
+        && exists(itemPath)
+        && get(itemPath).data.userId == request.auth.uid;
+    }
+
+    function isInitialPlaybackForCurrentParticipant(roomId) {
+      let statePath = /databases/$(database)/documents/rooms/$(roomId)/queueState/current;
+      let state = getAfter(statePath).data;
+      let itemId = existsAfter(statePath)
+          && state.itemIds is list
+          && state.itemIds.size() == 1
+        ? state.itemIds[0]
+        : '';
+      let itemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId);
+      return itemId != ''
+        && existsAfter(itemPath)
+        && getAfter(itemPath).data.userId == request.auth.uid
+        && request.resource.data.videoId == getAfter(itemPath).data.videoId
+        && request.resource.data.positionSeconds == 0
+        && request.resource.data.status == 'playing';
+    }
+
+    function isCurrentParticipantPlaybackAdvance(roomId) {
+      let previousStatePath = /databases/$(database)/documents/rooms/$(roomId)/queueState/current;
+      let previousState = get(previousStatePath).data;
+      let nextState = getAfter(previousStatePath).data;
+      let nextItemId = existsAfter(previousStatePath)
+          && nextState.itemIds is list
+          && nextState.itemIds.size() > 0
+        ? nextState.itemIds[0]
+        : '';
+      let nextItemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(nextItemId);
+      return isCurrentQueueParticipant(roomId)
+        && previousState.itemIds is list
+        && previousState.itemIds.size() > 0
+        && nextState.itemIds is list
+        && nextState.itemIds.size() == previousState.itemIds.size() - 1
+        && !(previousState.itemIds[0] in nextState.itemIds)
+        && nextItemId != ''
+        && existsAfter(nextItemPath)
+        && request.resource.data.videoId == getAfter(nextItemPath).data.videoId
+        && request.resource.data.positionSeconds == 0
+        && request.resource.data.status == 'playing';
+    }
+
+    function isCurrentParticipantPlaybackFinish(roomId) {
+      let statePath = /databases/$(database)/documents/rooms/$(roomId)/queueState/current;
+      let previousState = get(statePath).data;
+      let nextState = getAfter(statePath).data;
+      return isCurrentQueueParticipant(roomId)
+        && previousState.itemIds is list
+        && previousState.itemIds.size() == 1
+        && existsAfter(statePath)
+        && nextState.itemIds is list
+        && nextState.itemIds.size() == 0;
+    }
+
     function hasValidQueueState() {
       let activePosition = request.resource.data.activePosition;
       let itemIds = request.resource.data.itemIds;
@@ -546,23 +566,6 @@ service cloud.firestore {
         && isQueueItemRemovedAfter(roomId, itemId);
     }
 
-    function hasKickedWaitingQueueItemRemoval(
-      roomId,
-      previousItemIds,
-      nextItemIds,
-      previousActive
-    ) {
-      let removedItemIds = previousItemIds.removeAll(nextItemIds);
-      let removedItemId = removedItemIds.size() == 1 ? removedItemIds[0] : '';
-      let removedItemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(removedItemId);
-      return removedItemIds.size() == 1
-        && exists(removedItemPath)
-        && get(removedItemPath).data.position > previousActive
-        && isQueueItemRemovedAfter(roomId, removedItemId)
-        && nextItemIds == previousItemIds.removeAll([removedItemId])
-        && isValidRoomKick(roomId, get(removedItemPath).data.userId);
-    }
-
     function hasValidQueueStateUpdate(roomId) {
       let previousActive = resource.data.activePosition;
       let previousLast = resource.data.lastPosition;
@@ -598,7 +601,8 @@ service cloud.firestore {
           && nextItemCount == previousItemCount - 1
           && (
             (
-              (
+              isCurrentQueueParticipant(roomId)
+              && (
                 (nextItemCount == 0 && nextActive == null)
                 || (nextItemCount > 0
                   && nextActive is int
@@ -610,26 +614,15 @@ service cloud.firestore {
               && (!previousHasItemIds
                 || isQueueItemRemovedAfter(roomId, resource.data.itemIds[0]))
             )
-            || (
-              nextActive == previousActive
-              && (
-                (exists(
-                    /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
-                  )
-                  && hasWaitingQueueItemRemoval(roomId, previousActive)
-                  && (!previousHasItemIds
-                    || nextItemIds == resource.data.itemIds.removeAll([
-                      getCallerQueueItemId(roomId)
-                    ])))
-                || (previousHasItemIds
-                  && hasKickedWaitingQueueItemRemoval(
-                    roomId,
-                    resource.data.itemIds,
-                    nextItemIds,
-                    previousActive
-                  ))
+            || (nextActive == previousActive
+              && exists(
+                /databases/$(database)/documents/rooms/$(roomId)/queueMembers/$(request.auth.uid)
               )
-            )
+              && hasWaitingQueueItemRemoval(roomId, previousActive)
+              && (!previousHasItemIds
+                || nextItemIds == resource.data.itemIds.removeAll([
+                  getCallerQueueItemId(roomId)
+                ])))
           )
         );
     }
@@ -706,9 +699,6 @@ service cloud.firestore {
     }
 
     function canDeleteQueueItem(roomId, itemId) {
-      let previousQueueState = get(
-        /databases/$(database)/documents/rooms/$(roomId)/queueState/current
-      ).data;
       let nextQueueState = getAfter(
         /databases/$(database)/documents/rooms/$(roomId)/queueState/current
       ).data;
@@ -717,13 +707,7 @@ service cloud.firestore {
         )
         && nextQueueState.itemIds is list
         && !(itemId in nextQueueState.itemIds)
-        && (request.auth.uid == resource.data.userId
-          || (previousQueueState.keys().hasAll(['itemIds'])
-            && previousQueueState.itemIds.size() > 0
-            && previousQueueState.itemIds[0] == itemId)
-          || (!previousQueueState.keys().hasAll(['itemIds'])
-            && previousQueueState.activePosition == resource.data.position)
-          || isValidRoomKick(roomId, resource.data.userId));
+        && request.auth.uid == resource.data.userId;
     }
 
     function hasValidMessage(roomId, messageId) {
@@ -874,48 +858,6 @@ service cloud.firestore {
         && invite.tokenHash == inviteId;
     }
 
-    function hasValidBanData(roomId, memberId) {
-      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
-      return request.resource.data.keys().hasAll([
-          'bannedBy', 'createdAt', 'expiresAt', 'reason'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'bannedBy', 'createdAt', 'expiresAt', 'reason'
-        ])
-        && request.resource.data.bannedBy == request.auth.uid
-        && request.resource.data.createdAt == request.time
-        && (request.resource.data.expiresAt == null
-          || (request.resource.data.expiresAt is timestamp
-            && request.resource.data.expiresAt > request.time))
-        && request.resource.data.reason is string
-        && request.resource.data.reason.size() > 0
-        && request.resource.data.reason.size() <= 500
-        && memberId != request.auth.uid
-        && (!exists(memberPath) || get(memberPath).data.role != 'owner')
-        && (!exists(memberPath)
-          || get(memberPath).data.status != 'active'
-          || getAfter(memberPath).data.status == 'left');
-    }
-
-    function hasValidMuteData(roomId, memberId) {
-      let memberPath = /databases/$(database)/documents/rooms/$(roomId)/members/$(memberId);
-      return request.resource.data.keys().hasAll([
-          'expiresAt', 'mutedBy', 'reason'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'expiresAt', 'mutedBy', 'reason'
-        ])
-        && request.resource.data.mutedBy == request.auth.uid
-        && (request.resource.data.expiresAt == null
-          || (request.resource.data.expiresAt is timestamp
-            && request.resource.data.expiresAt > request.time))
-        && request.resource.data.reason is string
-        && request.resource.data.reason.size() > 0
-        && request.resource.data.reason.size() <= 500
-        && memberId != request.auth.uid
-        && (!exists(memberPath) || get(memberPath).data.role != 'owner');
-    }
-
     function hasValidBlockedUser(userId, blockedUserId) {
       return userId == request.auth.uid
         && blockedUserId != request.auth.uid
@@ -987,10 +929,7 @@ service cloud.firestore {
         && (isValidSelfLeave(memberId)
           || (resource.data.status == 'left'
             && hasValidSelfJoinedMember(roomId, memberId))
-          || isValidGuestAccountUpgrade(memberId)
-          || isValidOwnerRoleChange(roomId)
-          || isValidRoomKick(roomId, memberId)
-          || isValidModerationRemoval(roomId, memberId));
+          || isValidGuestAccountUpgrade(memberId));
       allow delete: if false;
     }
 
@@ -998,18 +937,14 @@ service cloud.firestore {
       allow get: if isSignedIn()
         && (memberId == request.auth.uid || canModerateRoom(roomId));
       allow list: if canModerateRoom(roomId);
-      allow create, update: if canModerateRoom(roomId)
-        && hasValidBanData(roomId, memberId);
-      allow delete: if canModerateRoom(roomId);
+      allow create, update, delete: if false;
     }
 
     match /rooms/{roomId}/mutes/{memberId} {
       allow get: if isSignedIn()
         && (memberId == request.auth.uid || canModerateRoom(roomId));
       allow list: if canModerateRoom(roomId);
-      allow create, update: if canModerateRoom(roomId)
-        && hasValidMuteData(roomId, memberId);
-      allow delete: if canModerateRoom(roomId);
+      allow create, update, delete: if false;
     }
 
     match /roomNames/{roomNameId} {
@@ -1064,12 +999,19 @@ service cloud.firestore {
       allow create: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && hasValidPlaybackState()
-        && request.resource.data.revision == 1;
+        && request.resource.data.revision == 1
+        && (canControlPlayback(roomId)
+          || isInitialPlaybackForCurrentParticipant(roomId));
       allow update: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && hasValidPlaybackState()
-        && request.resource.data.revision == resource.data.revision + 1;
-      allow delete: if canParticipateInRoom(roomId) && stateId == 'current';
+        && request.resource.data.revision == resource.data.revision + 1
+        && (canControlPlayback(roomId)
+          || isCurrentParticipantPlaybackAdvance(roomId));
+      allow delete: if canParticipateInRoom(roomId)
+        && stateId == 'current'
+        && (canControlPlayback(roomId)
+          || isCurrentParticipantPlaybackFinish(roomId));
     }
 
     match /rooms/{roomId}/queueState/{stateId} {
@@ -1142,6 +1084,16 @@ service cloud.firestore {
         && !isActivelyMuted(roomId, request.auth.uid)
         && hasValidMessageActivity(roomId, memberId);
       allow delete: if false;
+    }
+
+    match /rooms/{roomId}/auditLogs/{auditId} {
+      allow read: if hasActiveRoomRole(roomId, ['owner']);
+      allow create, update, delete: if false;
+    }
+
+    match /rooms/{roomId}/reports/{reportId} {
+      allow read: if canModerateRoom(roomId);
+      allow create, update, delete: if false;
     }
   }
 }

@@ -1,21 +1,47 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import { useForm } from 'react-hook-form'
 
 import {
   ROOM_MESSAGE_MAX_LENGTH,
+  deleteRoomMessage,
+  reportRoomMessage,
   sendRoomMessage,
   useRoomMessages,
 } from '@/entities/message'
 import type { RoomMessage } from '@/entities/message'
+import type { RoomMemberRole } from '@/entities/room'
 import { useSession } from '@/entities/session'
 import { useBlockedUsers } from '@/entities/user'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
-import { Avatar, Box, CircularProgress, Paper, Typography } from '@mui/material'
+import {
+  Avatar,
+  Box,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Menu,
+  MenuItem,
+  Paper,
+  TextField as MuiTextField,
+  Typography,
+} from '@mui/material'
+import { toast } from 'react-toastify'
 
 interface RoomChatProps {
   actions?: ReactNode
   chatEnabled?: boolean
+  currentMemberRole?: null | RoomMemberRole
   roomId: string
 }
 
@@ -41,12 +67,185 @@ function getInitials(name: string) {
 }
 
 function MessageItem({
+  actorRole,
   isOwn,
   message,
+  roomId,
 }: {
+  actorRole?: null | RoomMemberRole
   isOwn: boolean
   message: RoomMessage
+  roomId: string
 }) {
+  const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null)
+  const [dialogAction, setDialogAction] = useState<'delete' | 'report' | null>(
+    null,
+  )
+  const [error, setError] = useState<null | string>(null)
+  const [pending, setPending] = useState(false)
+  const [reason, setReason] = useState('')
+  const canDelete = Boolean(
+    actorRole && ['host', 'moderator', 'owner'].includes(actorRole),
+  )
+  const canReport = !isOwn
+  const hasActions = canDelete || canReport
+
+  const openMenu = (event: MouseEvent<HTMLElement>) => {
+    setAnchorElement(event.currentTarget)
+  }
+
+  const openDialog = (action: 'delete' | 'report') => {
+    setAnchorElement(null)
+    setDialogAction(action)
+    setError(null)
+    setReason('')
+  }
+
+  const closeDialog = () => {
+    if (!pending) setDialogAction(null)
+  }
+
+  const submitAction = async () => {
+    setPending(true)
+    setError(null)
+    try {
+      if (dialogAction === 'delete') {
+        await deleteRoomMessage(roomId, message.id)
+        toast.success('Сообщение удалено.')
+      } else if (dialogAction === 'report') {
+        await reportRoomMessage(roomId, message.id, reason)
+        toast.success('Жалоба отправлена модераторам комнаты.')
+      }
+      setDialogAction(null)
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось выполнить действие.',
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const messageActions = hasActions ? (
+    <>
+      <IconButton
+        aria-label="Действия с сообщением"
+        disabled={message.pending}
+        onClick={openMenu}
+        size="small"
+        sx={{ color: '#D7DBF0', margin: '-6px -8px -6px 0' }}
+      >
+        ⋮
+      </IconButton>
+      <Menu
+        anchorEl={anchorElement}
+        onClose={() => setAnchorElement(null)}
+        open={Boolean(anchorElement)}
+        slotProps={{
+          paper: {
+            sx: {
+              backgroundColor: '#24143D',
+              backgroundImage: 'none',
+              border: '1px solid #4A2B6D',
+              color: '#F8F3FF',
+            },
+          },
+        }}
+      >
+        {canDelete && (
+          <MenuItem
+            onClick={() => openDialog('delete')}
+            sx={{ color: '#FF9BAD' }}
+          >
+            Удалить сообщение…
+          </MenuItem>
+        )}
+        {canReport && (
+          <MenuItem onClick={() => openDialog('report')}>
+            Пожаловаться…
+          </MenuItem>
+        )}
+      </Menu>
+      <Dialog
+        fullWidth
+        maxWidth="sm"
+        onClose={closeDialog}
+        open={dialogAction !== null}
+        slotProps={{
+          paper: {
+            sx: {
+              backgroundColor: '#24143D',
+              backgroundImage: 'none',
+              border: '1px solid #4A2B6D',
+              color: '#F8F3FF',
+            },
+          },
+        }}
+      >
+        <DialogTitle>
+          {dialogAction === 'delete'
+            ? 'Удалить сообщение?'
+            : 'Отправить жалобу'}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2 }}>
+          {dialogAction === 'delete' ? (
+            <Typography>
+              Сообщение исчезнет у всех участников. Действие будет записано в
+              журнал комнаты.
+            </Typography>
+          ) : (
+            <MuiTextField
+              error={Boolean(error)}
+              helperText={error}
+              inputProps={{ maxLength: 500 }}
+              label="Причина жалобы"
+              minRows={3}
+              multiline
+              onChange={event => {
+                setReason(event.target.value)
+                if (error) setError(null)
+              }}
+              sx={{
+                '& .MuiFormHelperText-root': { color: '#FF9BAD' },
+                '& .MuiInputBase-input, & .MuiInputLabel-root': {
+                  color: '#F8F3FF',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#6D4A8F',
+                },
+              }}
+              value={reason}
+            />
+          )}
+          {dialogAction === 'delete' && error && (
+            <Typography color="error" role="alert">
+              {error}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ padding: 3, paddingTop: 1 }}>
+          <Button disabled={pending} onClick={closeDialog}>
+            Отмена
+          </Button>
+          <Button
+            color={dialogAction === 'delete' ? 'error' : 'primary'}
+            disabled={pending || (dialogAction === 'report' && !reason.trim())}
+            onClick={() => void submitAction()}
+            variant="contained"
+          >
+            {pending
+              ? 'Отправляем…'
+              : dialogAction === 'delete'
+                ? 'Удалить'
+                : 'Отправить жалобу'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  ) : null
+
   const messageBubble = (
     <Box
       className={`flex min-w-0 items-end gap-3 px-4 ${
@@ -76,6 +275,7 @@ function MessageItem({
       >
         {formatMessageTime(message)}
       </Typography>
+      {messageActions}
     </Box>
   )
 
@@ -121,6 +321,7 @@ function MessageItem({
 export function RoomChat({
   actions,
   chatEnabled = true,
+  currentMemberRole,
   roomId,
 }: RoomChatProps) {
   const { profile, user } = useSession()
@@ -248,9 +449,11 @@ export function RoomChat({
         {!loading &&
           visibleMessages.map(message => (
             <MessageItem
+              actorRole={currentMemberRole}
               isOwn={message.authorId === user?.uid}
               key={message.id}
               message={message}
+              roomId={roomId}
             />
           ))}
       </Box>

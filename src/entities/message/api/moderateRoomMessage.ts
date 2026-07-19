@@ -1,0 +1,22 @@
+import { callFirebaseFunction } from '@/shared/api/firebase'
+
+export function deleteRoomMessage(roomId: string, messageId: string) {
+  return callFirebaseFunction('deleteRoomMessage', { messageId, roomId })
+}
+
+export function reportRoomMessage(
+  roomId: string,
+  messageId: string,
+  reason: string,
+) {
+  const normalizedReason = reason.trim()
+  if (!normalizedReason) throw new Error('Укажите причину жалобы.')
+  if (normalizedReason.length > 500) {
+    throw new Error('Причина не может быть длиннее 500 символов.')
+  }
+  return callFirebaseFunction('reportRoomMessage', {
+    messageId,
+    reason: normalizedReason,
+    roomId,
+  })
+}

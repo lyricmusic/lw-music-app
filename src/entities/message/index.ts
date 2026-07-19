@@ -4,5 +4,6 @@ export {
   RoomSlowModeError,
   sendRoomMessage,
 } from './api/sendRoomMessage'
+export { deleteRoomMessage, reportRoomMessage } from './api/moderateRoomMessage'
 export { useRoomMessages } from './api/useRoomMessages'
 export type { RoomMessage } from './model/types'

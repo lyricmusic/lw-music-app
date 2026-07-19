@@ -72,7 +72,22 @@ export function RoomRestrictionsDialog({
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <Dialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{
+        paper: {
+          sx: {
+            backgroundColor: '#24143D',
+            backgroundImage: 'none',
+            border: '1px solid #4A2B6D',
+            color: '#F8F3FF',
+          },
+        },
+      }}
+    >
       <DialogTitle>Ограничения участников</DialogTitle>
       <DialogContent sx={{ minHeight: 180 }}>
         {loading && (
@@ -87,7 +102,7 @@ export function RoomRestrictionsDialog({
         )}
 
         {!loading && restrictions.length === 0 && !error && (
-          <Typography color="text.secondary" py={3} textAlign="center">
+          <Typography color="#CDBCE2" py={3} textAlign="center">
             Активных и сохранённых ограничений нет.
           </Typography>
         )}
@@ -102,7 +117,8 @@ export function RoomRestrictionsDialog({
                 gap={1.5}
                 key={key}
                 sx={{
-                  backgroundColor: '#F3F4F8',
+                  backgroundColor: '#32204B',
+                  border: '1px solid #4A2B6D',
                   borderRadius: 2,
                   padding: 1.5,
                 }}
@@ -110,6 +126,7 @@ export function RoomRestrictionsDialog({
                 <Avatar
                   alt={restriction.displayName}
                   src={restriction.photoURL ?? undefined}
+                  sx={{ backgroundColor: '#6F4B91' }}
                 >
                   {getInitials(restriction.displayName)}
                 </Avatar>
@@ -117,7 +134,7 @@ export function RoomRestrictionsDialog({
                   <Typography fontWeight={700} noWrap>
                     {restriction.displayName}
                   </Typography>
-                  <Typography color="text.secondary" variant="body2">
+                  <Typography color="#CDBCE2" variant="body2">
                     {restriction.kind === 'ban' ? 'Блокировка' : 'Запрет чата'}{' '}
                     · {formatExpiration(restriction)}
                   </Typography>
@@ -135,6 +152,7 @@ export function RoomRestrictionsDialog({
                   disabled={pendingKey !== null}
                   onClick={() => void handleLiftRestriction(restriction)}
                   size="small"
+                  sx={{ borderColor: '#B88CFF', color: '#F8F3FF' }}
                   variant="outlined"
                 >
                   {pendingKey === key

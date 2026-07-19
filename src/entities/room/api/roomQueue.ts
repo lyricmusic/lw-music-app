@@ -1,4 +1,4 @@
-import { auth, db } from '@/shared/api/firebase'
+import { auth, callFirebaseFunction, db } from '@/shared/api/firebase'
 import {
   doc,
   runTransaction,
@@ -22,6 +22,12 @@ interface AdvanceRoomQueueInput {
 
 interface LeaveRoomQueueInput {
   roomId: string
+}
+
+interface SetRoomPlaybackStatusInput {
+  positionSeconds: number
+  roomId: string
+  status: 'paused' | 'playing'
 }
 
 interface RemoveRoomQueueMemberInput {
@@ -191,106 +197,48 @@ export async function advanceRoomQueue({
   const user = auth.currentUser
   if (!user || !roomId || !/^[\w-]{11}$/.test(finishedVideoId)) return false
 
+  const result = await callFirebaseFunction<{ advanced: boolean }>(
+    'advanceRoomVideo',
+    { finishedVideoId, roomId },
+  )
+  return result.advanced
+}
+
+export async function skipRoomVideo(roomId: string) {
+  if (!auth.currentUser) {
+    throw new Error('Чтобы пропустить видео, авторизуйтесь.')
+  }
+  await callFirebaseFunction('skipRoomVideo', { roomId })
+}
+
+export async function setRoomPlaybackStatus({
+  positionSeconds,
+  roomId,
+  status,
+}: SetRoomPlaybackStatusInput) {
+  const user = auth.currentUser
+  if (!user) throw new Error('Чтобы управлять плеером, авторизуйтесь.')
+  if (!Number.isFinite(positionSeconds) || positionSeconds < 0) {
+    throw new Error('Некорректная позиция воспроизведения.')
+  }
+
   const playbackRef = doc(db, 'rooms', roomId, 'playback', 'current')
-  const queueStateRef = doc(db, 'rooms', roomId, 'queueState', 'current')
-
   return runTransaction(db, async transaction => {
-    const [queueStateSnapshot, playbackSnapshot] = await Promise.all([
-      transaction.get(queueStateRef),
-      transaction.get(playbackRef),
-    ])
+    const playbackSnapshot = await transaction.get(playbackRef)
+    if (!playbackSnapshot.exists()) return false
 
-    if (
-      !playbackSnapshot.exists() ||
-      playbackSnapshot.data().videoId !== finishedVideoId
-    ) {
-      return false
-    }
+    const playback = playbackSnapshot.data()
+    const revision = Number(playback.revision) || 0
+    if (typeof playback.videoId !== 'string') return false
 
-    if (!queueStateSnapshot.exists()) {
-      transaction.delete(playbackRef)
-      return true
-    }
-
-    const queueState = parseQueueState(queueStateSnapshot.data())
-    if (!queueState) {
-      throw new Error('В комнате сохранено некорректное состояние очереди.')
-    }
-
-    if (!queueState.activePosition || queueState.itemIds.length === 0) {
-      transaction.delete(playbackRef)
-      return true
-    }
-
-    const currentItemId = queueState.itemIds[0]
-    const currentItemRef = doc(db, 'rooms', roomId, 'queue', currentItemId)
-    const nextItemId = queueState.itemIds[1] ?? null
-    const nextItemRef = nextItemId
-      ? doc(db, 'rooms', roomId, 'queue', nextItemId)
-      : null
-
-    const [currentItemSnapshot, nextItemSnapshot] = await Promise.all([
-      transaction.get(currentItemRef),
-      nextItemRef ? transaction.get(nextItemRef) : Promise.resolve(null),
-    ])
-
-    if (!currentItemSnapshot.exists()) return false
-
-    const currentItem = currentItemSnapshot.data()
-    if (
-      currentItem.videoId !== finishedVideoId ||
-      typeof currentItem.userId !== 'string'
-    ) {
-      return false
-    }
-
-    if (nextItemRef && !nextItemSnapshot?.exists()) {
-      throw new Error('Следующий элемент очереди не найден.')
-    }
-
-    const nextItem = nextItemSnapshot?.data()
-    const nextPosition = nextItem?.position
-    if (
-      nextItem &&
-      (typeof nextPosition !== 'number' ||
-        !Number.isInteger(nextPosition) ||
-        nextPosition <= queueState.activePosition)
-    ) {
-      throw new Error('Следующий элемент очереди содержит некорректные данные.')
-    }
-
-    const queueMemberRef = doc(
-      db,
-      'rooms',
-      roomId,
-      'queueMembers',
-      currentItem.userId,
-    )
-    const queueMemberSnapshot = await transaction.get(queueMemberRef)
-    const currentRevision = Number(playbackSnapshot.data().revision) || 0
-
-    transaction.delete(currentItemRef)
-    if (queueMemberSnapshot.exists()) transaction.delete(queueMemberRef)
-    transaction.set(queueStateRef, {
-      activePosition: nextItem ? nextPosition : null,
-      itemIds: queueState.itemIds.slice(1),
-      lastPosition: queueState.lastPosition,
-      updatedAt: serverTimestamp(),
+    transaction.set(playbackRef, {
+      changedAt: serverTimestamp(),
+      changedBy: user.uid,
+      positionSeconds: Math.min(86_400, positionSeconds),
+      revision: revision + 1,
+      status,
+      videoId: playback.videoId,
     })
-
-    if (nextItem) {
-      transaction.set(playbackRef, {
-        changedAt: serverTimestamp(),
-        changedBy: user.uid,
-        positionSeconds: 0,
-        revision: currentRevision + 1,
-        status: 'playing',
-        videoId: nextItem.videoId,
-      })
-    } else {
-      transaction.delete(playbackRef)
-    }
-
     return true
   })
 }

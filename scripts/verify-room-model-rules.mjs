@@ -483,7 +483,19 @@ const roleChange = await commit(
   ],
   owner.idToken,
 )
-assert.equal(roleChange.ok, true, JSON.stringify(roleChange))
+assert.equal(roleChange.ok, false, JSON.stringify(roleChange))
+
+const serverRoleChange = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { role: stringValue('host') },
+      ['role'],
+    ),
+  ],
+  'owner',
+)
+assert.equal(serverRoleChange.ok, true, JSON.stringify(serverRoleChange))
 
 const selfLeave = await commit(
   [
@@ -519,7 +531,19 @@ const ownerKick = await commit(
   ],
   owner.idToken,
 )
-assert.equal(ownerKick.ok, true, JSON.stringify(ownerKick))
+assert.equal(ownerKick.ok, false, JSON.stringify(ownerKick))
+
+const serverOwnerKick = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  'owner',
+)
+assert.equal(serverOwnerKick.ok, true, JSON.stringify(serverOwnerKick))
 
 const publicRejoinAfterKick = await commit(
   [
@@ -561,7 +585,7 @@ const makeHost = await commit(
       ['role'],
     ),
   ],
-  owner.idToken,
+  'owner',
 )
 assert.equal(makeHost.ok, true, JSON.stringify(makeHost))
 
@@ -575,7 +599,23 @@ const hostKickMember = await commit(
   ],
   otherUser.idToken,
 )
-assert.equal(hostKickMember.ok, true, JSON.stringify(hostKickMember))
+assert.equal(hostKickMember.ok, false, JSON.stringify(hostKickMember))
+
+const serverHostKickMember = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  'owner',
+)
+assert.equal(
+  serverHostKickMember.ok,
+  true,
+  JSON.stringify(serverHostKickMember),
+)
 
 const kickedMemberRejoin = await commit(
   [
@@ -597,7 +637,7 @@ const makeModerator = await commit(
       ['role'],
     ),
   ],
-  owner.idToken,
+  'owner',
 )
 assert.equal(makeModerator.ok, true, JSON.stringify(makeModerator))
 
@@ -638,7 +678,7 @@ const resetManagementRoles = await commit(
       ['role'],
     ),
   ],
-  owner.idToken,
+  'owner',
 )
 assert.equal(
   resetManagementRoles.ok,
@@ -700,7 +740,19 @@ const mute = await commit(
   ],
   owner.idToken,
 )
-assert.equal(mute.ok, true, JSON.stringify(mute))
+assert.equal(mute.ok, false, JSON.stringify(mute))
+
+const serverMute = await commit(
+  [
+    update(`rooms/${validRoom.roomId}/mutes/${otherUser.uid}`, {
+      expiresAt: nullValue(),
+      mutedBy: stringValue(owner.uid),
+      reason: stringValue('Muted by server rules test'),
+    }),
+  ],
+  'owner',
+)
+assert.equal(serverMute.ok, true, JSON.stringify(serverMute))
 
 const mutedMessageId = `muted-${runId}`
 const mutedMessage = await commit(
@@ -729,7 +781,13 @@ const unmute = await commit(
   [remove(`rooms/${validRoom.roomId}/mutes/${otherUser.uid}`)],
   owner.idToken,
 )
-assert.equal(unmute.ok, true, JSON.stringify(unmute))
+assert.equal(unmute.ok, false, JSON.stringify(unmute))
+
+const serverUnmute = await commit(
+  [remove(`rooms/${validRoom.roomId}/mutes/${otherUser.uid}`)],
+  'owner',
+)
+assert.equal(serverUnmute.ok, true, JSON.stringify(serverUnmute))
 
 const ban = await commit(
   [
@@ -750,7 +808,28 @@ const ban = await commit(
   ],
   owner.idToken,
 )
-assert.equal(ban.ok, true, JSON.stringify(ban))
+assert.equal(ban.ok, false, JSON.stringify(ban))
+
+const serverBan = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/bans/${otherUser.uid}`,
+      {
+        bannedBy: stringValue(owner.uid),
+        expiresAt: nullValue(),
+        reason: stringValue('Banned by server rules test'),
+      },
+      [requestTime('createdAt')],
+    ),
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  'owner',
+)
+assert.equal(serverBan.ok, true, JSON.stringify(serverBan))
 
 const bannedRoomRead = await readDocument(
   `rooms/${validRoom.roomId}`,
@@ -762,7 +841,13 @@ const unban = await commit(
   [remove(`rooms/${validRoom.roomId}/bans/${otherUser.uid}`)],
   owner.idToken,
 )
-assert.equal(unban.ok, true, JSON.stringify(unban))
+assert.equal(unban.ok, false, JSON.stringify(unban))
+
+const serverUnban = await commit(
+  [remove(`rooms/${validRoom.roomId}/bans/${otherUser.uid}`)],
+  'owner',
+)
+assert.equal(serverUnban.ok, true, JSON.stringify(serverUnban))
 
 const rejoinAfterBan = await commit(
   [

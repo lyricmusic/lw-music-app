@@ -11,6 +11,8 @@ import {
   advanceRoomQueue,
   enqueueRoomVideo,
   leaveRoomQueue,
+  setRoomPlaybackStatus,
+  skipRoomVideo,
   type RoomMemberRole,
   useRoomParticipants,
   useRoomQueue,
@@ -35,6 +37,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Timestamp, doc, onSnapshot } from 'firebase/firestore'
+import { toast } from 'react-toastify'
 
 import { AddToQueueDialog } from './AddToQueueDialog'
 
@@ -77,6 +80,7 @@ interface RoomUserListItemProps {
   online?: boolean
   pending?: boolean
   photoURL: null | string
+  roleBadge?: ReactNode
   secondaryLabel?: string
   status?: RoomUserListItemStatus
 }
@@ -87,6 +91,7 @@ function RoomUserListItem({
   online,
   pending = false,
   photoURL,
+  roleBadge,
   secondaryLabel,
   status,
 }: RoomUserListItemProps) {
@@ -166,6 +171,7 @@ function RoomUserListItem({
           </Box>
         )}
       </Box>
+      {roleBadge}
       {actions}
     </Box>
   )
@@ -176,6 +182,41 @@ const ROOM_ROLE_LABELS: Record<RoomMemberRole, string> = {
   member: 'Участник',
   moderator: 'Модератор',
   owner: 'Владелец',
+}
+
+const ROOM_ROLE_BADGES: Partial<
+  Record<RoomMemberRole, { color: string; symbol: string }>
+> = {
+  host: { color: '#80BFFF', symbol: '★' },
+  moderator: { color: '#62D79B', symbol: '◆' },
+  owner: { color: '#F2C94C', symbol: '♛' },
+}
+
+function RoomRoleBadge({ role }: { role: RoomMemberRole }) {
+  const badge = ROOM_ROLE_BADGES[role]
+  if (!badge) return null
+
+  return (
+    <Box
+      aria-label={ROOM_ROLE_LABELS[role]}
+      component="span"
+      sx={{
+        alignItems: 'center',
+        border: `1px solid ${badge.color}`,
+        borderRadius: '50%',
+        color: badge.color,
+        display: 'inline-flex',
+        flexShrink: 0,
+        fontSize: '12px',
+        height: 24,
+        justifyContent: 'center',
+        width: 24,
+      }}
+      title={ROOM_ROLE_LABELS[role]}
+    >
+      {badge.symbol}
+    </Box>
+  )
 }
 
 function allowAutoplay(player: YT.Player) {
@@ -258,6 +299,7 @@ export function SyncedYouTubePlayer({
   const playerRef = useRef<null | YT.Player>(null)
   const lastRemoteStateRef = useRef<null | PlaybackState>(null)
   const autoplayRecoveryVideoIdRef = useRef<null | string>(null)
+  const activeQueueUserIdRef = useRef<null | string>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
   const queueMutationRef = useRef(Promise.resolve())
 
@@ -271,12 +313,18 @@ export function SyncedYouTubePlayer({
   const [duration, setDuration] = useState(0)
   const [queueDialogOpen, setQueueDialogOpen] = useState(false)
   const [queueLeaving, setQueueLeaving] = useState(false)
+  const [queueSkipping, setQueueSkipping] = useState(false)
+  const [playbackChanging, setPlaybackChanging] = useState(false)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
   const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
     null,
   )
+
+  useEffect(() => {
+    activeQueueUserIdRef.current = queueItems[0]?.userId ?? null
+  }, [queueItems])
 
   const clearFinishedPlayback = useCallback(
     (finishedVideoId: string) => {
@@ -291,7 +339,11 @@ export function SyncedYouTubePlayer({
         return Promise.resolve()
       }
 
-      if (!user) return Promise.resolve()
+      const canAdvance =
+        currentMemberRole === 'owner' ||
+        currentMemberRole === 'host' ||
+        activeQueueUserIdRef.current === user?.uid
+      if (!user || !canAdvance) return Promise.resolve()
 
       setSyncStatus('syncing')
       queueMutationRef.current = queueMutationRef.current
@@ -315,7 +367,7 @@ export function SyncedYouTubePlayer({
 
       return queueMutationRef.current
     },
-    [roomId, syncEnabled, user],
+    [currentMemberRole, roomId, syncEnabled, user],
   )
 
   const applyRemoteState = useCallback((state: PlaybackState) => {
@@ -328,10 +380,18 @@ export function SyncedYouTubePlayer({
     suppressPlayerEventsUntilRef.current = Date.now() + 1_800
 
     if (videoChanged) {
-      player.loadVideoById({
-        startSeconds: expectedPosition,
-        videoId: state.videoId,
-      })
+      if (state.status === 'paused') {
+        player.cueVideoById({
+          startSeconds: expectedPosition,
+          videoId: state.videoId,
+        })
+        player.pauseVideo()
+      } else {
+        player.loadVideoById({
+          startSeconds: expectedPosition,
+          videoId: state.videoId,
+        })
+      }
     } else {
       const localPosition = player.getCurrentTime()
       if (
@@ -341,7 +401,11 @@ export function SyncedYouTubePlayer({
         player.seekTo(expectedPosition, true)
       }
 
-      if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
+      if (state.status === 'paused') {
+        if (player.getPlayerState() !== YT.PlayerState.PAUSED) {
+          player.pauseVideo()
+        }
+      } else if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
         player.playVideo()
       }
     }
@@ -583,6 +647,46 @@ export function SyncedYouTubePlayer({
     }
   }
 
+  const handleSkipVideo = async () => {
+    if (queueSkipping) return
+    setQueueSkipping(true)
+    try {
+      await skipRoomVideo(roomId)
+      toast.success('Переходим к следующему видео.')
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось пропустить видео.',
+      )
+    } finally {
+      setQueueSkipping(false)
+    }
+  }
+
+  const handleTogglePlayback = async () => {
+    const player = playerRef.current
+    const remote = lastRemoteStateRef.current
+    if (!player || !remote || playbackChanging) return
+
+    setPlaybackChanging(true)
+    try {
+      await setRoomPlaybackStatus({
+        positionSeconds: player.getCurrentTime(),
+        roomId,
+        status: remote.status === 'playing' ? 'paused' : 'playing',
+      })
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось изменить воспроизведение.',
+      )
+    } finally {
+      setPlaybackChanging(false)
+    }
+  }
+
   const currentUserQueueItem = queueItems.find(
     queueItem => queueItem.userId === user?.uid,
   )
@@ -647,31 +751,70 @@ export function SyncedYouTubePlayer({
             ref={playerContainerRef}
           />
 
-          <Box className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/80 to-transparent px-5 pb-4 pt-10 text-sm text-white">
+          <Box className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-10 text-sm text-white sm:px-5 sm:pb-4">
             <Typography component="span" variant="body2">
               {formatPlaybackTime(currentTime)} / {formatPlaybackTime(duration)}
             </Typography>
-            <Button
-              disabled={!playerReady}
-              onClick={handleToggleSound}
-              sx={{
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                  borderColor: '#FFFFFF',
-                },
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                borderColor: 'rgba(255, 255, 255, 0.7)',
-                color: '#FFFFFF',
-                padding: '8px 16px',
-              }}
-              variant="outlined"
-            >
-              {muted ? 'Включить звук' : 'Выключить звук'}
-            </Button>
+            <Box className="flex flex-wrap justify-end gap-2">
+              {(currentMemberRole === 'owner' ||
+                currentMemberRole === 'host') && (
+                <>
+                  <Button
+                    disabled={playbackChanging || !remoteState}
+                    onClick={() => void handleTogglePlayback()}
+                    sx={{
+                      '&:hover': { backgroundColor: '#5D3A82' },
+                      backgroundColor: '#3B2158',
+                      borderColor: '#B88CFF',
+                      color: '#FFFFFF',
+                      padding: '8px 12px',
+                    }}
+                    variant="outlined"
+                  >
+                    {playbackChanging
+                      ? 'Синхронизируем…'
+                      : remoteState?.status === 'paused'
+                        ? 'Продолжить'
+                        : 'Пауза'}
+                  </Button>
+                  <Button
+                    disabled={queueSkipping || queueItems.length === 0}
+                    onClick={() => void handleSkipVideo()}
+                    sx={{
+                      '&:hover': { backgroundColor: '#5D3A82' },
+                      backgroundColor: '#3B2158',
+                      borderColor: '#B88CFF',
+                      color: '#FFFFFF',
+                      padding: '8px 12px',
+                    }}
+                    variant="outlined"
+                  >
+                    {queueSkipping ? 'Пропускаем…' : 'Пропустить'}
+                  </Button>
+                </>
+              )}
+              <Button
+                disabled={!playerReady}
+                onClick={handleToggleSound}
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    borderColor: '#FFFFFF',
+                  },
+                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                  borderColor: 'rgba(255, 255, 255, 0.7)',
+                  color: '#FFFFFF',
+                  padding: '8px 12px',
+                }}
+                variant="outlined"
+              >
+                {muted ? 'Включить звук' : 'Выключить звук'}
+              </Button>
+            </Box>
           </Box>
 
           {autoplayBlocked && (
-            <Box className="absolute left-4 right-4 top-4 rounded-xl bg-[#FFF3CD] p-3 text-sm text-[#25263E]">
+            <Box className="absolute left-4 right-4 top-4 rounded-xl border border-[#6D4A8F] bg-[#24143D] p-3 text-sm text-[#F8F3FF]">
               Восстанавливаем беззвучное воспроизведение и синхронизацию с
               комнатой…
             </Box>
@@ -709,8 +852,8 @@ export function SyncedYouTubePlayer({
               textTransform: 'none',
             },
             '& .MuiTab-root.Mui-selected': {
-              backgroundColor: '#FFFFFF',
-              color: '#25263E',
+              backgroundColor: '#5D3A82',
+              color: '#FFFFFF',
             },
             '& .MuiTabs-flexContainer': { gap: '8px' },
             '& .MuiTabs-indicator': { display: 'none' },
@@ -876,6 +1019,7 @@ export function SyncedYouTubePlayer({
                 key={participant.id}
                 online={participant.online}
                 photoURL={participant.photoURL}
+                roleBadge={<RoomRoleBadge role={participant.role} />}
                 secondaryLabel={`${ROOM_ROLE_LABELS[participant.role]}${participant.isGuest ? ' · гость' : ''}${participant.online ? '' : ' · не в сети'}`}
               />
             ))}
@@ -903,7 +1047,7 @@ export function SyncedYouTubePlayer({
         )}
 
         {error && (
-          <Box className="mt-4 rounded-xl bg-[#FFE3E8] p-3 text-sm text-[#8B2635]">
+          <Box className="mt-4 rounded-xl border border-[#8B3755] bg-[#35152C] p-3 text-sm text-[#FFB4C2]">
             {error}
           </Box>
         )}

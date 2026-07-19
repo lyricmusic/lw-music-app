@@ -23,6 +23,7 @@ export {
   leaveRoom,
   restorePublicRoomMembership,
   setRoomMemberRole,
+  transferRoomOwnership,
 } from './api/roomMembership'
 export {
   createRoomInvite,
@@ -47,6 +48,8 @@ export {
   advanceRoomQueue,
   enqueueRoomVideo,
   leaveRoomQueue,
+  setRoomPlaybackStatus,
+  skipRoomVideo,
 } from './api/roomQueue'
 export { ROOM_CATEGORIES } from './model/categories'
 export {

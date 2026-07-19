@@ -1,12 +1,4 @@
-import { auth, db } from '@/shared/api/firebase'
-import {
-  deleteDoc,
-  doc,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore'
+import { auth, callFirebaseFunction } from '@/shared/api/firebase'
 
 interface ModerateRoomUserInput {
   expiresAt?: Date | null
@@ -24,69 +16,50 @@ function normalizeReason(reason: string) {
   return normalizedReason
 }
 
-function toExpiresAt(expiresAt?: Date | null) {
-  if (!expiresAt) return null
-  if (expiresAt.getTime() <= Date.now()) {
-    throw new Error('Срок действия должен быть в будущем.')
-  }
-  return Timestamp.fromDate(expiresAt)
-}
-
-export async function banRoomUser({
-  expiresAt,
-  reason,
-  roomId,
-  userId,
-}: ModerateRoomUserInput) {
+async function moderateRoomUser(
+  action: 'ban' | 'mute',
+  { expiresAt, reason, roomId, userId }: ModerateRoomUserInput,
+) {
   const user = auth.currentUser
-  if (!user) throw new Error('Чтобы заблокировать участника, авторизуйтесь.')
-  if (user.uid === userId) throw new Error('Нельзя заблокировать себя.')
+  if (!user) throw new Error('Чтобы модерировать комнату, авторизуйтесь.')
+  if (user.uid === userId) throw new Error('Нельзя применить действие к себе.')
 
-  const banRef = doc(db, 'rooms', roomId, 'bans', userId)
-  const memberRef = doc(db, 'rooms', roomId, 'members', userId)
-  await runTransaction(db, async transaction => {
-    const memberSnapshot = await transaction.get(memberRef)
-    if (memberSnapshot.data()?.role === 'owner') {
-      throw new Error('Владельца комнаты нельзя заблокировать.')
-    }
-
-    transaction.set(banRef, {
-      bannedBy: user.uid,
-      createdAt: serverTimestamp(),
-      expiresAt: toExpiresAt(expiresAt),
-      reason: normalizeReason(reason),
-    })
-    if (memberSnapshot.exists() && memberSnapshot.data().status === 'active') {
-      transaction.update(memberRef, { status: 'left' })
-    }
-  })
-}
-
-export async function unbanRoomUser(roomId: string, userId: string) {
-  const user = auth.currentUser
-  if (!user) throw new Error('Чтобы снять блокировку, авторизуйтесь.')
-  await deleteDoc(doc(db, 'rooms', roomId, 'bans', userId))
-}
-
-export async function muteRoomUser({
-  expiresAt,
-  reason,
-  roomId,
-  userId,
-}: ModerateRoomUserInput) {
-  const user = auth.currentUser
-  if (!user) throw new Error('Чтобы ограничить участника, авторизуйтесь.')
-  if (user.uid === userId) throw new Error('Нельзя ограничить себя.')
-
-  await setDoc(doc(db, 'rooms', roomId, 'mutes', userId), {
-    expiresAt: toExpiresAt(expiresAt),
-    mutedBy: user.uid,
+  await callFirebaseFunction('moderateRoomMember', {
+    action,
+    expiresAtMillis: expiresAt?.getTime() ?? null,
+    memberId: userId,
     reason: normalizeReason(reason),
+    roomId,
   })
 }
 
-export async function unmuteRoomUser(roomId: string, userId: string) {
-  const user = auth.currentUser
-  if (!user) throw new Error('Чтобы снять ограничение, авторизуйтесь.')
-  await deleteDoc(doc(db, 'rooms', roomId, 'mutes', userId))
+export function banRoomUser(input: ModerateRoomUserInput) {
+  return moderateRoomUser('ban', input)
+}
+
+export function muteRoomUser(input: ModerateRoomUserInput) {
+  return moderateRoomUser('mute', input)
+}
+
+async function clearRoomRestriction(
+  action: 'unban' | 'unmute',
+  roomId: string,
+  userId: string,
+) {
+  if (!auth.currentUser) {
+    throw new Error('Чтобы изменить ограничения, авторизуйтесь.')
+  }
+  await callFirebaseFunction('clearRoomRestriction', {
+    action,
+    memberId: userId,
+    roomId,
+  })
+}
+
+export function unbanRoomUser(roomId: string, userId: string) {
+  return clearRoomRestriction('unban', roomId, userId)
+}
+
+export function unmuteRoomUser(roomId: string, userId: string) {
+  return clearRoomRestriction('unmute', roomId, userId)
 }

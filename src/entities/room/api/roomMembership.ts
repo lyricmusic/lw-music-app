@@ -1,9 +1,7 @@
-import { auth, db } from '@/shared/api/firebase'
+import { auth, callFirebaseFunction, db } from '@/shared/api/firebase'
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
 
 import type { RoomMemberRole } from '../model/types'
-import { removeRoomQueueMemberInTransaction } from './roomQueue'
-
 const ASSIGNABLE_ROLES: RoomMemberRole[] = ['host', 'member', 'moderator']
 
 export async function leaveRoom(roomId: string) {
@@ -32,40 +30,10 @@ export async function kickRoomMember(roomId: string, memberId: string) {
   if (!roomId || !memberId) throw new Error('Участник комнаты не найден.')
   if (user.uid === memberId) throw new Error('Нельзя выгнать себя из комнаты.')
 
-  const actorRef = doc(db, 'rooms', roomId, 'members', user.uid)
-  const memberRef = doc(db, 'rooms', roomId, 'members', memberId)
-
-  await runTransaction(db, async transaction => {
-    const [actorSnapshot, memberSnapshot] = await Promise.all([
-      transaction.get(actorRef),
-      transaction.get(memberRef),
-    ])
-
-    if (!actorSnapshot.exists() || actorSnapshot.data().status !== 'active') {
-      throw new Error('У вас больше нет доступа к управлению этой комнатой.')
-    }
-    if (!memberSnapshot.exists() || memberSnapshot.data().status !== 'active') {
-      throw new Error('Участник уже покинул комнату.')
-    }
-
-    const actorRole = actorSnapshot.data().role
-    const memberRole = memberSnapshot.data().role
-    const canKick =
-      (actorRole === 'owner' && memberRole !== 'owner') ||
-      ((actorRole === 'host' || actorRole === 'moderator') &&
-        memberRole === 'member')
-
-    if (!canKick) {
-      throw new Error('Недостаточно прав, чтобы выгнать этого участника.')
-    }
-
-    await removeRoomQueueMemberInTransaction(transaction, {
-      changedBy: user.uid,
-      memberId,
-      roomId,
-      strict: false,
-    })
-    transaction.update(memberRef, { status: 'left' })
+  await callFirebaseFunction('moderateRoomMember', {
+    action: 'kick',
+    memberId,
+    roomId,
   })
 }
 
@@ -80,19 +48,19 @@ export async function setRoomMemberRole(
     throw new Error('Эту роль нельзя назначить участнику.')
   }
 
-  const memberRef = doc(db, 'rooms', roomId, 'members', memberId)
-  await runTransaction(db, async transaction => {
-    const memberSnapshot = await transaction.get(memberRef)
-    if (!memberSnapshot.exists()) throw new Error('Участник не найден.')
-    if (memberSnapshot.data().role === 'owner') {
-      throw new Error('Роль владельца нельзя изменить.')
-    }
-    if (memberSnapshot.data().isGuest === true && role !== 'member') {
-      throw new Error('Гостя нельзя назначить ведущим или модератором.')
-    }
-
-    transaction.update(memberRef, { role })
+  await callFirebaseFunction('setRoomMemberRole', {
+    memberId,
+    role,
+    roomId,
   })
+}
+
+export async function transferRoomOwnership(roomId: string, memberId: string) {
+  const user = auth.currentUser
+  if (!user) throw new Error('Чтобы передать комнату, авторизуйтесь.')
+  if (user.uid === memberId) throw new Error('Вы уже владелец этой комнаты.')
+
+  await callFirebaseFunction('transferRoomOwnership', { memberId, roomId })
 }
 
 export async function restorePublicRoomMembership(roomId: string) {

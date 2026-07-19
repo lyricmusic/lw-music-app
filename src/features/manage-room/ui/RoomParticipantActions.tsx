@@ -6,6 +6,7 @@ import {
   kickRoomMember,
   muteRoomUser,
   setRoomMemberRole,
+  transferRoomOwnership,
   type RoomMemberRole,
   type RoomParticipant,
 } from '@/entities/room'
@@ -49,6 +50,28 @@ const DURATION_MILLISECONDS: Record<
   '7d': 7 * 24 * 60 * 60 * 1000,
 }
 
+const ROLE_RANK: Record<RoomMemberRole, number> = {
+  host: 2,
+  member: 0,
+  moderator: 1,
+  owner: 3,
+}
+
+const dialogPaperSx = {
+  backgroundColor: '#24143D',
+  backgroundImage: 'none',
+  border: '1px solid #4A2B6D',
+  color: '#F8F3FF',
+}
+
+const darkFieldSx = {
+  '& .MuiInputBase-input, & .MuiInputLabel-root, & .MuiSelect-icon': {
+    color: '#F8F3FF',
+  },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#6D4A8F' },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#B88CFF' },
+}
+
 function getRestrictionExpiration(duration: RestrictionDuration) {
   return duration === 'forever'
     ? null
@@ -67,6 +90,8 @@ export function RoomParticipantActions({
   const [duration, setDuration] = useState<RestrictionDuration>('24h')
   const [kickDialogOpen, setKickDialogOpen] = useState(false)
   const [kickError, setKickError] = useState<null | string>(null)
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [transferError, setTransferError] = useState<null | string>(null)
   const [reason, setReason] = useState('')
   const [formError, setFormError] = useState<null | string>(null)
   const [pending, setPending] = useState(false)
@@ -74,17 +99,19 @@ export function RoomParticipantActions({
   const isSelf = participant.id === user?.uid
   const canAssignRole =
     actorRole === 'owner' && participant.role !== 'owner' && !isSelf
-  const canModerate =
-    (actorRole === 'owner' || actorRole === 'moderator') &&
-    participant.role !== 'owner' &&
-    !isSelf
-  const canKick =
+  const canTransferOwnership =
+    canAssignRole && !participant.isGuest && actorRole === 'owner'
+  const canModerate = Boolean(
+    actorRole &&
+    ['host', 'moderator', 'owner'].includes(actorRole) &&
     !isSelf &&
-    ((actorRole === 'owner' && participant.role !== 'owner') ||
-      ((actorRole === 'host' || actorRole === 'moderator') &&
-        participant.role === 'member'))
+    ROLE_RANK[actorRole] > ROLE_RANK[participant.role],
+  )
+  const canKick = canModerate
 
-  if (!canAssignRole && !canModerate && !canKick) return null
+  if (!canAssignRole && !canModerate && !canKick && !canTransferOwnership) {
+    return null
+  }
 
   const closeMenu = () => setAnchorElement(null)
 
@@ -127,6 +154,35 @@ export function RoomParticipantActions({
 
   const closeKickDialog = () => {
     if (!pending) setKickDialogOpen(false)
+  }
+
+  const openTransferDialog = () => {
+    closeMenu()
+    setTransferError(null)
+    setTransferDialogOpen(true)
+  }
+
+  const closeTransferDialog = () => {
+    if (!pending) setTransferDialogOpen(false)
+  }
+
+  const handleTransferOwnership = async () => {
+    setPending(true)
+    setTransferError(null)
+
+    try {
+      await transferRoomOwnership(roomId, participant.id)
+      toast.success(`${participant.displayName} теперь владелец комнаты.`)
+      setTransferDialogOpen(false)
+    } catch (reason) {
+      setTransferError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось передать комнату.',
+      )
+    } finally {
+      setPending(false)
+    }
   }
 
   const handleKick = async () => {
@@ -207,6 +263,16 @@ export function RoomParticipantActions({
         anchorEl={anchorElement}
         onClose={closeMenu}
         open={Boolean(anchorElement)}
+        slotProps={{
+          paper: {
+            sx: {
+              backgroundColor: '#24143D',
+              backgroundImage: 'none',
+              border: '1px solid #4A2B6D',
+              color: '#F8F3FF',
+            },
+          },
+        }}
       >
         {canAssignRole &&
           !participant.isGuest && [
@@ -241,6 +307,13 @@ export function RoomParticipantActions({
             </MenuItem>
           )}
 
+        {canTransferOwnership && [
+          <Divider key="owner-divider" sx={{ borderColor: '#4A2B6D' }} />,
+          <MenuItem key="owner" onClick={openTransferDialog}>
+            Передать права владельца…
+          </MenuItem>,
+        ]}
+
         {canAssignRole && (canModerate || canKick) && <Divider />}
 
         {canModerate && (
@@ -268,6 +341,7 @@ export function RoomParticipantActions({
         maxWidth="sm"
         onClose={closeKickDialog}
         open={kickDialogOpen}
+        slotProps={{ paper: { sx: dialogPaperSx } }}
       >
         <DialogTitle>Выгнать {participant.displayName} из комнаты?</DialogTitle>
         <DialogContent sx={{ paddingTop: '12px !important' }}>
@@ -300,8 +374,46 @@ export function RoomParticipantActions({
       <Dialog
         fullWidth
         maxWidth="sm"
+        onClose={closeTransferDialog}
+        open={transferDialogOpen}
+        slotProps={{ paper: { sx: dialogPaperSx } }}
+      >
+        <DialogTitle>
+          Передать комнату пользователю {participant.displayName}?
+        </DialogTitle>
+        <DialogContent sx={{ paddingTop: '12px !important' }}>
+          <Typography>
+            Это отдельное необратимое действие: участник станет владельцем и
+            получит полный доступ к настройкам и ролям. Ваша роль изменится на
+            ведущего.
+          </Typography>
+          {transferError && (
+            <Typography color="error" mt={2} role="alert">
+              {transferError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ padding: 3, paddingTop: 1 }}>
+          <Button disabled={pending} onClick={closeTransferDialog}>
+            Отмена
+          </Button>
+          <Button
+            color="error"
+            disabled={pending}
+            onClick={() => void handleTransferOwnership()}
+            variant="contained"
+          >
+            {pending ? 'Передаём…' : 'Передать владельца'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        fullWidth
+        maxWidth="sm"
         onClose={closeModerationDialog}
         open={moderationAction !== null}
+        slotProps={{ paper: { sx: dialogPaperSx } }}
       >
         <DialogTitle>
           {moderationAction === 'ban'
@@ -323,6 +435,7 @@ export function RoomParticipantActions({
               if (formError) setFormError(null)
             }}
             value={reason}
+            sx={darkFieldSx}
           />
           <TextField
             label="Срок"
@@ -331,6 +444,7 @@ export function RoomParticipantActions({
             }
             select
             value={duration}
+            sx={darkFieldSx}
           >
             <MenuItem value="1h">1 час</MenuItem>
             <MenuItem value="24h">24 часа</MenuItem>

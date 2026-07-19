@@ -205,6 +205,81 @@ async function seedQueue() {
 
 await seedQueue()
 
+const memberPlaybackControl = await commit(
+  [
+    update(
+      `rooms/${roomId}/playback/current`,
+      {
+        changedBy: stringValue(secondUser.uid),
+        positionSeconds: integerValue(12),
+        revision: integerValue(2),
+        status: stringValue('paused'),
+        videoId: stringValue(firstVideoId),
+      },
+      playbackTimeTransform,
+    ),
+  ],
+  secondUser.idToken,
+)
+assert.equal(
+  memberPlaybackControl.ok,
+  false,
+  JSON.stringify(memberPlaybackControl),
+)
+
+const hostPlaybackControl = await commit(
+  [
+    update(
+      `rooms/${roomId}/playback/current`,
+      {
+        changedBy: stringValue(managerUser.uid),
+        positionSeconds: integerValue(12),
+        revision: integerValue(2),
+        status: stringValue('paused'),
+        videoId: stringValue(firstVideoId),
+      },
+      playbackTimeTransform,
+    ),
+  ],
+  managerUser.idToken,
+)
+assert.equal(hostPlaybackControl.ok, true, JSON.stringify(hostPlaybackControl))
+
+await seedQueue()
+
+const waitingMemberAdvance = await commit(
+  [
+    update(
+      `rooms/${roomId}/queueState/current`,
+      {
+        activePosition: integerValue(2),
+        itemIds: arrayValue([secondItemId]),
+        lastPosition: integerValue(2),
+      },
+      requestTimeTransform,
+    ),
+    remove(`rooms/${roomId}/queue/${firstItemId}`),
+    remove(`rooms/${roomId}/queueMembers/${firstUser.uid}`),
+    update(
+      `rooms/${roomId}/playback/current`,
+      {
+        changedBy: stringValue(secondUser.uid),
+        positionSeconds: integerValue(0),
+        revision: integerValue(2),
+        status: stringValue('playing'),
+        videoId: stringValue(secondVideoId),
+      },
+      playbackTimeTransform,
+    ),
+  ],
+  secondUser.idToken,
+)
+assert.equal(
+  waitingMemberAdvance.ok,
+  false,
+  JSON.stringify(waitingMemberAdvance),
+)
+
 const hostKickWaitingMember = await commit(
   [
     update(
@@ -230,8 +305,37 @@ const hostKickWaitingMember = await commit(
 )
 assert.equal(
   hostKickWaitingMember.ok,
-  true,
+  false,
   JSON.stringify(hostKickWaitingMember),
+)
+
+const serverKickWaitingMember = await commit(
+  [
+    update(
+      `rooms/${roomId}/queueState/current`,
+      {
+        activePosition: integerValue(1),
+        itemIds: arrayValue([firstItemId]),
+        lastPosition: integerValue(2),
+      },
+      requestTimeTransform,
+    ),
+    remove(`rooms/${roomId}/queue/${secondItemId}`),
+    remove(`rooms/${roomId}/queueMembers/${secondUser.uid}`),
+    update(`rooms/${roomId}/members/${secondUser.uid}`, {
+      invitedBy: nullValue(),
+      isGuest: booleanValue(false),
+      joinedAt: timestampValue('2026-01-01T00:00:00Z'),
+      role: stringValue('member'),
+      status: stringValue('left'),
+    }),
+  ],
+  'owner',
+)
+assert.equal(
+  serverKickWaitingMember.ok,
+  true,
+  JSON.stringify(serverKickWaitingMember),
 )
 
 const resetKickedMember = await commit(
@@ -352,5 +456,5 @@ const lastActiveLeave = await commit(
 assert.equal(lastActiveLeave.ok, true, JSON.stringify(lastActiveLeave))
 
 console.log(
-  'Queue rules verification passed: kicked-waiting, self-waiting, active-next, active-last.',
+  'Queue rules verification passed: member playback denied, host playback allowed, waiting-member advance denied, server kick, self-waiting, active-next, active-last.',
 )
