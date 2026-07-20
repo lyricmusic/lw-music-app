@@ -323,6 +323,7 @@ export function SyncedYouTubePlayer({
   const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
     null,
   )
+  const hasVideo = Boolean(remoteState || localQueuedVideoId)
 
   useEffect(() => {
     activeQueueUserIdRef.current = queueItems[0]?.userId ?? null
@@ -456,7 +457,10 @@ export function SyncedYouTubePlayer({
   )
 
   useEffect(() => {
+    if (!hasVideo) return
+
     let disposed = false
+    setPlayerReady(false)
 
     loadYouTubeIframeApi()
       .then(() => {
@@ -504,6 +508,8 @@ export function SyncedYouTubePlayer({
         })
       })
       .catch(reason => {
+        if (disposed) return
+
         setError(
           reason instanceof Error ? reason.message : 'YouTube API недоступен.',
         )
@@ -517,6 +523,7 @@ export function SyncedYouTubePlayer({
   }, [
     applyRemoteState,
     clearFinishedPlayback,
+    hasVideo,
     handleAutoplayBlocked,
     handlePlayerStateChange,
   ])
@@ -700,7 +707,6 @@ export function SyncedYouTubePlayer({
     !user ||
     currentUserQueueItem?.pending ||
     (!currentUserAlreadyQueued && !profile)
-  const hasVideo = Boolean(remoteState || localQueuedVideoId)
 
   const handleLeaveQueue = async () => {
     if (!user || queueLeaving) return
