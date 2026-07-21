@@ -421,6 +421,7 @@ service cloud.firestore {
 
     function isInitialPlaybackForCurrentParticipant(roomId) {
       let statePath = /databases/$(database)/documents/rooms/$(roomId)/queueState/current;
+      let previousState = get(statePath).data;
       let state = getAfter(statePath).data;
       let itemId = existsAfter(statePath)
           && state.itemIds is list
@@ -428,7 +429,12 @@ service cloud.firestore {
         ? state.itemIds[0]
         : '';
       let itemPath = /databases/$(database)/documents/rooms/$(roomId)/queue/$(itemId);
-      return itemId != ''
+      return (!exists(statePath)
+          || (previousState.activePosition == null
+            && (!previousState.keys().hasAll(['itemIds'])
+              || (previousState.itemIds is list
+                && previousState.itemIds.size() == 0))))
+        && itemId != ''
         && existsAfter(itemPath)
         && getAfter(itemPath).data.userId == request.auth.uid
         && request.resource.data.videoId == getAfter(itemPath).data.videoId
@@ -545,6 +551,7 @@ service cloud.firestore {
             || (previousActive != null && nextActive == previousActive)
           )
           && (!previousHasItemIds
+            || previousItemCount == 0
             || nextItemIds[0:previousItemCount] == resource.data.itemIds)
           && appendedItemId is string
           && appendedItemId.matches('[0-9]{12}')
@@ -791,7 +798,8 @@ service cloud.firestore {
         && hasValidPlaybackState()
         && request.resource.data.revision == resource.data.revision + 1
         && (canControlPlayback(roomId)
-          || isCurrentParticipantPlaybackAdvance(roomId));
+          || isCurrentParticipantPlaybackAdvance(roomId)
+          || isInitialPlaybackForCurrentParticipant(roomId));
       allow delete: if canParticipateInRoom(roomId)
         && stateId == 'current'
         && (canControlPlayback(roomId)

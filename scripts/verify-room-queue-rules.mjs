@@ -115,6 +115,9 @@ const requestTimeTransform = [
 const playbackTimeTransform = [
   { fieldPath: 'changedAt', setToServerValue: 'REQUEST_TIME' },
 ]
+const createdAtTimeTransform = [
+  { fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' },
+]
 
 const firstUser = await createAuthUser('first')
 const secondUser = await createAuthUser('second')
@@ -455,6 +458,137 @@ const lastActiveLeave = await commit(
 )
 assert.equal(lastActiveLeave.ok, true, JSON.stringify(lastActiveLeave))
 
+const fourthItemId = '000000000004'
+const seedQueueParticipantProfile = await commit(
+  [
+    update(`users/${secondUser.uid}`, {
+      displayName: stringValue('User 4'),
+      photoURL: nullValue(),
+    }),
+  ],
+  'owner',
+)
+assert.equal(
+  seedQueueParticipantProfile.ok,
+  true,
+  JSON.stringify(seedQueueParticipantProfile),
+)
+
+const firstTrackAfterExistingEmptyQueue = await commit(
+  [
+    update(
+      `rooms/${roomId}/queue/${fourthItemId}`,
+      queueItemFields({
+        position: 4,
+        userId: secondUser.uid,
+        videoId: secondVideoId,
+      }),
+      createdAtTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/queueMembers/${secondUser.uid}`,
+      queueMemberFields({ itemId: fourthItemId, userId: secondUser.uid }),
+      createdAtTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/queueState/current`,
+      {
+        activePosition: integerValue(4),
+        itemIds: arrayValue([fourthItemId]),
+        lastPosition: integerValue(4),
+      },
+      requestTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/playback/current`,
+      {
+        changedBy: stringValue(secondUser.uid),
+        positionSeconds: integerValue(0),
+        revision: integerValue(1),
+        status: stringValue('playing'),
+        videoId: stringValue(secondVideoId),
+      },
+      playbackTimeTransform,
+    ),
+  ],
+  secondUser.idToken,
+)
+assert.equal(
+  firstTrackAfterExistingEmptyQueue.ok,
+  true,
+  JSON.stringify(firstTrackAfterExistingEmptyQueue),
+)
+
+const seedEmptyQueueWithStalePlayback = await commit(
+  [
+    update(
+      `rooms/${roomId}/queueState/current`,
+      queueStateFields([], null, 3),
+    ),
+    update(
+      `rooms/${roomId}/playback/current`,
+      playbackFields({
+        changedBy: firstUser.uid,
+        revision: 3,
+        videoId: firstVideoId,
+      }),
+    ),
+    remove(`rooms/${roomId}/queue/${fourthItemId}`),
+    remove(`rooms/${roomId}/queueMembers/${secondUser.uid}`),
+  ],
+  'owner',
+)
+assert.equal(
+  seedEmptyQueueWithStalePlayback.ok,
+  true,
+  JSON.stringify(seedEmptyQueueWithStalePlayback),
+)
+
+const firstTrackAfterEmptyQueueWithStalePlayback = await commit(
+  [
+    update(
+      `rooms/${roomId}/queue/${fourthItemId}`,
+      queueItemFields({
+        position: 4,
+        userId: secondUser.uid,
+        videoId: secondVideoId,
+      }),
+      createdAtTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/queueMembers/${secondUser.uid}`,
+      queueMemberFields({ itemId: fourthItemId, userId: secondUser.uid }),
+      createdAtTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/queueState/current`,
+      {
+        activePosition: integerValue(4),
+        itemIds: arrayValue([fourthItemId]),
+        lastPosition: integerValue(4),
+      },
+      requestTimeTransform,
+    ),
+    update(
+      `rooms/${roomId}/playback/current`,
+      {
+        changedBy: stringValue(secondUser.uid),
+        positionSeconds: integerValue(0),
+        revision: integerValue(4),
+        status: stringValue('playing'),
+        videoId: stringValue(secondVideoId),
+      },
+      playbackTimeTransform,
+    ),
+  ],
+  secondUser.idToken,
+)
+assert.equal(
+  firstTrackAfterEmptyQueueWithStalePlayback.ok,
+  true,
+  JSON.stringify(firstTrackAfterEmptyQueueWithStalePlayback),
+)
+
 console.log(
-  'Queue rules verification passed: member playback denied, host playback allowed, waiting-member advance denied, server kick, self-waiting, active-next, active-last.',
+  'Queue rules verification passed: member playback denied, host playback allowed, waiting-member advance denied, server kick, self-waiting, active-next, active-last, first track after existing empty queue, first track after empty queue with stale playback.',
 )

@@ -28,7 +28,7 @@ import {
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
 import { Button } from '@/shared/ui/button'
-import { RoomAvatarStage } from '@/widgets/room-avatar'
+import { RoomDanceFloor } from '@/widgets/room-avatar'
 import {
   Avatar,
   Box,
@@ -318,6 +318,7 @@ export function SyncedYouTubePlayer({
   const [queueLeaving, setQueueLeaving] = useState(false)
   const [queueSkipping, setQueueSkipping] = useState(false)
   const [playbackChanging, setPlaybackChanging] = useState(false)
+  const [danceFloorCollapsed, setDanceFloorCollapsed] = useState(false)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
@@ -846,10 +847,25 @@ export function SyncedYouTubePlayer({
           color: '#FFFFFF',
         }}
       >
-        <Box className="flex min-w-0 flex-col gap-3 sm:grid sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-4">
-          <RoomAvatarStage
+        <Box
+          sx={{
+            display: { xs: 'flex', sm: 'grid' },
+            flexDirection: 'column',
+            gap: { xs: 1.5, sm: 2 },
+            gridTemplateColumns: {
+              sm: danceFloorCollapsed
+                ? '152px minmax(0, 1fr)'
+                : 'minmax(260px, 330px) minmax(0, 1fr)',
+            },
+            minWidth: 0,
+          }}
+        >
+          <RoomDanceFloor
             character={profile?.character}
-            isPlaying={avatarIsPlaying}
+            collapsed={danceFloorCollapsed}
+            displayName={profile?.displayName}
+            isMusicPlaying={avatarIsPlaying}
+            onCollapsedChange={setDanceFloorCollapsed}
           />
 
           <Box className="min-w-0">
