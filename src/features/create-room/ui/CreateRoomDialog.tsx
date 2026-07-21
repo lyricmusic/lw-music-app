@@ -26,18 +26,20 @@ const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const style = {
-  backgroundColor: '#ECEDF2',
+  backgroundColor: '#24143D',
+  border: '1px solid #4A2B6D',
   borderRadius: '20px',
   boxShadow: 24,
+  color: '#F8F3FF',
   left: '50%',
-  maxHeight: 'calc(100vh - 32px)',
-  maxWidth: 'calc(100vw - 32px)',
+  maxHeight: 'calc(100dvh - 16px)',
+  maxWidth: 'calc(100vw - 16px)',
   overflowY: 'auto',
-  padding: '40px',
+  padding: { xs: '24px 18px', sm: '32px', md: '40px' },
   position: 'absolute' as const,
   top: '50%',
   transform: 'translate(-50%, -50%)',
-  width: 555,
+  width: { xs: 'calc(100vw - 16px)', sm: 555 },
 }
 
 interface CreateRoomDialogProps {
@@ -156,12 +158,12 @@ export function CreateRoomDialog({
           onSubmit={handleSubmit(handleCreateRoom)}
           sx={style}
         >
-          <h2 className="mb-4 text-4xl" id="create-room-title">
+          <h2 className="mb-4 text-3xl sm:text-4xl" id="create-room-title">
             Создание комнаты
           </h2>
           <div className="mb-6 flex flex-col" id="create-room-description">
-            <div className="mb-6 border-b border-white pb-7">
-              <span className="mb-3 block text-secondary-text">
+            <div className="mb-5 border-b border-[#4A2B6D] pb-6 sm:mb-6 sm:pb-7">
+              <span className="mb-3 block text-[#CDBCE2]">
                 Придумайте название
               </span>
 
@@ -186,16 +188,13 @@ export function CreateRoomDialog({
                       'Комната с таким названием уже существует.',
                   },
                 })}
-                sx={{
-                  '&.MuiFilledInput': { backgroundColor: 'white' },
-                  borderRadius: '16px',
-                }}
+                sx={{ borderRadius: '16px' }}
                 variant="filled"
               />
             </div>
 
-            <div className="mb-6 border-b border-white pb-7">
-              <span className="mb-3 block text-secondary-text">
+            <div className="mb-5 border-b border-[#4A2B6D] pb-6 sm:mb-6 sm:pb-7">
+              <span className="mb-3 block text-[#CDBCE2]">
                 Доступ к комнате
               </span>
               <TextField
@@ -215,8 +214,8 @@ export function CreateRoomDialog({
               </TextField>
             </div>
 
-            <div className="mb-6 border-b border-white pb-7">
-              <span className="mb-3 block text-secondary-text">
+            <div className="mb-5 border-b border-[#4A2B6D] pb-6 sm:mb-6 sm:pb-7">
+              <span className="mb-3 block text-[#CDBCE2]">
                 Выберите музыкальные категории (не более трёх)
               </span>
 
@@ -255,15 +254,15 @@ export function CreateRoomDialog({
               />
             </div>
 
-            <div className="mb-6 border-b border-white pb-7">
-              <span className="mb-3 block text-secondary-text">
+            <div className="mb-5 border-b border-[#4A2B6D] pb-6 sm:mb-6 sm:pb-7">
+              <span className="mb-3 block text-[#CDBCE2]">
                 Установите обложку
               </span>
 
-              <div className="flex">
+              <div className="flex flex-col gap-4 min-[420px]:flex-row min-[420px]:items-stretch">
                 <div
-                  className={`mr-5 h-[112px] w-[112px] overflow-hidden rounded-[10px] border ${
-                    errors.image ? 'border-[#D32F2F]' : 'border-[#D6D7F0]'
+                  className={`h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[10px] border ${
+                    errors.image ? 'border-[#FF849A]' : 'border-[#6D4A8F]'
                   }`}
                 >
                   {imagePreviewUrl ? (
@@ -273,13 +272,15 @@ export function CreateRoomDialog({
                       src={imagePreviewUrl}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center bg-white">
-                      <MembersIcon sx={{ width: '32px' }} />
+                    <div className="flex h-full items-center justify-center bg-[#32204B]">
+                      <MembersIcon
+                        sx={{ '& path': { fill: '#B88CFF' }, width: '32px' }}
+                      />
                     </div>
                   )}
                 </div>
 
-                <div className="flex flex-col justify-between">
+                <div className="flex min-w-0 flex-1 flex-col justify-between">
                   <Button
                     className="mb-2 w-full"
                     component="label"
@@ -316,7 +317,7 @@ export function CreateRoomDialog({
                 </div>
               </div>
               {errors.image && (
-                <span className="mt-2 block text-xs text-[#D32F2F]">
+                <span className="mt-2 block text-xs text-[#FF9BAD]">
                   {errors.image.message}
                 </span>
               )}

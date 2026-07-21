@@ -29,14 +29,18 @@ export function UserMenu() {
 
   return (
     <>
-      <div className="absolute z-10 -top-1 -right-1 min-w-[208px] bg-white rounded-2xl overflow-hidden border border-[#D6D7F0]">
-        <div className="h-[60px] py-3 pl-5 pr-[68px] bg-hover-brand">
-          <p>{profile?.displayName || user?.displayName || 'Не указан'}</p>
-          <span>{user?.email}</span>
+      <div className="absolute -right-1 -top-1 z-10 w-[min(280px,calc(100vw-16px))] overflow-hidden rounded-2xl border border-[#4A2B6D] bg-[#24143D] text-[#F8F3FF] shadow-2xl">
+        <div className="min-h-[58px] bg-[#32204B] py-3 pl-4 pr-14 sm:pl-5 sm:pr-[68px]">
+          <p className="truncate font-medium">
+            {profile?.displayName || user?.displayName || 'Не указан'}
+          </p>
+          <span className="block truncate text-xs text-[#CDBCE2]">
+            {user?.email || 'Гостевой профиль'}
+          </span>
         </div>
 
         <List>
-          <ListItem disablePadding sx={{ borderTop: '1px solid #D6D7F0' }}>
+          <ListItem disablePadding sx={{ borderTop: '1px solid #4A2B6D' }}>
             <ListItemButton
               onClick={
                 user?.isAnonymous ? () => setSaveAccountOpen(true) : undefined
@@ -46,18 +50,18 @@ export function UserMenu() {
                 className="fill-light-brand mr-2"
                 sx={{ width: '16px' }}
               />
-              <span className="py-4 text-secondary-text text-nowrap">
+              <span className="text-nowrap py-4 text-[#E7DDF4]">
                 {user?.isAnonymous ? 'Сохранить профиль' : 'Открыть профиль'}
               </span>
             </ListItemButton>
           </ListItem>
-          <ListItem disablePadding sx={{ borderTop: '1px solid #D6D7F0' }}>
+          <ListItem disablePadding sx={{ borderTop: '1px solid #4A2B6D' }}>
             <ListItemButton onClick={handleLogout}>
               <LogoutIcon
                 className="fill-light-brand mr-2"
                 sx={{ width: '16px' }}
               />
-              <span className="py-4 text-secondary-text">Выйти</span>
+              <span className="py-4 text-[#E7DDF4]">Выйти</span>
             </ListItemButton>
           </ListItem>
         </List>

@@ -401,7 +401,7 @@ export function RoomChat({
 
   return (
     <Paper
-      className="flex h-full min-h-0 w-full flex-col p-5"
+      className="flex h-full min-h-0 w-full flex-col p-3 sm:p-5"
       component="aside"
       elevation={0}
       sx={{
@@ -420,7 +420,7 @@ export function RoomChat({
       >
         <Typography
           component="h2"
-          sx={{ fontSize: '28px', lineHeight: 1 }}
+          sx={{ fontSize: { xs: '24px', sm: '28px' }, lineHeight: 1 }}
           variant="h2"
         >
           Чат
@@ -429,7 +429,7 @@ export function RoomChat({
       </Box>
 
       <Box
-        className="mb-5 mt-6 min-h-0 flex-1 overflow-y-auto pr-1"
+        className="mb-4 mt-4 min-h-0 flex-1 overflow-y-auto pr-1 sm:mb-5 sm:mt-6"
         component="ul"
         onScroll={event => {
           const target = event.currentTarget
@@ -558,9 +558,9 @@ export function RoomChat({
             backgroundColor: '#6F70E7',
             color: '#FFFFFF',
             flexShrink: 0,
-            fontSize: '24px',
-            height: '52px',
-            minWidth: '52px',
+            fontSize: { xs: '21px', sm: '24px' },
+            height: { xs: '48px', sm: '52px' },
+            minWidth: { xs: '48px', sm: '52px' },
             padding: 0,
           }}
           type="submit"

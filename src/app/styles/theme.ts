@@ -6,8 +6,10 @@ export const appTheme = createTheme({
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            '& fieldset': { border: 'none' },
-            backgroundColor: '#fff',
+            '& fieldset': { borderColor: '#6D4A8F' },
+            '&:hover fieldset': { borderColor: '#B88CFF' },
+            '&.Mui-focused fieldset': { borderColor: '#B88CFF' },
+            backgroundColor: '#32204B',
             borderRadius: '16px',
           },
         },
@@ -49,8 +51,9 @@ export const appTheme = createTheme({
             paddingTop: '16px',
           },
           '&.MuiButton-colorPrimary.MuiButton-outlined': {
-            border: '2px solid #3C2F4A',
-            color: '#25263E',
+            '&:hover': { backgroundColor: '#3B2158' },
+            border: '2px solid #8F6CB5',
+            color: '#F8F3FF',
           },
           '&.MuiButton-outlined': {
             fontSize: '14px',
@@ -69,12 +72,12 @@ export const appTheme = createTheme({
     MuiFilledInput: {
       styleOverrides: {
         root: {
-          '&.Mui-focused': { backgroundColor: '#fff' },
+          '&.Mui-focused': { backgroundColor: '#32204B' },
           '&:after, &:before, &:hover:not(.Mui-disabled):before': {
             borderBottom: 'none',
           },
-          '&:hover': { backgroundColor: '#fff' },
-          backgroundColor: '#fff',
+          '&:hover': { backgroundColor: '#3B2756' },
+          backgroundColor: '#32204B',
           border: 'none',
           borderRadius: '16px',
         },
@@ -82,7 +85,23 @@ export const appTheme = createTheme({
     },
     MuiInputLabel: {
       styleOverrides: {
-        root: { '&.Mui-focused': { color: '#8B8DB3' } },
+        root: { '&.Mui-focused': { color: '#C9A7FF' }, color: '#CDBCE2' },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: '#6D4A8F' },
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#B88CFF',
+          },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#B88CFF',
+          },
+          backgroundColor: '#32204B',
+          borderRadius: '14px',
+          color: '#F8F3FF',
+        },
       },
     },
     MuiList: {
@@ -91,7 +110,7 @@ export const appTheme = createTheme({
     MuiListItemButton: {
       styleOverrides: {
         root: {
-          '&:hover': { backgroundColor: '#E9E2FF' },
+          '&:hover': { backgroundColor: '#3B2158' },
           paddingBottom: 0,
           paddingLeft: '20px',
           paddingRight: '20px',
@@ -106,6 +125,25 @@ export const appTheme = createTheme({
           backgroundImage: 'none',
           border: '1px solid #4A2B6D',
           color: '#F8F3FF',
+          margin: '16px',
+          maxHeight: 'calc(100dvh - 32px)',
+          width: 'calc(100% - 32px)',
+        },
+      },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: {
+          flexWrap: 'wrap',
+          gap: '8px',
+        },
+      },
+    },
+    MuiDialogTitle: {
+      styleOverrides: {
+        root: {
+          fontSize: 'clamp(1.25rem, 5vw, 1.5rem)',
+          overflowWrap: 'anywhere',
         },
       },
     },
@@ -119,14 +157,24 @@ export const appTheme = createTheme({
         },
       },
     },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          lineHeight: 1.35,
+          maxWidth: 'calc(100vw - 32px)',
+          overflowWrap: 'anywhere',
+          whiteSpace: 'normal',
+        },
+      },
+    },
     MuiTypography: {
       styleOverrides: {
         h1: {
           fontFamily: 'Golos Text, sans-serif',
-          fontSize: '40px',
+          fontSize: 'clamp(2rem, 8vw, 2.5rem)',
           fontWeight: 700,
           lineHeight: 1,
-          marginBottom: '24px',
+          marginBottom: 'clamp(18px, 5vw, 24px)',
         },
         h2: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
         h3: { fontFamily: 'Golos Text, sans-serif', fontWeight: 700 },
@@ -137,6 +185,8 @@ export const appTheme = createTheme({
     },
   },
   palette: {
+    mode: 'dark',
+    background: { default: '#12071F', paper: '#24143D' },
     error: { main: '#FF849A' },
     primary: {
       contrastText: '#FFF',
@@ -144,6 +194,7 @@ export const appTheme = createTheme({
       light: '#8282E9',
       main: '#6F70E7',
     },
+    text: { primary: '#F8F3FF', secondary: '#CDBCE2' },
   },
   typography: {
     fontFamily: [

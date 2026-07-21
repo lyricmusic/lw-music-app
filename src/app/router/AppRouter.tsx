@@ -32,7 +32,7 @@ const SignUpPage = lazy(() =>
 
 function PageLoadingFallback() {
   return (
-    <div className="flex h-screen items-center justify-center bg-brand-color">
+    <div className="flex min-h-dvh items-center justify-center bg-brand-color">
       <CircularProgress sx={{ color: '#B79EFF' }} />
     </div>
   )
@@ -41,9 +41,9 @@ function PageLoadingFallback() {
 function AuthenticatedLayout() {
   return (
     <>
-      <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] bg-[#3F3F59]">
+      <div className="flex min-h-dvh flex-col bg-[#12071F] xl:h-dvh xl:overflow-hidden">
         <AppHeader />
-        <div className="h-full min-h-0 p-1">
+        <div className="min-h-0 flex-1 p-1 sm:p-2 xl:overflow-hidden">
           <Outlet />
         </div>
       </div>
@@ -54,7 +54,7 @@ function AuthenticatedLayout() {
 
 function PlayerSmokeTestPage() {
   return (
-    <main className="min-h-screen bg-[#ECEDF2] p-4">
+    <main className="min-h-dvh bg-[#12071F] p-2 sm:p-4">
       <SyncedYouTubePlayer roomId="browser-smoke-test" syncEnabled={false} />
     </main>
   )
@@ -62,11 +62,11 @@ function PlayerSmokeTestPage() {
 
 function ProfileOnboardingSmokeTestPage() {
   return (
-    <div className="grid h-screen grid-rows-[84px_minmax(0,1fr)] bg-[#3F3F59]">
+    <div className="flex min-h-dvh flex-col bg-[#12071F]">
       <AppHeader />
-      <div className="h-full min-h-0 p-1">
-        <main className="h-full rounded-[20px] bg-[#ECEDF2] px-10 py-7">
-          <h1 className="text-[38px]">Комнаты</h1>
+      <div className="min-h-0 flex-1 p-1 sm:p-2">
+        <main className="h-full rounded-[20px] bg-[#24143D] px-4 py-5 text-[#F8F3FF] sm:px-8 sm:py-7">
+          <h1 className="text-3xl sm:text-[38px]">Комнаты</h1>
         </main>
       </div>
       <ProfileOnboardingDialog preview />

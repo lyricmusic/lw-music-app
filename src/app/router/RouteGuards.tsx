@@ -14,7 +14,7 @@ import { signInAnonymously } from 'firebase/auth'
 
 function SessionLoadingScreen() {
   return (
-    <div className="flex h-screen items-center justify-center bg-brand-color">
+    <div className="flex min-h-dvh items-center justify-center bg-brand-color">
       <CircularProgress sx={{ color: '#B79EFF' }} />
     </div>
   )
@@ -55,7 +55,7 @@ export function DirectRoomRoute() {
 
   if (error) {
     return (
-      <main className="flex h-screen flex-col items-center justify-center gap-5 bg-brand-color px-6 text-center">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-brand-color px-6 text-center">
         <Typography sx={{ color: '#FFFFFF', maxWidth: 520 }} variant="h5">
           {error}
         </Typography>

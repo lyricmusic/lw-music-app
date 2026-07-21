@@ -112,8 +112,9 @@ export function RoomRestrictionsDialog({
             const key = `${restriction.kind}:${restriction.userId}`
             return (
               <Box
-                alignItems="center"
+                alignItems={{ sm: 'center', xs: 'stretch' }}
                 display="flex"
+                flexDirection={{ sm: 'row', xs: 'column' }}
                 gap={1.5}
                 key={key}
                 sx={{
@@ -150,9 +151,14 @@ export function RoomRestrictionsDialog({
                 </Box>
                 <Button
                   disabled={pendingKey !== null}
+                  fullWidth
                   onClick={() => void handleLiftRestriction(restriction)}
                   size="small"
-                  sx={{ borderColor: '#B88CFF', color: '#F8F3FF' }}
+                  sx={{
+                    borderColor: '#B88CFF',
+                    color: '#F8F3FF',
+                    width: { sm: 'auto', xs: '100%' },
+                  }}
                   variant="outlined"
                 >
                   {pendingKey === key

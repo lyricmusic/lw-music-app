@@ -166,20 +166,29 @@ export function JoinPage() {
         display: 'flex',
         justifyContent: 'center',
         minHeight: '100dvh',
-        padding: 2,
+        padding: { xs: 0, sm: 2 },
       }}
     >
       <Paper
         elevation={0}
         sx={{
-          backgroundColor: '#ECEDF2',
-          borderRadius: '24px',
+          backgroundColor: '#1B0C32',
+          border: { xs: 'none', sm: '1px solid #513574' },
+          borderRadius: { xs: 0, sm: '24px' },
+          color: '#FFFFFF',
           maxWidth: 560,
+          minHeight: { xs: '100dvh', sm: 0 },
           overflow: 'hidden',
           width: '100%',
         }}
       >
-        <Box sx={{ backgroundColor: '#2A2B47', padding: '22px 28px' }}>
+        <Box
+          sx={{
+            backgroundColor: '#2A1745',
+            borderBottom: '1px solid #513574',
+            padding: { xs: '18px 20px', sm: '22px 28px' },
+          }}
+        >
           <Box
             alt="Syncly"
             component="img"
@@ -187,7 +196,7 @@ export function JoinPage() {
             sx={{
               display: 'block',
               filter: 'brightness(0) invert(1)',
-              width: 150,
+              width: { xs: 126, sm: 150 },
             }}
           />
         </Box>
@@ -199,8 +208,8 @@ export function JoinPage() {
             flexDirection="column"
             gap={2}
             justifyContent="center"
-            minHeight={420}
-            padding={4}
+            minHeight={{ xs: 320, sm: 420 }}
+            padding={{ xs: 3, sm: 4 }}
           >
             <CircularProgress sx={{ color: '#6F70E7' }} />
             <Typography color="text.secondary">
@@ -219,14 +228,18 @@ export function JoinPage() {
               src={invite.roomImageUrl}
               sx={{ aspectRatio: '16 / 8', objectFit: 'cover', width: '100%' }}
             />
-            <Box padding={{ xs: 3, sm: 4 }}>
+            <Box padding={{ xs: 2.5, sm: 4 }}>
               <Typography
                 component="p"
                 sx={{ color: '#6F70E7', fontWeight: 700, marginBottom: 1 }}
               >
                 Вас приглашают в комнату
               </Typography>
-              <Typography component="h1" sx={{ fontSize: 36 }} variant="h1">
+              <Typography
+                component="h1"
+                sx={{ fontSize: { xs: 30, sm: 36 }, overflowWrap: 'anywhere' }}
+                variant="h1"
+              >
                 {invite.roomName}
               </Typography>
               <Typography color="text.secondary" marginTop={1.5}>
@@ -270,9 +283,13 @@ export function JoinPage() {
             component="form"
             noValidate
             onSubmit={handleSubmit(handleGuestProfile)}
-            padding={{ xs: 3, sm: 4 }}
+            padding={{ xs: 2.5, sm: 4 }}
           >
-            <Typography component="h1" sx={{ fontSize: 34 }} variant="h1">
+            <Typography
+              component="h1"
+              sx={{ fontSize: { xs: 28, sm: 34 } }}
+              variant="h1"
+            >
               Как вас называть?
             </Typography>
             <Typography color="text.secondary" marginTop={1}>
@@ -306,7 +323,12 @@ export function JoinPage() {
               control={control}
               name="presetAvatarId"
               render={({ field }) => (
-                <Box display="flex" flexWrap="wrap" gap={1}>
+                <Box
+                  display="flex"
+                  flexWrap="wrap"
+                  gap={1}
+                  justifyContent={{ xs: 'center', sm: 'flex-start' }}
+                >
                   {presetAvatars.map(avatar => {
                     const selected = avatar.id === field.value
                     return (
@@ -364,8 +386,12 @@ export function JoinPage() {
         )}
 
         {!busy && !invite && (
-          <Box padding={4} textAlign="center">
-            <Typography component="h1" sx={{ fontSize: 32 }} variant="h1">
+          <Box padding={{ xs: 3, sm: 4 }} textAlign="center">
+            <Typography
+              component="h1"
+              sx={{ fontSize: { xs: 28, sm: 32 } }}
+              variant="h1"
+            >
               Приглашение недоступно
             </Typography>
             <Typography color="error" marginTop={2} role="alert">

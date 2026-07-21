@@ -77,7 +77,7 @@ export function SignInForm() {
           )}
         </Button>
 
-        <div className="flex justify-center mt-5 gap-x-[10px]">
+        <div className="mt-5 flex flex-wrap justify-center gap-x-[10px] gap-y-1 text-center">
           <span style={{ color: 'var(--color-auth-muted)' }}>
             Нет аккаунта?
           </span>

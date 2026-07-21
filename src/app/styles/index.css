@@ -9,10 +9,10 @@
   --color-auth-card: #2a2b47;
   --color-auth-muted: #8d8bb3;
   --color-brand-color: #25263e;
-  --color-gray-block: #ecedf2;
-  --color-hover-brand: #e9e2ff;
-  --color-light-brand: #8b8db3;
-  --color-secondary-text: #5c5d7e;
+  --color-gray-block: #24143d;
+  --color-hover-brand: #3b2158;
+  --color-light-brand: #cdbce2;
+  --color-secondary-text: #cdbce2;
 }
 
 /* Golos Text Regular */
@@ -161,12 +161,12 @@
 
 :root {
   --color-auth-provider-background-default: transparent;
-  --color-auth-provider-background-hover: #fff;
-  --color-auth-provider-background-pressed: #fff;
-  --color-auth-provider-border: #fff;
+  --color-auth-provider-background-hover: #3b2158;
+  --color-auth-provider-background-pressed: #4a2b6d;
+  --color-auth-provider-border: #b88cff;
   --color-auth-text: #fff;
-  --color-input-background: #d7dbf0;
-  --color-input-placeholder: #8d8bb3;
+  --color-input-background: #32204b;
+  --color-input-placeholder: #b9a9cd;
   --color-primary-background-default: #6f70e7;
   --color-primary-background-hover: #8282e9;
   --color-primary-background-pressed: #3031a5;
@@ -224,7 +224,11 @@
 }
 
 body {
+  background: #12071f;
+  color: #f8f3ff;
   font-family: 'Golos Text', sans-serif;
+  min-width: 320px;
+  overflow-x: hidden;
 }
 
 h1,
@@ -292,4 +296,53 @@ h6 {
 
 .room-queue-panel {
   grid-area: queue;
+}
+
+@media (max-width: 1199px) {
+  .room-content-grid {
+    grid-template-areas:
+      'player'
+      'chat';
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .room-player-column,
+  .room-chat-column {
+    height: auto;
+    overflow: visible;
+  }
+
+  .room-player-layout {
+    height: auto;
+  }
+
+  .room-player-layout--with-video {
+    grid-template-rows: minmax(220px, 56vw) auto;
+  }
+
+  .room-video-panel {
+    max-height: 68dvh;
+  }
+
+  .room-queue-panel {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .room-chat-column {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 639px) {
+  .room-player-layout--with-video {
+    grid-template-rows: minmax(190px, 56.25vw) auto;
+  }
+
+  .room-chat-column {
+    min-height: 460px;
+  }
 }

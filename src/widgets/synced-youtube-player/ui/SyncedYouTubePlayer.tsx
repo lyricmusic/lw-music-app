@@ -110,7 +110,7 @@ function RoomUserListItem({
         height: '48px',
         opacity: pending ? 0.72 : 1,
         padding: '2px 12px 2px 2px',
-        width: '243px',
+        width: { xs: 'min(243px, calc(100vw - 60px))', sm: '243px' },
       }}
     >
       <Avatar
@@ -831,7 +831,7 @@ export function SyncedYouTubePlayer({
       </Paper>
 
       <Paper
-        className="room-queue-panel min-h-0 overflow-y-auto p-4"
+        className="room-queue-panel min-h-0 overflow-y-auto p-3 sm:p-4"
         component="section"
         elevation={0}
         sx={{
@@ -853,10 +853,10 @@ export function SyncedYouTubePlayer({
               color: '#D7DBF0',
               fontFamily: 'Golos Text, sans-serif',
               fontWeight: 700,
-              fontSize: '20px',
-              minHeight: '48px',
+              fontSize: { xs: '16px', sm: '20px' },
+              minHeight: { xs: '44px', sm: '48px' },
               minWidth: 0,
-              padding: '8px 16px',
+              padding: { xs: '7px 11px', sm: '8px 16px' },
               textTransform: 'none',
             },
             '& .MuiTab-root.Mui-selected': {
@@ -883,7 +883,10 @@ export function SyncedYouTubePlayer({
                 className="grid min-w-0 gap-2 overflow-x-auto pb-1"
                 component="ul"
                 sx={{
-                  gridAutoColumns: '243px',
+                  gridAutoColumns: {
+                    xs: 'min(243px, calc(100vw - 60px))',
+                    sm: '243px',
+                  },
                   gridAutoFlow: 'column',
                   gridTemplateRows: 'repeat(4, 48px)',
                   listStyle: 'none',
@@ -918,7 +921,10 @@ export function SyncedYouTubePlayer({
                     backgroundColor: '#3F3F59',
                     borderRadius: '8px',
                     height: '48px',
-                    width: '243px',
+                    width: {
+                      xs: 'min(243px, calc(100vw - 60px))',
+                      sm: '243px',
+                    },
                   }}
                 >
                   <Button
@@ -954,7 +960,7 @@ export function SyncedYouTubePlayer({
                       justifyContent: 'flex-start',
                       padding: '2px 12px 2px 2px',
                       textTransform: 'none',
-                      width: '243px',
+                      width: '100%',
                     }}
                   >
                     <Box

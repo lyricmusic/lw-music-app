@@ -32,12 +32,12 @@ function RoomEntryState({
   return (
     <Box
       alignItems="center"
-      className="h-full rounded-[20px] border border-[#4A2B6D] bg-[#1B0C32]"
+      className="min-h-[calc(100dvh-100px)] rounded-[20px] border border-[#4A2B6D] bg-[#1B0C32] xl:h-full xl:min-h-0"
       display="flex"
       flexDirection="column"
       gap={3}
       justifyContent="center"
-      padding={3}
+      padding={{ xs: 2.5, sm: 3 }}
       textAlign="center"
     >
       {pending && <CircularProgress sx={{ color: '#B88CFF' }} />}
@@ -255,7 +255,7 @@ export function RoomPage() {
 
   return (
     <Box
-      className="relative h-full min-h-0 overflow-hidden bg-[#160B2D] px-1"
+      className="relative min-h-full bg-[#160B2D] px-0 sm:px-1 xl:h-full xl:min-h-0 xl:overflow-hidden"
       component="main"
     >
       <Box className="room-content-grid">

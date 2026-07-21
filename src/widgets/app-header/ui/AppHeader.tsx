@@ -18,7 +18,6 @@ import {
 } from '@mui/material'
 
 import { UserMenu } from './UserMenu'
-// TODO тест удалить
 export function AppHeader() {
   const { profile } = useSession()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
@@ -40,7 +39,7 @@ export function AppHeader() {
         borderTopRightRadius: 0,
         boxShadow: 'none',
         flexShrink: 0,
-        height: '84px',
+        height: { xs: 68, sm: 76, lg: 84 },
       }}
     >
       <Toolbar
@@ -48,15 +47,19 @@ export function AppHeader() {
         sx={{
           height: '100%',
           justifyContent: 'space-between',
-          minHeight: '84px !important',
-          padding: 2,
+          minHeight: {
+            xs: '68px !important',
+            sm: '76px !important',
+            lg: '84px !important',
+          },
+          padding: { xs: 1.25, sm: 1.5, lg: 2 },
         }}
       >
         <Box
           sx={{
             alignItems: 'center',
             display: 'flex',
-            gap: 3,
+            gap: { xs: 1.25, sm: 2, lg: 3 },
             minWidth: 0,
           }}
         >
@@ -66,9 +69,10 @@ export function AppHeader() {
             src={logo}
             sx={{
               display: 'block',
+              filter: 'brightness(0) invert(1)',
               flexShrink: 0,
-              height: '52px',
-              width: '167px',
+              height: { xs: 34, sm: 42, lg: 52 },
+              width: { xs: 109, sm: 135, lg: 167 },
             }}
           />
           {roomName && (
@@ -76,7 +80,7 @@ export function AppHeader() {
               component="h1"
               sx={{
                 color: '#FFFFFF',
-                fontSize: '32px',
+                fontSize: { xs: 18, sm: 24, lg: 32 },
                 lineHeight: 1.2,
                 marginBottom: 0,
                 overflow: 'hidden',
@@ -91,7 +95,12 @@ export function AppHeader() {
         </Box>
 
         <Box
-          sx={{ alignItems: 'center', display: 'flex', flexShrink: 0, gap: 2 }}
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            flexShrink: 0,
+            gap: { xs: 0.75, sm: 1.25, lg: 2 },
+          }}
         >
           {isInRoom && (
             <Button
@@ -106,13 +115,27 @@ export function AppHeader() {
                 borderRadius: '12px',
                 borderWidth: '2px',
                 color: '#FFFFFF',
-                height: '52px',
+                fontSize: { xs: 11, sm: 13, lg: 14 },
+                height: { xs: 42, sm: 46, lg: 52 },
+                minWidth: 0,
+                paddingX: { xs: 1.25, sm: 2 },
                 textTransform: 'uppercase',
-                width: '215px',
+                width: { xs: 'auto', md: 190, lg: 215 },
               }}
               variant="outlined"
             >
-              Покинуть комнату
+              <Box
+                component="span"
+                sx={{ display: { xs: 'none', sm: 'inline' } }}
+              >
+                Покинуть комнату
+              </Box>
+              <Box
+                component="span"
+                sx={{ display: { xs: 'inline', sm: 'none' } }}
+              >
+                Выйти
+              </Box>
             </Button>
           )}
 
@@ -123,13 +146,14 @@ export function AppHeader() {
               aria-label="Открыть меню пользователя"
               onClick={() => setIsUserMenuOpen(current => !current)}
               sx={{
-                '&:hover': { backgroundColor: '#FFFFFF' },
-                backgroundColor: '#FFFFFF',
+                '&:hover': { backgroundColor: '#4A2B6D' },
+                backgroundColor: '#32204B',
+                border: '1px solid #6D4A8F',
                 borderRadius: '8px',
-                height: '52px',
+                height: { xs: 42, sm: 46, lg: 52 },
                 padding: 0,
                 position: 'relative',
-                width: '52px',
+                width: { xs: 42, sm: 46, lg: 52 },
                 zIndex: 20,
               }}
               type="button"
@@ -138,16 +162,16 @@ export function AppHeader() {
                 alt={profile?.displayName || 'Пользователь'}
                 src={profile?.photoURL ?? undefined}
                 sx={{
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: '#32204B',
                   borderRadius: '8px',
-                  height: '52px',
-                  width: '52px',
+                  height: '100%',
+                  width: '100%',
                 }}
                 variant="rounded"
               >
                 <MemberIcon
                   sx={{
-                    '& path': { fill: '#6F70E7' },
+                    '& path': { fill: '#B88CFF' },
                     height: '22px',
                     width: '18px',
                   }}

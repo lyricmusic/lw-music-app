@@ -11,6 +11,8 @@ import {
   Dialog,
   Input,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 
 import { completeProfile } from '../api/completeProfile'
@@ -31,6 +33,8 @@ export function ProfileOnboardingDialog({
   preview?: boolean
 }) {
   const { loading: sessionLoading, profile, user } = useSession()
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const {
     control,
     formState: { errors, isSubmitting, isValid },
@@ -132,6 +136,7 @@ export function ProfileOnboardingDialog({
       aria-describedby="profile-onboarding-description"
       aria-labelledby="profile-onboarding-title"
       disableEscapeKeyDown
+      fullScreen={fullScreen}
       maxWidth={false}
       open={open}
       slotProps={{
@@ -140,15 +145,25 @@ export function ProfileOnboardingDialog({
         },
         paper: {
           sx: {
-            backgroundColor: '#D7DBF0',
-            borderRadius: '20px',
+            backgroundColor: '#24143D',
+            backgroundImage: 'none',
+            border: '1px solid #4A2B6D',
+            borderRadius: fullScreen ? 0 : '20px',
             boxShadow: '0 24px 80px rgba(20, 21, 43, 0.34)',
-            margin: 2,
-            maxHeight: 'calc(100dvh - 32px)',
-            maxWidth: 'calc(100vw - 32px)',
+            color: '#F8F3FF',
+            boxSizing: 'border-box',
+            margin: fullScreen ? '0 !important' : '16px !important',
+            maxHeight: fullScreen ? '100dvh' : 'calc(100dvh - 32px)',
+            maxWidth: fullScreen
+              ? '100vw !important'
+              : 'calc(100% - 32px) !important',
             outline: 'none',
+            overflowX: 'hidden',
             overflowY: 'auto',
-            width: 560,
+            width: {
+              xs: '100vw !important',
+              sm: '560px !important',
+            },
           },
         },
       }}
@@ -157,13 +172,18 @@ export function ProfileOnboardingDialog({
         component="form"
         noValidate
         onSubmit={handleSubmit(handleSaveProfile)}
-        sx={{ padding: { xs: '28px 24px', sm: '38px 40px 40px' } }}
+        sx={{
+          boxSizing: 'border-box',
+          maxWidth: '100%',
+          padding: { xs: '24px 18px', sm: '38px 40px 40px' },
+          width: '100%',
+        }}
       >
         <Typography
           component="h2"
           id="profile-onboarding-title"
           sx={{
-            color: '#25263E',
+            color: '#F8F3FF',
             fontSize: { xs: '28px', sm: '34px' },
             fontWeight: 700,
             lineHeight: 1.1,
@@ -175,12 +195,12 @@ export function ProfileOnboardingDialog({
 
         <Box
           id="profile-onboarding-description"
-          sx={{ borderBottom: '1px solid #FFFFFF', paddingBottom: '26px' }}
+          sx={{ borderBottom: '1px solid #4A2B6D', paddingBottom: '26px' }}
         >
           <Typography
             component="label"
             htmlFor="profile-nickname"
-            sx={{ color: '#8B8DB3', display: 'block', fontSize: 14 }}
+            sx={{ color: '#CDBCE2', display: 'block', fontSize: 14 }}
           >
             Придумайте никнейм
           </Typography>
@@ -199,9 +219,11 @@ export function ProfileOnboardingDialog({
             sx={{
               '&:after': { borderBottomColor: '#6F70E7' },
               '&:before, &:hover:not(.Mui-disabled):before': {
-                borderBottomColor: '#FFFFFF',
+                borderBottomColor: '#6D4A8F',
               },
-              color: '#25263E',
+              backgroundColor: '#32204B',
+              borderRadius: '14px',
+              color: '#F8F3FF',
               fontSize: 16,
               height: 66,
               padding: '0 16px',
@@ -210,16 +232,16 @@ export function ProfileOnboardingDialog({
           {errors.displayName && (
             <Typography
               role="alert"
-              sx={{ color: '#8B2635', fontSize: 13, marginTop: '6px' }}
+              sx={{ color: '#FF9BAD', fontSize: 13, marginTop: '6px' }}
             >
               {errors.displayName.message}
             </Typography>
           )}
         </Box>
 
-        <Box sx={{ borderBottom: '1px solid #FFFFFF', padding: '22px 0 26px' }}>
+        <Box sx={{ borderBottom: '1px solid #4A2B6D', padding: '22px 0 26px' }}>
           <Typography
-            sx={{ color: '#8B8DB3', fontSize: 14, marginBottom: '10px' }}
+            sx={{ color: '#CDBCE2', fontSize: 14, marginBottom: '10px' }}
           >
             Установите аватар
           </Typography>
@@ -236,8 +258,8 @@ export function ProfileOnboardingDialog({
               aria-label="Предпросмотр аватара"
               sx={{
                 alignItems: 'center',
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #D6D7F0',
+                backgroundColor: '#32204B',
+                border: '1px solid #6D4A8F',
                 borderRadius: '16px',
                 display: 'flex',
                 flex: '0 0 auto',
@@ -256,14 +278,14 @@ export function ProfileOnboardingDialog({
                 />
               ) : (
                 <MemberIcon
-                  sx={{ '& path': { fill: '#111249' }, height: 33, width: 28 }}
+                  sx={{ '& path': { fill: '#B88CFF' }, height: 33, width: 28 }}
                 />
               )}
             </Box>
 
             <Box sx={{ minWidth: 0 }}>
               <Typography
-                sx={{ color: '#8B8DB3', fontSize: 14, marginBottom: '8px' }}
+                sx={{ color: '#CDBCE2', fontSize: 14, marginBottom: '8px' }}
               >
                 Предлагаемые аватары
               </Typography>
@@ -300,7 +322,7 @@ export function ProfileOnboardingDialog({
                                 outline: '3px solid rgba(111, 112, 231, 0.35)',
                                 outlineOffset: 2,
                               },
-                              background: 'transparent',
+                              background: '#32204B',
                               border: selected
                                 ? '2px solid #6F70E7'
                                 : '2px solid transparent',
@@ -344,8 +366,8 @@ export function ProfileOnboardingDialog({
               fullWidth
               sx={{
                 '&.MuiButton-colorPrimary.MuiButton-outlined': {
-                  borderColor: '#FFFFFF',
-                  color: '#FFFFFF',
+                  borderColor: '#B88CFF',
+                  color: '#F8F3FF',
                 },
                 marginTop: '18px',
                 textTransform: 'uppercase',
@@ -365,7 +387,7 @@ export function ProfileOnboardingDialog({
           {(formError || errors.presetAvatarId) && (
             <Typography
               role="alert"
-              sx={{ color: '#8B2635', fontSize: 13, marginTop: '10px' }}
+              sx={{ color: '#FF9BAD', fontSize: 13, marginTop: '10px' }}
             >
               {formError ?? errors.presetAvatarId?.message}
             </Typography>
