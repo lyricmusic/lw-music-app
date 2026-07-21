@@ -62,7 +62,7 @@ export function useRoomQueue(roomId: string) {
               item.displayName &&
               item.position > 0 &&
               item.userId &&
-              /^[\w-]{11}$/.test(item.videoId),
+              /^([-_A-Za-z0-9]{11}|[a-f\d]{32})$/.test(item.videoId),
           )
 
         setItems(nextItems)

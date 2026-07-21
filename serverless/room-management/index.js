@@ -82,15 +82,16 @@ const REPORT_TARGET_TYPES = new Set([
   'user',
 ])
 const ROOM_VISIBILITIES = new Set(['private', 'public', 'unlisted'])
-const YOUTUBE_SEARCH_CACHE_LIMIT = 200
-const YOUTUBE_SEARCH_CACHE_TTL_MILLISECONDS = 30 * 60_000
-const YOUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS = 1_500
-const YOUTUBE_SEARCH_FETCH_LIMIT = 15
-const YOUTUBE_SEARCH_RESULT_LIMIT = 5
-const YOUTUBE_SEARCH_REGION_CODE = 'RU'
-const youtubeSearchCache = new Map()
-const youtubeSearchInFlight = new Map()
-const youtubeSearchLastRequestAt = new Map()
+const RUTUBE_SEARCH_CACHE_LIMIT = 200
+const RUTUBE_SEARCH_CACHE_TTL_MILLISECONDS = 30 * 60_000
+const RUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS = 1_500
+const RUTUBE_SEARCH_FETCH_LIMIT = 40
+const RUTUBE_SEARCH_RESULT_LIMIT = 5
+const RUTUBE_VIDEO_ID_PATTERN = /^[a-f\d]{32}$/i
+const RUTUBE_MUSIC_CATEGORY_IDS = new Set([6, 48])
+const rutubeSearchCache = new Map()
+const rutubeSearchInFlight = new Map()
+const rutubeSearchLastRequestAt = new Map()
 const ROOM_CATEGORIES = new Map([
   [1, 'Поп'],
   [2, 'Рок'],
@@ -283,12 +284,12 @@ async function requireRoomQueueSearchAccess(roomId, userId) {
   }
 }
 
-function normalizeYouTubeQuery(value) {
+function normalizeRutubeQuery(value) {
   if (typeof value !== 'string') return ''
   return value.normalize('NFKC').replace(/\s+/gu, ' ').trim()
 }
 
-function decodeYouTubeText(value) {
+function decodeHtmlText(value) {
   if (typeof value !== 'string') return ''
 
   const namedEntities = {
@@ -315,167 +316,176 @@ function decodeYouTubeText(value) {
     .replace(/&(amp|apos|gt|lt|quot);/gu, (_, name) => namedEntities[name])
 }
 
-function safeYouTubeSearchItem(item) {
-  const videoId = item?.id?.videoId
-  const snippet = item?.snippet
-  if (!/^[\w-]{11}$/.test(videoId) || typeof snippet !== 'object') {
+function safeRutubeSearchItem(item, musicOnly) {
+  const videoId = item?.id
+  if (
+    !RUTUBE_VIDEO_ID_PATTERN.test(videoId) ||
+    item?.content_type !== 'video' ||
+    item?.is_hidden === true ||
+    item?.is_adult === true ||
+    item?.is_paid === true ||
+    item?.is_livestream === true ||
+    item?.is_on_air === true ||
+    (musicOnly && !RUTUBE_MUSIC_CATEGORY_IDS.has(item?.category?.id))
+  ) {
     return null
   }
 
-  const thumbnailUrl = [
-    snippet.thumbnails?.high?.url,
-    snippet.thumbnails?.medium?.url,
-    snippet.thumbnails?.default?.url,
-  ].find(value => typeof value === 'string' && value.startsWith('https://'))
-  const title = decodeYouTubeText(snippet.title).trim()
-  if (!thumbnailUrl || !title) return null
+  const thumbnailUrl = item?.thumbnail_url
+  const title = decodeHtmlText(item?.title).trim()
+  const embedUrl = item?.embed_url
+  if (typeof thumbnailUrl !== 'string' || !title) return null
+  if (
+    !thumbnailUrl.startsWith('https://') ||
+    typeof embedUrl !== 'string' ||
+    !embedUrl.startsWith(`https://rutube.ru/play/embed/${videoId}`)
+  ) {
+    return null
+  }
 
   return {
-    channelTitle: decodeYouTubeText(snippet.channelTitle).trim(),
+    channelTitle: decodeHtmlText(item?.author?.name).trim(),
     thumbnailUrl,
     title,
-    videoId,
+    videoId: videoId.toLowerCase(),
   }
 }
 
-function cachedYouTubeSearch(cacheKey) {
-  const cached = youtubeSearchCache.get(cacheKey)
-  if (!cached) return null
-  if (cached.expiresAt <= Date.now()) {
-    youtubeSearchCache.delete(cacheKey)
+function safeRutubePlaybackItem(item, expectedVideoId) {
+  const videoId = item?.video_id
+  const thumbnailUrl = item?.thumbnail_url
+  const title = decodeHtmlText(item?.title).trim()
+  const restrictions = item?.restrictions
+  const hasRestrictions =
+    restrictions != null &&
+    (typeof restrictions !== 'object' || Object.keys(restrictions).length > 0)
+  if (
+    !RUTUBE_VIDEO_ID_PATTERN.test(videoId) ||
+    videoId.toLowerCase() !== expectedVideoId.toLowerCase() ||
+    typeof thumbnailUrl !== 'string' ||
+    !thumbnailUrl.startsWith('https://') ||
+    !title ||
+    item?.is_hidden === true ||
+    item?.is_adult === true ||
+    item?.is_paid === true ||
+    item?.is_livestream === true ||
+    item?.is_on_air === true ||
+    hasRestrictions
+  ) {
     return null
   }
 
-  youtubeSearchCache.delete(cacheKey)
-  youtubeSearchCache.set(cacheKey, cached)
+  return {
+    channelTitle: decodeHtmlText(item?.author?.name).trim(),
+    thumbnailUrl,
+    title,
+    videoId: videoId.toLowerCase(),
+  }
+}
+
+function cachedRutubeSearch(cacheKey) {
+  const cached = rutubeSearchCache.get(cacheKey)
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    rutubeSearchCache.delete(cacheKey)
+    return null
+  }
+
+  rutubeSearchCache.delete(cacheKey)
+  rutubeSearchCache.set(cacheKey, cached)
   return cached.items
 }
 
-function cacheYouTubeSearch(cacheKey, items) {
-  youtubeSearchCache.set(cacheKey, {
-    expiresAt: Date.now() + YOUTUBE_SEARCH_CACHE_TTL_MILLISECONDS,
+function cacheRutubeSearch(cacheKey, items) {
+  rutubeSearchCache.set(cacheKey, {
+    expiresAt: Date.now() + RUTUBE_SEARCH_CACHE_TTL_MILLISECONDS,
     items,
   })
-  while (youtubeSearchCache.size > YOUTUBE_SEARCH_CACHE_LIMIT) {
-    youtubeSearchCache.delete(youtubeSearchCache.keys().next().value)
+  while (rutubeSearchCache.size > RUTUBE_SEARCH_CACHE_LIMIT) {
+    rutubeSearchCache.delete(rutubeSearchCache.keys().next().value)
   }
 }
 
-async function requestYouTubeSearch(query, musicOnly) {
-  const apiKey = process.env.YOUTUBE_API_KEY
-  if (!apiKey) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Поиск YouTube пока не настроен. Вставьте ссылку на видео.',
-    )
-  }
-
+async function requestRutubeSearch(query, musicOnly) {
   const parameters = new URLSearchParams({
-    key: apiKey,
-    maxResults: String(YOUTUBE_SEARCH_FETCH_LIMIT),
-    part: 'snippet',
-    q: query,
-    regionCode: YOUTUBE_SEARCH_REGION_CODE,
-    relevanceLanguage: 'ru',
-    safeSearch: 'moderate',
-    type: 'video',
-    videoEmbeddable: 'true',
-    videoSyndicated: 'true',
+    content_type: 'video',
+    page: '1',
+    per_page: String(RUTUBE_SEARCH_FETCH_LIMIT),
+    query,
   })
-  if (musicOnly) parameters.set('topicId', '/m/04rlf')
 
   let response
   try {
     response = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?${parameters}`,
-      { signal: AbortSignal.timeout(8_000) },
+      `https://rutube.ru/api/search/combined/video_playlist?${parameters}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Syncly/1.0 (+https://syncly.lyricweb.ru)',
+        },
+        signal: AbortSignal.timeout(8_000),
+      },
     )
   } catch {
     throw new HttpsError(
       'internal',
-      'YouTube не ответил вовремя. Повторите поиск.',
+      'RUTUBE не ответил вовремя. Повторите поиск.',
     )
   }
 
   if (!response.ok) {
-    if (response.status === 403 || response.status === 429) {
+    if (response.status === 429) {
       throw new HttpsError(
         'failed-precondition',
-        'Лимит поиска YouTube временно исчерпан. Вставьте ссылку на видео.',
+        'Поиск RUTUBE временно ограничен. Повторите позже или вставьте ссылку.',
       )
     }
-    console.error('YouTube search failed:', response.status)
-    throw new HttpsError('internal', 'Не удалось выполнить поиск на YouTube.')
+    console.error('RUTUBE search failed:', response.status)
+    throw new HttpsError('internal', 'Не удалось выполнить поиск на RUTUBE.')
   }
 
   const payload = await response.json()
-  const searchItems = Array.isArray(payload?.items)
-    ? payload.items.map(safeYouTubeSearchItem).filter(Boolean)
+  return Array.isArray(payload?.results)
+    ? payload.results
+        .map(item => safeRutubeSearchItem(item, musicOnly))
+        .filter(Boolean)
+        .slice(0, RUTUBE_SEARCH_RESULT_LIMIT)
     : []
-  if (searchItems.length === 0) return []
+}
 
-  const detailsParameters = new URLSearchParams({
-    fields:
-      'items(id,status(embeddable,privacyStatus,uploadStatus),contentDetails(contentRating,regionRestriction))',
-    id: searchItems.map(item => item.videoId).join(','),
-    key: apiKey,
-    part: 'contentDetails,status',
-  })
-
-  let detailsResponse
+async function requestRutubeVideo(videoId) {
+  let response
   try {
-    detailsResponse = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?${detailsParameters}`,
-      { signal: AbortSignal.timeout(8_000) },
-    )
+    response = await fetch(`https://rutube.ru/api/play/options/${videoId}`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Syncly/1.0 (+https://syncly.lyricweb.ru)',
+      },
+      signal: AbortSignal.timeout(8_000),
+    })
   } catch {
     throw new HttpsError(
       'internal',
-      'YouTube не смог проверить доступность видео. Повторите поиск.',
+      'RUTUBE не ответил вовремя. Повторите попытку.',
     )
   }
 
-  if (!detailsResponse.ok) {
-    console.error(
-      'YouTube video availability check failed:',
-      detailsResponse.status,
-    )
+  if (response.status === 404) {
+    throw new HttpsError('not-found', 'Видео RUTUBE не найдено.')
+  }
+  if (!response.ok) {
+    console.error('RUTUBE video lookup failed:', response.status)
+    throw new HttpsError('internal', 'Не удалось проверить видео RUTUBE.')
+  }
+
+  const item = safeRutubePlaybackItem(await response.json(), videoId)
+  if (!item) {
     throw new HttpsError(
-      detailsResponse.status === 403 || detailsResponse.status === 429
-        ? 'failed-precondition'
-        : 'internal',
-      'Не удалось проверить доступность видео YouTube.',
+      'failed-precondition',
+      'Это видео RUTUBE нельзя воспроизвести в комнате.',
     )
   }
-
-  const detailsPayload = await detailsResponse.json()
-  const playableVideoIds = new Set(
-    Array.isArray(detailsPayload?.items)
-      ? detailsPayload.items
-          .filter(item => {
-            const restriction = item?.contentDetails?.regionRestriction
-            const allowedRegions = restriction?.allowed
-            const blockedRegions = restriction?.blocked
-
-            return (
-              item?.status?.embeddable === true &&
-              item?.status?.privacyStatus === 'public' &&
-              item?.status?.uploadStatus === 'processed' &&
-              item?.contentDetails?.contentRating?.ytRating !==
-                'ytAgeRestricted' &&
-              (!Array.isArray(allowedRegions) ||
-                allowedRegions.includes(YOUTUBE_SEARCH_REGION_CODE)) &&
-              (!Array.isArray(blockedRegions) ||
-                !blockedRegions.includes(YOUTUBE_SEARCH_REGION_CODE))
-            )
-          })
-          .map(item => item.id)
-      : [],
-  )
-
-  return searchItems
-    .filter(item => playableVideoIds.has(item.videoId))
-    .slice(0, YOUTUBE_SEARCH_RESULT_LIMIT)
+  return item
 }
 
 function requireRole(member, roles, message) {
@@ -647,10 +657,10 @@ function callable(handler) {
   }
 }
 
-exports.searchYouTubeVideos = callable(async request => {
+exports.searchRutubeVideos = callable(async request => {
   const actorId = requireAuth(request)
   const roomId = requiredId(request.data, 'roomId', 'Комната')
-  const query = normalizeYouTubeQuery(request.data?.query)
+  const query = normalizeRutubeQuery(request.data?.query)
   const musicOnly = request.data?.musicOnly
 
   if (query.length < 2 || query.length > 100) {
@@ -668,36 +678,51 @@ exports.searchYouTubeVideos = callable(async request => {
   const cacheKey = `${musicOnly ? 'music' : 'all'}:${query.toLocaleLowerCase(
     'ru-RU',
   )}`
-  const cachedItems = cachedYouTubeSearch(cacheKey)
+  const cachedItems = cachedRutubeSearch(cacheKey)
   if (cachedItems) return { items: cachedItems }
 
-  const existingRequest = youtubeSearchInFlight.get(cacheKey)
+  const existingRequest = rutubeSearchInFlight.get(cacheKey)
   if (existingRequest) return { items: await existingRequest }
 
   const now = Date.now()
-  const lastRequestAt = youtubeSearchLastRequestAt.get(actorId) ?? 0
+  const lastRequestAt = rutubeSearchLastRequestAt.get(actorId) ?? 0
   const retryAfter =
-    YOUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS - (now - lastRequestAt)
+    RUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS - (now - lastRequestAt)
   if (retryAfter > 0) {
     throw retryAfterError(retryAfter, 'Слишком частый поиск.')
   }
-  youtubeSearchLastRequestAt.delete(actorId)
-  youtubeSearchLastRequestAt.set(actorId, now)
-  while (youtubeSearchLastRequestAt.size > 1_000) {
-    youtubeSearchLastRequestAt.delete(
-      youtubeSearchLastRequestAt.keys().next().value,
+  rutubeSearchLastRequestAt.delete(actorId)
+  rutubeSearchLastRequestAt.set(actorId, now)
+  while (rutubeSearchLastRequestAt.size > 1_000) {
+    rutubeSearchLastRequestAt.delete(
+      rutubeSearchLastRequestAt.keys().next().value,
     )
   }
 
-  const pendingRequest = requestYouTubeSearch(query, musicOnly)
-  youtubeSearchInFlight.set(cacheKey, pendingRequest)
+  const pendingRequest = requestRutubeSearch(query, musicOnly)
+  rutubeSearchInFlight.set(cacheKey, pendingRequest)
   try {
     const items = await pendingRequest
-    cacheYouTubeSearch(cacheKey, items)
+    cacheRutubeSearch(cacheKey, items)
     return { items }
   } finally {
-    youtubeSearchInFlight.delete(cacheKey)
+    rutubeSearchInFlight.delete(cacheKey)
   }
+})
+
+exports.getRutubeVideo = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const videoId = requiredId(request.data, 'videoId', 'Видео')
+  if (!RUTUBE_VIDEO_ID_PATTERN.test(videoId)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Некорректная ссылка на видео RUTUBE.',
+    )
+  }
+
+  await requireRoomQueueSearchAccess(roomId, actorId)
+  return requestRutubeVideo(videoId.toLowerCase())
 })
 
 exports.createRoom = callable(async request => {
@@ -1241,7 +1266,7 @@ exports.advanceRoomVideo = callable(async request => {
   const actorId = requireAuth(request)
   const roomId = requiredId(request.data, 'roomId', 'Комната')
   const expectedVideoId = requiredId(request.data, 'finishedVideoId', 'Видео')
-  if (!/^[-_A-Za-z0-9]{11}$/.test(expectedVideoId)) {
+  if (!/^([-_A-Za-z0-9]{11}|[a-f\d]{32})$/.test(expectedVideoId)) {
     throw new HttpsError(
       'invalid-argument',
       'Некорректный идентификатор видео.',
@@ -1633,10 +1658,11 @@ const OPERATIONS = {
   createRoom: exports.createRoom,
   createRoomInvite: exports.createRoomInvite,
   deleteRoomMessage: exports.deleteRoomMessage,
+  getRutubeVideo: exports.getRutubeVideo,
   moderateRoomMember: exports.moderateRoomMember,
   reportRoomMessage: exports.reportRoomMessage,
   revokeRoomInvite: exports.revokeRoomInvite,
-  searchYouTubeVideos: exports.searchYouTubeVideos,
+  searchRutubeVideos: exports.searchRutubeVideos,
   sendRoomMessage: exports.sendRoomMessage,
   setRoomMemberRole: exports.setRoomMemberRole,
   skipRoomVideo: exports.skipRoomVideo,

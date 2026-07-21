@@ -12,7 +12,6 @@ import {
   enqueueRoomVideo,
   leaveRoomQueue,
   sendRoomReaction,
-  setRoomPlaybackStatus,
   skipRoomVideo,
   type RoomMemberRole,
   type RoomReactionEmoji,
@@ -24,12 +23,7 @@ import { useSession } from '@/entities/session'
 import { useBlockedUsers } from '@/entities/user'
 import { RoomParticipantActions } from '@/features/manage-room'
 import { db } from '@/shared/api/firebase'
-import {
-  checkYouTubeVideoEmbeddable,
-  formatPlaybackTime,
-  getYouTubeErrorMessage,
-  loadYouTubeIframeApi,
-} from '@/shared/lib/youtube'
+import { formatPlaybackTime, isRutubeVideoId } from '@/shared/lib/rutube'
 import { Button } from '@/shared/ui/button'
 import { RoomDanceFloor } from '@/widgets/room-avatar'
 import {
@@ -46,8 +40,9 @@ import { toast } from 'react-toastify'
 
 import { AddToQueueDialog } from './AddToQueueDialog'
 
-interface SyncedYouTubePlayerProps {
+interface SyncedRutubePlayerProps {
   currentMemberRole?: null | RoomMemberRole
+  previewVideoId?: string
   queueEnabled?: boolean
   roomId: string
   syncEnabled?: boolean
@@ -66,6 +61,7 @@ interface PlaybackState {
 }
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
+const PLAYBACK_RETRY_INTERVAL_MILLISECONDS = 10_000
 
 function getParticipantInitials(displayName: string) {
   return displayName
@@ -224,15 +220,16 @@ function RoomRoleBadge({ role }: { role: RoomMemberRole }) {
   )
 }
 
-function allowAutoplay(player: YT.Player) {
-  const iframe = player.getIframe()
-  const allowedFeatures = iframe.allow
-    .split(';')
-    .map(feature => feature.trim())
-    .filter(Boolean)
+function parseRutubeMessage(value: unknown) {
+  try {
+    const message = typeof value === 'string' ? JSON.parse(value) : value
+    if (!message || typeof message !== 'object') return null
 
-  if (!allowedFeatures.some(feature => feature.startsWith('autoplay'))) {
-    iframe.allow = [...allowedFeatures, 'autoplay'].join('; ')
+    const { data, type } = message as { data?: unknown; type?: unknown }
+    if (typeof type !== 'string' || !type.startsWith('player:')) return null
+    return { data, type }
+  } catch {
+    return null
   }
 }
 
@@ -248,7 +245,7 @@ function parsePlaybackState(
   if (
     (status !== 'paused' && status !== 'playing') ||
     typeof videoId !== 'string' ||
-    !/^[\w-]{11}$/.test(videoId) ||
+    !/^([-_A-Za-z0-9]{11}|[a-f\d]{32})$/.test(videoId) ||
     typeof positionSeconds !== 'number' ||
     !Number.isFinite(positionSeconds) ||
     typeof revision !== 'number' ||
@@ -279,12 +276,13 @@ function getExpectedPosition(state: PlaybackState) {
   return state.positionSeconds + elapsedSeconds
 }
 
-export function SyncedYouTubePlayer({
+export function SyncedRutubePlayer({
   currentMemberRole = null,
+  previewVideoId,
   queueEnabled = true,
   roomId,
   syncEnabled = true,
-}: SyncedYouTubePlayerProps) {
+}: SyncedRutubePlayerProps) {
   const { profile, user } = useSession()
   const blockedUserIds = useBlockedUsers()
   const {
@@ -302,12 +300,21 @@ export function SyncedYouTubePlayer({
     () => doc(db, 'rooms', roomId, 'playback', 'current'),
     [roomId],
   )
-  const playerContainerRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<null | YT.Player>(null)
+  const playerFrameRef = useRef<HTMLIFrameElement>(null)
+  const playerReadyRef = useRef(false)
+  const loadedVideoIdRef = useRef<null | string>(null)
+  const mutedRef = useRef(true)
+  const playerStateRef = useRef<'paused' | 'playing' | 'stopped' | 'unknown'>(
+    'unknown',
+  )
+  const activeVideoIdRef = useRef<null | string>(null)
+  const currentTimeRef = useRef(0)
+  const adPlayingRef = useRef(false)
+  const completedVideoIdRef = useRef<null | string>(null)
   const lastRemoteStateRef = useRef<null | PlaybackState>(null)
-  const autoplayRecoveryVideoIdRef = useRef<null | string>(null)
   const activeQueueUserIdRef = useRef<null | string>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
+  const nextPlaybackRetryAtRef = useRef(0)
   const queueMutationRef = useRef(Promise.resolve())
 
   const [playerReady, setPlayerReady] = useState(false)
@@ -321,15 +328,21 @@ export function SyncedYouTubePlayer({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false)
   const [queueLeaving, setQueueLeaving] = useState(false)
   const [queueSkipping, setQueueSkipping] = useState(false)
-  const [playbackChanging, setPlaybackChanging] = useState(false)
   const [danceFloorCollapsed, setDanceFloorCollapsed] = useState(false)
   const [reactionPending, setReactionPending] = useState(false)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
   const [localQueuedVideoId, setLocalQueuedVideoId] = useState<null | string>(
-    null,
+    () =>
+      isRutubeVideoId(previewVideoId) ? previewVideoId.toLowerCase() : null,
   )
+  const [iframeVideoId, setIframeVideoId] = useState<null | string>(null)
+  const activeVideoId = remoteState?.videoId ?? localQueuedVideoId
+  const rutubeVideoId = isRutubeVideoId(activeVideoId) ? activeVideoId : null
+  const playerSrc = iframeVideoId
+    ? `https://rutube.ru/play/embed/${iframeVideoId}?skinColor=6F70E7&getPlayOptions=duration,title,thumbnail_url`
+    : undefined
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
   const avatarIsPlaying = remoteState?.status === 'playing'
   const danceFloorParticipants = useMemo(
@@ -422,160 +435,226 @@ export function SyncedYouTubePlayer({
     [currentMemberRole, roomId, syncEnabled, user],
   )
 
-  const applyRemoteState = useCallback((state: PlaybackState) => {
-    const player = playerRef.current
-    if (!player) return
-
-    const expectedPosition = getExpectedPosition(state)
-    const currentVideoId = player.getVideoData().video_id
-    const videoChanged = currentVideoId !== state.videoId
-    suppressPlayerEventsUntilRef.current = Date.now() + 1_800
-
-    if (videoChanged) {
-      if (state.status === 'paused') {
-        player.cueVideoById({
-          startSeconds: expectedPosition,
-          videoId: state.videoId,
-        })
-        player.pauseVideo()
-      } else {
-        player.loadVideoById({
-          startSeconds: expectedPosition,
-          videoId: state.videoId,
-        })
-      }
-    } else {
-      const localPosition = player.getCurrentTime()
-      if (
-        Math.abs(localPosition - expectedPosition) >
-        REMOTE_DRIFT_THRESHOLD_SECONDS
-      ) {
-        player.seekTo(expectedPosition, true)
-      }
-
-      if (state.status === 'paused') {
-        if (player.getPlayerState() !== YT.PlayerState.PAUSED) {
-          player.pauseVideo()
-        }
-      } else if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
-        player.playVideo()
-      }
-    }
-  }, [])
-
-  const handlePlayerStateChange = useCallback(
-    (event: YT.OnStateChangeEvent) => {
-      if (event.data === YT.PlayerState.PLAYING) {
-        autoplayRecoveryVideoIdRef.current = null
-        setAutoplayBlocked(false)
-      }
-
-      if (event.data === YT.PlayerState.ENDED) {
-        const finishedVideoId = event.target.getVideoData().video_id
-        if (finishedVideoId) void clearFinishedPlayback(finishedVideoId)
-      }
+  const sendPlayerCommand = useCallback(
+    (type: string, data: Record<string, unknown> = {}) => {
+      playerFrameRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ data, type }),
+        'https://rutube.ru',
+      )
     },
-    [clearFinishedPlayback],
+    [],
   )
 
-  const handleAutoplayBlocked = useCallback(
-    (event: YT.PlayerEvent) => {
-      // Mobile browsers reject scripted playback with sound. Muting first and
-      // retrying from the current room position keeps video sync automatic.
-      event.target.mute()
-      setMuted(true)
-      setAutoplayBlocked(true)
-
-      const remote = lastRemoteStateRef.current
+  const applyRemoteState = useCallback(
+    (state: PlaybackState) => {
       if (
-        !remote ||
-        remote.status !== 'playing' ||
-        autoplayRecoveryVideoIdRef.current === remote.videoId
+        !playerReadyRef.current ||
+        activeVideoIdRef.current !== state.videoId ||
+        adPlayingRef.current
       ) {
         return
       }
 
-      autoplayRecoveryVideoIdRef.current = remote.videoId
-      window.setTimeout(() => {
-        if (playerRef.current === event.target) {
-          applyRemoteState(lastRemoteStateRef.current ?? remote)
+      const expectedPosition = getExpectedPosition(state)
+      suppressPlayerEventsUntilRef.current = Date.now() + 1_800
+
+      if (
+        Math.abs(currentTimeRef.current - expectedPosition) >
+        REMOTE_DRIFT_THRESHOLD_SECONDS
+      ) {
+        sendPlayerCommand('player:setCurrentTime', { time: expectedPosition })
+      }
+
+      if (state.status === 'paused') {
+        if (playerStateRef.current !== 'paused') {
+          sendPlayerCommand('player:pause')
         }
-      }, 0)
+      } else if (playerStateRef.current !== 'playing') {
+        sendPlayerCommand('player:play')
+        nextPlaybackRetryAtRef.current =
+          Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
+      }
     },
-    [applyRemoteState],
+    [sendPlayerCommand],
   )
 
+  const finishCurrentVideo = useCallback(() => {
+    const finishedVideoId = activeVideoIdRef.current
+    if (!finishedVideoId || completedVideoIdRef.current === finishedVideoId) {
+      return
+    }
+
+    completedVideoIdRef.current = finishedVideoId
+    void clearFinishedPlayback(finishedVideoId)
+  }, [clearFinishedPlayback])
+
   useEffect(() => {
-    if (!hasVideo) return
+    activeVideoIdRef.current = activeVideoId
+    playerStateRef.current = 'unknown'
+    currentTimeRef.current = 0
+    adPlayingRef.current = false
+    completedVideoIdRef.current = null
+    setCurrentTime(0)
+    setDuration(0)
 
-    let disposed = false
-    setPlayerReady(false)
-
-    loadYouTubeIframeApi()
-      .then(() => {
-        if (disposed || !playerContainerRef.current || !window.YT) return
-
-        playerRef.current = new window.YT.Player(playerContainerRef.current, {
-          events: {
-            onAutoplayBlocked: handleAutoplayBlocked,
-            onError: event => {
-              setError(getYouTubeErrorMessage(event.data))
-
-              if ([100, 101, 150].includes(event.data)) {
-                const unavailableVideoId = event.target.getVideoData().video_id
-                if (unavailableVideoId) {
-                  void clearFinishedPlayback(unavailableVideoId)
-                }
-              }
-            },
-            onReady: event => {
-              allowAutoplay(event.target)
-              event.target.mute()
-              setMuted(true)
-              setPlayerReady(true)
-
-              const remote = lastRemoteStateRef.current
-              if (remote) {
-                applyRemoteState(remote)
-              }
-            },
-            onStateChange: handlePlayerStateChange,
-          },
-          height: '100%',
-          playerVars: {
-            autoplay: 1,
-            controls: 0,
-            disablekb: 1,
-            enablejsapi: 1,
-            fs: 0,
-            mute: 1,
-            origin: window.location.origin,
-            playsinline: 1,
-            rel: 0,
-          },
-          width: '100%',
-        })
-      })
-      .catch(reason => {
-        if (disposed) return
-
-        setError(
-          reason instanceof Error ? reason.message : 'YouTube API недоступен.',
-        )
-      })
-
-    return () => {
-      disposed = true
-      playerRef.current?.destroy()
-      playerRef.current = null
+    if (!activeVideoId) {
+      playerReadyRef.current = false
+      loadedVideoIdRef.current = null
+      setPlayerReady(false)
+      setIframeVideoId(null)
+    } else if (!rutubeVideoId) {
+      playerReadyRef.current = false
+      loadedVideoIdRef.current = null
+      setPlayerReady(false)
+      setIframeVideoId(null)
+      setError(
+        'В очереди осталось старое видео YouTube. Переходим к следующему участнику…',
+      )
+      void clearFinishedPlayback(activeVideoId)
+    } else if (rutubeVideoId) {
+      setError(null)
+      if (!iframeVideoId) {
+        playerReadyRef.current = false
+        loadedVideoIdRef.current = null
+        setPlayerReady(false)
+        setIframeVideoId(rutubeVideoId)
+      } else if (
+        playerReadyRef.current &&
+        loadedVideoIdRef.current !== rutubeVideoId
+      ) {
+        loadedVideoIdRef.current = rutubeVideoId
+        suppressPlayerEventsUntilRef.current = Date.now() + 2_500
+        setPlayerReady(false)
+        sendPlayerCommand('player:changeVideo', { id: rutubeVideoId })
+      }
     }
   }, [
-    applyRemoteState,
+    activeVideoId,
     clearFinishedPlayback,
-    hasVideo,
-    handleAutoplayBlocked,
-    handlePlayerStateChange,
+    iframeVideoId,
+    rutubeVideoId,
+    sendPlayerCommand,
   ])
+
+  useEffect(() => {
+    const handlePlayerMessage = (event: MessageEvent) => {
+      const frameWindow = playerFrameRef.current?.contentWindow
+      if (
+        !frameWindow ||
+        event.source !== frameWindow ||
+        event.origin !== 'https://rutube.ru'
+      ) {
+        return
+      }
+
+      const message = parseRutubeMessage(event.data)
+      if (!message) return
+      const data =
+        message.data && typeof message.data === 'object'
+          ? (message.data as Record<string, unknown>)
+          : {}
+
+      if (message.type === 'player:ready') {
+        playerReadyRef.current = true
+        loadedVideoIdRef.current = iframeVideoId
+        setPlayerReady(true)
+        sendPlayerCommand(mutedRef.current ? 'player:mute' : 'player:unMute')
+
+        const intendedVideoId = activeVideoIdRef.current
+        if (
+          isRutubeVideoId(intendedVideoId) &&
+          loadedVideoIdRef.current !== intendedVideoId
+        ) {
+          loadedVideoIdRef.current = intendedVideoId
+          sendPlayerCommand('player:changeVideo', { id: intendedVideoId })
+          return
+        }
+
+        const remote = lastRemoteStateRef.current
+        if (remote) {
+          applyRemoteState(remote)
+        } else {
+          sendPlayerCommand('player:setCurrentTime', { time: 0 })
+          sendPlayerCommand('player:play')
+        }
+        return
+      }
+
+      if (message.type === 'player:init') {
+        const videoId = data.videoId
+        if (isRutubeVideoId(videoId)) {
+          loadedVideoIdRef.current = videoId.toLowerCase()
+        }
+
+        setPlayerReady(true)
+        const remote = lastRemoteStateRef.current
+        if (remote) {
+          applyRemoteState(remote)
+        } else if (activeVideoIdRef.current === loadedVideoIdRef.current) {
+          sendPlayerCommand('player:setCurrentTime', { time: 0 })
+          sendPlayerCommand('player:play')
+        }
+        return
+      }
+
+      if (message.type === 'player:currentTime') {
+        const time = data.time
+        if (typeof time === 'number' && Number.isFinite(time)) {
+          currentTimeRef.current = Math.max(0, time)
+          setCurrentTime(currentTimeRef.current)
+        }
+        return
+      }
+
+      if (message.type === 'player:durationChange') {
+        const nextDuration = data.duration
+        if (typeof nextDuration === 'number' && Number.isFinite(nextDuration)) {
+          setDuration(Math.max(0, nextDuration))
+        }
+        return
+      }
+
+      if (message.type === 'player:changeState') {
+        const state = data.state
+        if (state === 'paused' || state === 'playing' || state === 'stopped') {
+          playerStateRef.current = state
+          if (state === 'playing') {
+            setAutoplayBlocked(false)
+            nextPlaybackRetryAtRef.current =
+              Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
+          }
+        }
+        return
+      }
+
+      if (message.type === 'player:rollState') {
+        adPlayingRef.current = data.state === 'play'
+        if (data.state === 'complete') {
+          const remote = lastRemoteStateRef.current
+          if (remote) applyRemoteState(remote)
+        }
+        return
+      }
+
+      if (message.type === 'player:playComplete') {
+        finishCurrentVideo()
+        return
+      }
+
+      if (message.type === 'player:error') {
+        const code = typeof data.code === 'string' ? ` (${data.code})` : ''
+        const details =
+          typeof data.text === 'string' && data.text.trim()
+            ? `: ${data.text.trim().slice(0, 160)}`
+            : ''
+        setError(`RUTUBE не смог воспроизвести видео${code}${details}`)
+        finishCurrentVideo()
+      }
+    }
+
+    window.addEventListener('message', handlePlayerMessage)
+    return () => window.removeEventListener('message', handlePlayerMessage)
+  }, [applyRemoteState, finishCurrentVideo, iframeVideoId, sendPlayerCommand])
 
   useEffect(() => {
     if (!syncEnabled) {
@@ -624,17 +703,11 @@ export function SyncedYouTubePlayer({
     if (!playerReady) return
 
     const interval = window.setInterval(() => {
-      const player = playerRef.current
-      if (!player) return
-
-      const positionSeconds = player.getCurrentTime()
-      setCurrentTime(positionSeconds)
-      setDuration(player.getDuration())
-
       const remote = lastRemoteStateRef.current
       if (
         !remote ||
         remote.status !== 'playing' ||
+        adPlayingRef.current ||
         Date.now() < suppressPlayerEventsUntilRef.current
       ) {
         return
@@ -643,33 +716,33 @@ export function SyncedYouTubePlayer({
       const expectedPosition = getExpectedPosition(remote)
 
       if (
-        Math.abs(positionSeconds - expectedPosition) >
+        Math.abs(currentTimeRef.current - expectedPosition) >
         REMOTE_DRIFT_THRESHOLD_SECONDS
       ) {
-        player.seekTo(expectedPosition, true)
+        sendPlayerCommand('player:setCurrentTime', { time: expectedPosition })
       }
 
       if (
-        player.getPlayerState() !== YT.PlayerState.PLAYING &&
-        player.getPlayerState() !== YT.PlayerState.ENDED
+        playerStateRef.current !== 'playing' &&
+        playerStateRef.current !== 'stopped' &&
+        Date.now() >= nextPlaybackRetryAtRef.current
       ) {
-        player.playVideo()
+        sendPlayerCommand('player:play')
+        setAutoplayBlocked(true)
+        nextPlaybackRetryAtRef.current =
+          Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
       }
     }, 750)
 
     return () => window.clearInterval(interval)
-  }, [playerReady])
+  }, [playerReady, sendPlayerCommand])
 
   const handleJoinQueue = async (videoId: string) => {
-    const player = playerRef.current
-
     if (!profile || !user) {
       throw new Error('Чтобы встать в очередь, войдите в аккаунт.')
     }
 
     try {
-      await checkYouTubeVideoEmbeddable(videoId)
-
       const { isActive } = await enqueueRoomVideo({
         displayName: profile.displayName,
         photoURL: profile.photoURL,
@@ -681,11 +754,6 @@ export function SyncedYouTubePlayer({
         setError(null)
         setAutoplayBlocked(false)
         setLocalQueuedVideoId(videoId)
-
-        if (playerReady && player) {
-          suppressPlayerEventsUntilRef.current = Date.now() + 800
-          player.loadVideoById({ startSeconds: 0, videoId })
-        }
       }
     } catch (reason) {
       console.error('Не удалось добавить видео в очередь:', reason)
@@ -694,15 +762,18 @@ export function SyncedYouTubePlayer({
   }
 
   const handleToggleSound = () => {
-    const player = playerRef.current
-    if (!player) return
+    if (!playerReadyRef.current) return
 
-    if (player.isMuted()) {
-      player.unMute()
+    if (muted) {
+      sendPlayerCommand('player:unMute')
+      mutedRef.current = false
       setMuted(false)
-      if (lastRemoteStateRef.current?.status === 'playing') player.playVideo()
+      if (lastRemoteStateRef.current?.status === 'playing') {
+        sendPlayerCommand('player:play')
+      }
     } else {
-      player.mute()
+      sendPlayerCommand('player:mute')
+      mutedRef.current = true
       setMuted(true)
     }
   }
@@ -721,29 +792,6 @@ export function SyncedYouTubePlayer({
       )
     } finally {
       setQueueSkipping(false)
-    }
-  }
-
-  const handleTogglePlayback = async () => {
-    const player = playerRef.current
-    const remote = lastRemoteStateRef.current
-    if (!player || !remote || playbackChanging) return
-
-    setPlaybackChanging(true)
-    try {
-      await setRoomPlaybackStatus({
-        positionSeconds: player.getCurrentTime(),
-        roomId,
-        status: remote.status === 'playing' ? 'paused' : 'playing',
-      })
-    } catch (reason) {
-      toast.error(
-        reason instanceof Error
-          ? reason.message
-          : 'Не удалось изменить воспроизведение.',
-      )
-    } finally {
-      setPlaybackChanging(false)
     }
   }
 
@@ -805,10 +853,19 @@ export function SyncedYouTubePlayer({
               <CircularProgress color="inherit" />
             </Box>
           )}
-          <Box
-            className="pointer-events-none h-full w-full"
-            ref={playerContainerRef}
-          />
+          {playerSrc && (
+            <Box
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              className="pointer-events-none h-full w-full border-0"
+              component="iframe"
+              key={iframeVideoId}
+              ref={playerFrameRef}
+              src={playerSrc}
+              tabIndex={-1}
+              title="Синхронный плеер RUTUBE"
+            />
+          )}
 
           <Box className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-10 text-sm text-white sm:px-5 sm:pb-4">
             <Typography component="span" variant="body2">
@@ -817,40 +874,20 @@ export function SyncedYouTubePlayer({
             <Box className="flex flex-wrap justify-end gap-2">
               {(currentMemberRole === 'owner' ||
                 currentMemberRole === 'host') && (
-                <>
-                  <Button
-                    disabled={playbackChanging || !remoteState}
-                    onClick={() => void handleTogglePlayback()}
-                    sx={{
-                      '&:hover': { backgroundColor: '#5D3A82' },
-                      backgroundColor: '#3B2158',
-                      borderColor: '#B88CFF',
-                      color: '#FFFFFF',
-                      padding: '8px 12px',
-                    }}
-                    variant="outlined"
-                  >
-                    {playbackChanging
-                      ? 'Синхронизируем…'
-                      : remoteState?.status === 'paused'
-                        ? 'Продолжить'
-                        : 'Пауза'}
-                  </Button>
-                  <Button
-                    disabled={queueSkipping || queueItems.length === 0}
-                    onClick={() => void handleSkipVideo()}
-                    sx={{
-                      '&:hover': { backgroundColor: '#5D3A82' },
-                      backgroundColor: '#3B2158',
-                      borderColor: '#B88CFF',
-                      color: '#FFFFFF',
-                      padding: '8px 12px',
-                    }}
-                    variant="outlined"
-                  >
-                    {queueSkipping ? 'Пропускаем…' : 'Пропустить'}
-                  </Button>
-                </>
+                <Button
+                  disabled={queueSkipping || queueItems.length === 0}
+                  onClick={() => void handleSkipVideo()}
+                  sx={{
+                    '&:hover': { backgroundColor: '#5D3A82' },
+                    backgroundColor: '#3B2158',
+                    borderColor: '#B88CFF',
+                    color: '#FFFFFF',
+                    padding: '8px 12px',
+                  }}
+                  variant="outlined"
+                >
+                  {queueSkipping ? 'Пропускаем…' : 'Пропустить'}
+                </Button>
               )}
               <Button
                 disabled={!playerReady}
@@ -874,8 +911,8 @@ export function SyncedYouTubePlayer({
 
           {autoplayBlocked && (
             <Box className="absolute left-4 right-4 top-4 rounded-xl border border-[#6D4A8F] bg-[#24143D] p-3 text-sm text-[#F8F3FF]">
-              Восстанавливаем беззвучное воспроизведение и синхронизацию с
-              комнатой…
+              Браузер задержал автоматический запуск. Нажмите «Включить звук»
+              один раз.
             </Box>
           )}
         </Box>

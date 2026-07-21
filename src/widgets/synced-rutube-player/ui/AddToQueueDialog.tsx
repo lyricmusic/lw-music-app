@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 import {
-  searchRoomYouTubeVideos,
-  type YouTubeSearchResult,
+  getRoomRutubeVideo,
+  searchRoomRutubeVideos,
+  type RutubeSearchResult,
 } from '@/entities/room'
-import { extractYouTubeVideoId } from '@/shared/lib/youtube'
+import { extractRutubeVideoId } from '@/shared/lib/rutube'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
 import {
@@ -27,12 +28,12 @@ interface AddToQueueDialogProps {
 interface TrackOptionProps {
   adding: boolean
   disabled: boolean
-  onSelect: (track: YouTubeSearchResult) => void
-  track: YouTubeSearchResult
+  onSelect: (track: RutubeSearchResult) => void
+  track: RutubeSearchResult
 }
 
 const RECENT_TRACK_LIMIT = 5
-const RECENT_TRACK_STORAGE_PREFIX = 'syncly:recent-youtube-tracks:v1'
+const RECENT_TRACK_STORAGE_PREFIX = 'syncly:recent-rutube-tracks:v1'
 
 const dialogStyle = {
   backgroundColor: '#24143D',
@@ -56,9 +57,9 @@ const dialogStyle = {
   },
 }
 
-function isYouTubeSearchResult(value: unknown): value is YouTubeSearchResult {
+function isRutubeSearchResult(value: unknown): value is RutubeSearchResult {
   if (!value || typeof value !== 'object') return false
-  const track = value as Partial<YouTubeSearchResult>
+  const track = value as Partial<RutubeSearchResult>
 
   return (
     typeof track.channelTitle === 'string' &&
@@ -66,7 +67,7 @@ function isYouTubeSearchResult(value: unknown): value is YouTubeSearchResult {
     track.thumbnailUrl.startsWith('https://') &&
     typeof track.title === 'string' &&
     typeof track.videoId === 'string' &&
-    /^[\w-]{11}$/.test(track.videoId)
+    /^[a-f\d]{32}$/i.test(track.videoId)
   )
 }
 
@@ -82,14 +83,14 @@ function readRecentTracks(userId: null | string) {
       window.localStorage.getItem(getRecentTrackStorageKey(userId)) ?? '[]',
     ) as unknown
     return Array.isArray(stored)
-      ? stored.filter(isYouTubeSearchResult).slice(0, RECENT_TRACK_LIMIT)
+      ? stored.filter(isRutubeSearchResult).slice(0, RECENT_TRACK_LIMIT)
       : []
   } catch {
     return []
   }
 }
 
-function rememberTrack(userId: null | string, track: YouTubeSearchResult) {
+function rememberTrack(userId: null | string, track: RutubeSearchResult) {
   const recentTracks = [
     track,
     ...readRecentTracks(userId).filter(item => item.videoId !== track.videoId),
@@ -165,7 +166,7 @@ function TrackOption({ adding, disabled, onSelect, track }: TrackOptionProps) {
             noWrap
             sx={{ color: '#BDA8D5', fontSize: { xs: '12px', sm: '14px' } }}
           >
-            {track.channelTitle || 'YouTube'}
+            {track.channelTitle || 'RUTUBE'}
           </Typography>
         </Box>
         {adding && (
@@ -191,11 +192,11 @@ export function AddToQueueDialog({
   const [error, setError] = useState<null | string>(null)
   const [musicOnly, setMusicOnly] = useState(true)
   const [query, setQuery] = useState('')
-  const [recentTracks, setRecentTracks] = useState<YouTubeSearchResult[]>([])
-  const [results, setResults] = useState<YouTubeSearchResult[]>([])
+  const [recentTracks, setRecentTracks] = useState<RutubeSearchResult[]>([])
+  const [results, setResults] = useState<RutubeSearchResult[]>([])
   const [searching, setSearching] = useState(false)
 
-  const inputVideoId = extractYouTubeVideoId(query)
+  const inputVideoId = extractRutubeVideoId(query)
   const busy = searching || addingVideoId !== null
 
   useEffect(() => {
@@ -217,7 +218,7 @@ export function AddToQueueDialog({
     onClose()
   }
 
-  const handleAddTrack = async (track: YouTubeSearchResult) => {
+  const handleAddTrack = async (track: RutubeSearchResult) => {
     setAddingVideoId(track.videoId)
     setError(null)
 
@@ -243,17 +244,27 @@ export function AddToQueueDialog({
     setError(null)
 
     if (!normalizedQuery) {
-      setError('Введите название трека или вставьте ссылку YouTube.')
+      setError('Введите название трека или вставьте ссылку RUTUBE.')
       return
     }
 
     if (inputVideoId) {
-      await handleAddTrack({
-        channelTitle: 'Добавлено по ссылке',
-        thumbnailUrl: `https://i.ytimg.com/vi/${inputVideoId}/mqdefault.jpg`,
-        title: 'Видео YouTube',
-        videoId: inputVideoId,
-      })
+      setSearching(true)
+      try {
+        const track = await getRoomRutubeVideo({
+          roomId,
+          videoId: inputVideoId,
+        })
+        await handleAddTrack(track)
+      } catch (reason) {
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось проверить видео RUTUBE.',
+        )
+      } finally {
+        setSearching(false)
+      }
       return
     }
 
@@ -265,7 +276,7 @@ export function AddToQueueDialog({
     setSearching(true)
     setResults([])
     try {
-      const items = await searchRoomYouTubeVideos({
+      const items = await searchRoomRutubeVideos({
         musicOnly,
         query: normalizedQuery,
         roomId,
@@ -278,7 +289,7 @@ export function AddToQueueDialog({
       setError(
         reason instanceof Error
           ? reason.message
-          : 'Не удалось выполнить поиск на YouTube.',
+          : 'Не удалось выполнить поиск на RUTUBE.',
       )
     } finally {
       setSearching(false)
@@ -378,7 +389,7 @@ export function AddToQueueDialog({
               marginBottom: '18px',
             }}
           >
-            Найдите трек или вставьте ссылку YouTube
+            Найдите трек или вставьте ссылку RUTUBE
           </Typography>
 
           <Box
@@ -425,7 +436,7 @@ export function AddToQueueDialog({
               setQuery(event.target.value)
               if (error) setError(null)
             }}
-            placeholder="Название трека или ссылка YouTube"
+            placeholder="Название трека или ссылка RUTUBE"
             sx={{
               marginBottom: error ? '12px' : '18px',
               '& .MuiFilledInput-root': {

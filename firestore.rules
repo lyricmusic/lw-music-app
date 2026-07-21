@@ -403,7 +403,9 @@ service cloud.firestore {
         && request.resource.data.revision > 0
         && request.resource.data.status in ['paused', 'playing']
         && request.resource.data.videoId is string
-        && request.resource.data.videoId.size() == 11;
+        && request.resource.data.videoId.matches(
+          '([-_A-Za-z0-9]{11}|[a-f0-9]{32})'
+        );
     }
 
     function canControlPlayback(roomId) {
@@ -643,7 +645,9 @@ service cloud.firestore {
         && queueMember.itemId == itemId
         && queueMember.userId == request.auth.uid
         && request.resource.data.videoId is string
-        && request.resource.data.videoId.matches('[-_A-Za-z0-9]{11}');
+        && request.resource.data.videoId.matches(
+          '([-_A-Za-z0-9]{11}|[a-f0-9]{32})'
+        );
     }
 
     function hasValidQueueMember(roomId, memberId) {

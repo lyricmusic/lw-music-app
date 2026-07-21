@@ -53,11 +53,12 @@ export { updateRoomAccess } from './api/roomSettings'
 export {
   advanceRoomQueue,
   enqueueRoomVideo,
+  getRoomRutubeVideo,
   leaveRoomQueue,
-  searchRoomYouTubeVideos,
+  searchRoomRutubeVideos,
   setRoomPlaybackStatus,
   skipRoomVideo,
-  type YouTubeSearchResult,
+  type RutubeSearchResult,
 } from './api/roomQueue'
 export { ROOM_CATEGORIES } from './model/categories'
 export {

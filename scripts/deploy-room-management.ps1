@@ -1,7 +1,6 @@
 param(
   [string]$YcPath = 'yc',
   [bool]$EnforceAppCheck = $false,
-  [string]$YouTubeApiKey = $env:YOUTUBE_API_KEY,
   [string[]]$AllowedOrigins = @(
     'https://syncly.lyricweb.ru',
     'https://lwmusic-ffe83.web.app',
@@ -13,14 +12,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
-if ([string]::IsNullOrWhiteSpace($YouTubeApiKey)) {
-  throw 'Set YOUTUBE_API_KEY or pass -YouTubeApiKey before deploying room-management.'
-}
-$YouTubeApiKey = $YouTubeApiKey.Trim()
-if ($YouTubeApiKey.Contains(',')) {
-  throw 'YOUTUBE_API_KEY must not contain a comma.'
-}
 
 function Invoke-YcJson {
   param([string[]]$Arguments)
@@ -145,7 +136,7 @@ try {
     '--execution-timeout', '20s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue,YOUTUBE_API_KEY=$YouTubeApiKey",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

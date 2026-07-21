@@ -5,7 +5,7 @@ import { routes } from '@/shared/config/routes'
 import { CharacterEditorDialog } from '@/features/edit-character'
 import { ProfileOnboardingDialog } from '@/features/profile-onboarding'
 import { AppHeader } from '@/widgets/app-header'
-import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
+import { SyncedRutubePlayer } from '@/widgets/synced-rutube-player'
 import { CircularProgress } from '@mui/material'
 
 import { DirectRoomRoute, GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
@@ -56,7 +56,12 @@ function AuthenticatedLayout() {
 function PlayerSmokeTestPage() {
   return (
     <main className="min-h-dvh bg-[#12071F] p-2 sm:p-4">
-      <SyncedYouTubePlayer roomId="browser-smoke-test" syncEnabled={false} />
+      <SyncedRutubePlayer
+        previewVideoId="fc4bcb2d34a23875d0896ea966df9945"
+        queueEnabled={false}
+        roomId="browser-smoke-test"
+        syncEnabled={false}
+      />
     </main>
   )
 }

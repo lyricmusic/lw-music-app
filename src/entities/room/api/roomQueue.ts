@@ -15,13 +15,13 @@ interface EnqueueRoomVideoInput {
   videoId: string
 }
 
-interface SearchRoomYouTubeVideosInput {
+interface SearchRoomRutubeVideosInput {
   musicOnly: boolean
   query: string
   roomId: string
 }
 
-export interface YouTubeSearchResult {
+export interface RutubeSearchResult {
   channelTitle: string
   thumbnailUrl: string
   title: string
@@ -58,16 +58,29 @@ interface QueueState {
 
 const MAX_QUEUE_POSITION = 999_999_999_999
 
-export async function searchRoomYouTubeVideos({
+export async function searchRoomRutubeVideos({
   musicOnly,
   query,
   roomId,
-}: SearchRoomYouTubeVideosInput) {
+}: SearchRoomRutubeVideosInput) {
   const result = await callRoomManagementApi<{
-    items: YouTubeSearchResult[]
-  }>('searchYouTubeVideos', { musicOnly, query, roomId })
+    items: RutubeSearchResult[]
+  }>('searchRutubeVideos', { musicOnly, query, roomId })
 
   return Array.isArray(result.items) ? result.items.slice(0, 5) : []
+}
+
+export async function getRoomRutubeVideo({
+  roomId,
+  videoId,
+}: {
+  roomId: string
+  videoId: string
+}) {
+  return callRoomManagementApi<RutubeSearchResult>('getRutubeVideo', {
+    roomId,
+    videoId,
+  })
 }
 
 function getQueueItemId(position: number) {
@@ -130,8 +143,8 @@ export async function enqueueRoomVideo({
   if (!user) throw new Error('Чтобы встать в очередь, войдите в аккаунт.')
   if (!roomId) throw new Error('Комната не найдена.')
   if (!normalizedDisplayName) throw new Error('В профиле не указан никнейм.')
-  if (!/^[\w-]{11}$/.test(videoId)) {
-    throw new Error('Указано некорректное видео YouTube.')
+  if (!/^[a-f\d]{32}$/i.test(videoId)) {
+    throw new Error('Указана некорректная ссылка на видео RUTUBE.')
   }
 
   const playbackRef = doc(db, 'rooms', roomId, 'playback', 'current')
@@ -220,7 +233,13 @@ export async function advanceRoomQueue({
   roomId,
 }: AdvanceRoomQueueInput) {
   const user = auth.currentUser
-  if (!user || !roomId || !/^[\w-]{11}$/.test(finishedVideoId)) return false
+  if (
+    !user ||
+    !roomId ||
+    !/^([-_A-Za-z0-9]{11}|[a-f\d]{32})$/.test(finishedVideoId)
+  ) {
+    return false
+  }
 
   const result = await callRoomManagementApi<{ advanced: boolean }>(
     'advanceRoomVideo',
@@ -348,7 +367,7 @@ export async function removeRoomQueueMemberInTransaction(
       !Number.isInteger(nextPosition) ||
       nextPosition <= (queueState.activePosition ?? 0) ||
       typeof nextItem.videoId !== 'string' ||
-      !/^[\w-]{11}$/.test(nextItem.videoId))
+      !/^([-_A-Za-z0-9]{11}|[a-f\d]{32})$/.test(nextItem.videoId))
   ) {
     if (strict) {
       throw new Error('Следующий элемент очереди содержит некорректные данные.')

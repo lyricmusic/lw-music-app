@@ -107,8 +107,8 @@ function playbackFields({ changedBy, revision, videoId }) {
 const roomId = 'queue-rules-room'
 const firstItemId = '000000000001'
 const secondItemId = '000000000002'
-const firstVideoId = 'dQw4w9WgXcQ'
-const secondVideoId = 'M7lc1UVf-VE'
+const firstVideoId = 'fc4bcb2d34a23875d0896ea966df9945'
+const secondVideoId = '5f347f2feb6751ccfbf1b5604bd04925'
 const requestTimeTransform = [
   { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
 ]
@@ -521,10 +521,7 @@ assert.equal(
 
 const seedEmptyQueueWithStalePlayback = await commit(
   [
-    update(
-      `rooms/${roomId}/queueState/current`,
-      queueStateFields([], null, 3),
-    ),
+    update(`rooms/${roomId}/queueState/current`, queueStateFields([], null, 3)),
     update(
       `rooms/${roomId}/playback/current`,
       playbackFields({

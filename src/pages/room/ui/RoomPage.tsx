@@ -15,7 +15,7 @@ import {
 import { ReportDialog } from '@/features/report-content'
 import { routes } from '@/shared/config/routes'
 import { RoomChat } from '@/widgets/room-chat'
-import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
+import { SyncedRutubePlayer } from '@/widgets/synced-rutube-player'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 function RoomEntryState({
@@ -260,7 +260,7 @@ export function RoomPage() {
     >
       <Box className="room-content-grid">
         <Box className="room-player-column">
-          <SyncedYouTubePlayer
+          <SyncedRutubePlayer
             currentMemberRole={currentMember?.role}
             key={roomId}
             queueEnabled={
