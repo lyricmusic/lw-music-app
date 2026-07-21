@@ -273,10 +273,12 @@ h6 {
 .room-player-layout {
   display: grid;
   grid-template-areas: 'queue';
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 4px;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   width: 100%;
 }
 
@@ -295,7 +297,9 @@ h6 {
 
 .room-queue-panel {
   grid-area: queue;
+  min-width: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .room-lower-layout {

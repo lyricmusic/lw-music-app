@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMatch, useNavigate } from 'react-router-dom'
 
 import logo from '@assets/lw.svg'
@@ -21,10 +21,40 @@ import { UserMenu } from './UserMenu'
 export function AppHeader() {
   const { profile } = useSession()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const userMenuContainerRef = useRef<HTMLDivElement>(null)
+  const userMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const navigate = useNavigate()
   const roomMatch = useMatch(routes.roomPattern)
   const roomName = useRoomName(roomMatch?.params.roomId)
   const isInRoom = Boolean(roomMatch)
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !userMenuContainerRef.current?.contains(event.target)
+      ) {
+        setIsUserMenuOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+
+      setIsUserMenuOpen(false)
+      userMenuTriggerRef.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isUserMenuOpen])
 
   return (
     <AppBar
@@ -139,12 +169,14 @@ export function AppHeader() {
             </Button>
           )}
 
-          <Box sx={{ position: 'relative' }}>
+          <Box ref={userMenuContainerRef} sx={{ position: 'relative' }}>
             <IconButton
+              aria-controls={isUserMenuOpen ? 'user-menu' : undefined}
               aria-expanded={isUserMenuOpen}
               aria-haspopup="menu"
               aria-label="Открыть меню пользователя"
               onClick={() => setIsUserMenuOpen(current => !current)}
+              ref={userMenuTriggerRef}
               sx={{
                 '&:hover': { backgroundColor: '#4A2B6D' },
                 backgroundColor: '#32204B',
@@ -179,7 +211,10 @@ export function AppHeader() {
               </Avatar>
             </IconButton>
 
-            {isUserMenuOpen && <UserMenu />}
+            <UserMenu
+              onClose={() => setIsUserMenuOpen(false)}
+              open={isUserMenuOpen}
+            />
           </Box>
         </Box>
       </Toolbar>
