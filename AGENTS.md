@@ -25,3 +25,8 @@
 
 - Run TypeScript, ESLint, and the production build after application changes.
 - For Firestore-related work, include the rules compilation/deployment result in the final handoff.
+
+## Git publishing
+
+- When the user asks to upload or push the current changes without explicitly requesting a pull request, include all current working-tree changes, commit them, and push directly to `develop`.
+- Do not create a pull request or a separate publishing branch unless the user explicitly requests one.
