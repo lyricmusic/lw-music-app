@@ -15,6 +15,19 @@ interface EnqueueRoomVideoInput {
   videoId: string
 }
 
+interface SearchRoomYouTubeVideosInput {
+  musicOnly: boolean
+  query: string
+  roomId: string
+}
+
+export interface YouTubeSearchResult {
+  channelTitle: string
+  thumbnailUrl: string
+  title: string
+  videoId: string
+}
+
 interface AdvanceRoomQueueInput {
   finishedVideoId: string
   roomId: string
@@ -44,6 +57,18 @@ interface QueueState {
 }
 
 const MAX_QUEUE_POSITION = 999_999_999_999
+
+export async function searchRoomYouTubeVideos({
+  musicOnly,
+  query,
+  roomId,
+}: SearchRoomYouTubeVideosInput) {
+  const result = await callRoomManagementApi<{
+    items: YouTubeSearchResult[]
+  }>('searchYouTubeVideos', { musicOnly, query, roomId })
+
+  return Array.isArray(result.items) ? result.items.slice(0, 5) : []
+}
 
 function getQueueItemId(position: number) {
   return String(position).padStart(12, '0')

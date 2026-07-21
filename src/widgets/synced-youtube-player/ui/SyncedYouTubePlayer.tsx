@@ -1151,6 +1151,8 @@ export function SyncedYouTubePlayer({
         onClose={() => setQueueDialogOpen(false)}
         onSubmit={handleJoinQueue}
         open={queueDialogOpen}
+        roomId={roomId}
+        userId={user?.uid ?? null}
       />
     </Box>
   )

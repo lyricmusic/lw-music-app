@@ -85,11 +85,11 @@ export function resolveUserCharacter(value: unknown): UserCharacter {
     : isOptionId(characterGenderOptions, candidate.genderId)
       ? candidate.genderId
       : defaultUserCharacter.genderId
-  const appearanceId = isOptionId(
-    characterAppearanceOptions,
-    candidate.appearanceId,
+  const appearanceOption = characterAppearanceOptions.find(
+    option => option.id === candidate.appearanceId,
   )
-    ? candidate.appearanceId
+  const appearanceId = appearanceOption?.available
+    ? appearanceOption.id
     : defaultUserCharacter.appearanceId
   const accentColor = isOptionId(characterAccentOptions, candidate.accentColor)
     ? candidate.accentColor
@@ -108,19 +108,72 @@ export function getCharacterAccent(accentColor: CharacterAccentId) {
   )
 }
 
+function getCharacterSpritePrefix(
+  character: Pick<
+    UserCharacter,
+    'appearanceId' | 'genderId'
+  >,
+) {
+  const genderPrefix = character.genderId === 'female' ? 'female' : 'base'
+  if (character.appearanceId === 'base') return genderPrefix
+
+  const isAppearanceAvailable = characterAppearanceOptions.some(
+    option => option.id === character.appearanceId && option.available,
+  )
+  return isAppearanceAvailable
+    ? `${genderPrefix}-${character.appearanceId}`
+    : genderPrefix
+}
+
 export function getCharacterSpriteUrl(
-  character: UserCharacter,
+  character: Pick<
+    UserCharacter,
+    'appearanceId' | 'danceId' | 'genderId'
+  >,
   isPlaying: boolean,
 ) {
-  const spritePrefix = character.genderId === 'female' ? 'female' : 'base'
+  const spritePrefix = getCharacterSpritePrefix(character)
 
-  if (!isPlaying) return `/avatars/animated/${spritePrefix}-idle-v1.webp`
+  if (!isPlaying) {
+    return `/avatars/animated/${spritePrefix}-idle-v1.webp`
+  }
 
-  // Only side-step has a production sprite today. Planned choices stay
-  // disabled in the editor until their matching WebP files are ready.
+  // Only side-step has production sprites today. Planned choices stay
+  // disabled in the editor until their matching animated WebP files are ready.
   if (character.danceId === 'side-step') {
     return `/avatars/animated/${spritePrefix}-side-step-v1.webp`
   }
 
   return `/avatars/animated/${spritePrefix}-idle-v1.webp`
+}
+
+const requestedCharacterSprites = new Set<string>()
+const loadingCharacterSprites = new Map<string, HTMLImageElement>()
+
+export function preloadCharacterSprites(
+  character: Pick<
+    UserCharacter,
+    'appearanceId' | 'danceId' | 'genderId'
+  >,
+) {
+  if (typeof Image === 'undefined') return
+
+  const spriteUrls = [
+    getCharacterSpriteUrl(character, false),
+    getCharacterSpriteUrl(character, true),
+  ]
+
+  spriteUrls.forEach(spriteUrl => {
+    if (requestedCharacterSprites.has(spriteUrl)) return
+
+    const image = new Image()
+    const releaseImage = () => loadingCharacterSprites.delete(spriteUrl)
+
+    image.decoding = 'async'
+    image.onerror = releaseImage
+    image.onload = releaseImage
+    image.src = spriteUrl
+    requestedCharacterSprites.add(spriteUrl)
+    loadingCharacterSprites.set(spriteUrl, image)
+  })
 }

@@ -8,6 +8,7 @@ import {
   characterGenderOptions,
   getCharacterAccent,
   getCharacterSpriteUrl,
+  preloadCharacterSprites,
   resolveUserCharacter,
   type CharacterAccentId,
   type CharacterAppearanceId,
@@ -117,6 +118,19 @@ export function CharacterEditorDialog({
     setDraft(savedCharacter)
     setError(null)
   }, [open, savedCharacter])
+
+  const spriteAppearanceId = draft.appearanceId
+  const spriteDanceId = draft.danceId
+  const spriteGenderId = draft.genderId
+
+  useEffect(() => {
+    if (!open) return
+    preloadCharacterSprites({
+      appearanceId: spriteAppearanceId,
+      danceId: spriteDanceId,
+      genderId: spriteGenderId,
+    })
+  }, [open, spriteAppearanceId, spriteDanceId, spriteGenderId])
 
   const accent = getCharacterAccent(draft.accentColor)
   const appearanceLabel =
@@ -234,11 +248,10 @@ export function CharacterEditorDialog({
           >
             <Box
               aria-label={`Предпросмотр: ${genderLabel}, внешность «${appearanceLabel}», танец «${danceLabel}»`}
-              className="character-editor-sprite"
-              key={`${draft.genderId}-${draft.appearanceId}-${draft.danceId}`}
+              className="character-editor-sprite character-sprite"
               role="img"
               sx={{
-                backgroundImage: `url(${getCharacterSpriteUrl(draft, true)})`,
+                '--character-sprite-image': `url(${getCharacterSpriteUrl(draft, true)})`,
                 filter: `${accent.filter} drop-shadow(0 0 10px ${accent.color})`,
               }}
             />

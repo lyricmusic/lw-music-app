@@ -54,8 +54,10 @@ export {
   advanceRoomQueue,
   enqueueRoomVideo,
   leaveRoomQueue,
+  searchRoomYouTubeVideos,
   setRoomPlaybackStatus,
   skipRoomVideo,
+  type YouTubeSearchResult,
 } from './api/roomQueue'
 export { ROOM_CATEGORIES } from './model/categories'
 export {

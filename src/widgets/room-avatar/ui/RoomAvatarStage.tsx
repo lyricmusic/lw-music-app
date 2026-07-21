@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
+
 import {
   characterDanceOptions,
   getCharacterAccent,
   getCharacterSpriteUrl,
+  preloadCharacterSprites,
   resolveUserCharacter,
   type UserCharacter,
 } from '@/entities/session'
@@ -23,6 +26,17 @@ export function RoomAvatarStage({
       option => option.id === resolvedCharacter.danceId,
     )?.label ?? 'Шаги'
   const stateLabel = isPlaying ? `Танцует: ${danceLabel}` : 'Ждёт музыку'
+  const spriteAppearanceId = resolvedCharacter.appearanceId
+  const spriteDanceId = resolvedCharacter.danceId
+  const spriteGenderId = resolvedCharacter.genderId
+
+  useEffect(() => {
+    preloadCharacterSprites({
+      appearanceId: spriteAppearanceId,
+      danceId: spriteDanceId,
+      genderId: spriteGenderId,
+    })
+  }, [spriteAppearanceId, spriteDanceId, spriteGenderId])
 
   return (
     <Box
@@ -36,10 +50,9 @@ export function RoomAvatarStage({
     >
       <Box aria-hidden="true" className="room-avatar-stage__viewport">
         <Box
-          className="room-avatar-sprite"
-          key={isPlaying ? 'side-step' : 'idle'}
+          className="character-sprite room-avatar-sprite"
           sx={{
-            backgroundImage: `url(${getCharacterSpriteUrl(resolvedCharacter, isPlaying)})`,
+            '--character-sprite-image': `url(${getCharacterSpriteUrl(resolvedCharacter, isPlaying)})`,
             filter: `${accent.filter} drop-shadow(0 0 5px ${accent.color})`,
           }}
         />

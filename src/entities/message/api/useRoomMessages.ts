@@ -8,16 +8,19 @@ import {
   onSnapshot,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore'
 
 import type { RoomMessage } from '../model/types'
 
 const MESSAGE_LIMIT = 50
+const MESSAGE_RETENTION_MILLISECONDS = 24 * 60 * 60_000
 
 export function useRoomMessages(roomId: string) {
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<null | string>(null)
+  const [currentTimeMillis, setCurrentTimeMillis] = useState(Date.now)
 
   useEffect(() => {
     setMessages([])
@@ -31,6 +34,11 @@ export function useRoomMessages(roomId: string) {
 
     const messagesQuery = query(
       collection(db, 'rooms', roomId, 'messages'),
+      where(
+        'createdAt',
+        '>=',
+        Timestamp.fromMillis(Date.now() - MESSAGE_RETENTION_MILLISECONDS),
+      ),
       orderBy('createdAt', 'desc'),
       limit(MESSAGE_LIMIT),
     )
@@ -63,6 +71,7 @@ export function useRoomMessages(roomId: string) {
           .reverse()
 
         setMessages(nextMessages)
+        setCurrentTimeMillis(Date.now())
         setError(null)
         setLoading(false)
       },
@@ -76,5 +85,32 @@ export function useRoomMessages(roomId: string) {
     )
   }, [roomId])
 
-  return { error, loading, messages }
+  useEffect(() => {
+    const nextExpirationMillis = messages.reduce((nearest, message) => {
+      if (!message.createdAt) return nearest
+
+      const expirationMillis =
+        message.createdAt.toMillis() + MESSAGE_RETENTION_MILLISECONDS
+      if (expirationMillis <= currentTimeMillis) return nearest
+      return Math.min(nearest, expirationMillis)
+    }, Number.POSITIVE_INFINITY)
+
+    if (!Number.isFinite(nextExpirationMillis)) return
+
+    const timeoutId = window.setTimeout(
+      () => setCurrentTimeMillis(Date.now()),
+      Math.max(0, nextExpirationMillis - Date.now()) + 50,
+    )
+
+    return () => window.clearTimeout(timeoutId)
+  }, [currentTimeMillis, messages])
+
+  const visibleMessages = messages.filter(
+    message =>
+      !message.createdAt ||
+      message.createdAt.toMillis() + MESSAGE_RETENTION_MILLISECONDS >
+        currentTimeMillis,
+  )
+
+  return { error, loading, messages: visibleMessages }
 }

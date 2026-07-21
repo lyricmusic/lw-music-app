@@ -756,7 +756,7 @@ assert.equal(
   JSON.stringify(validCharacterUpdate),
 )
 
-const unavailableCharacterUpdate = await commit(
+const validNeonCharacterUpdate = await commit(
   [
     patch(
       `users/${otherUser.uid}`,
@@ -764,6 +764,30 @@ const unavailableCharacterUpdate = await commit(
         character: mapValue({
           accentColor: stringValue('pink'),
           appearanceId: stringValue('neon'),
+          danceId: stringValue('side-step'),
+          genderId: stringValue('male'),
+        }),
+      },
+      ['character'],
+      [requestTime('updatedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  validNeonCharacterUpdate.ok,
+  true,
+  JSON.stringify(validNeonCharacterUpdate),
+)
+
+const unavailableCharacterUpdate = await commit(
+  [
+    patch(
+      `users/${otherUser.uid}`,
+      {
+        character: mapValue({
+          accentColor: stringValue('pink'),
+          appearanceId: stringValue('club'),
           danceId: stringValue('side-step'),
           genderId: stringValue('male'),
         }),

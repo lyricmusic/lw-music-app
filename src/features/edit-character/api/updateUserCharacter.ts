@@ -3,7 +3,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import type { UserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
 
-const AVAILABLE_APPEARANCE_IDS = new Set(['base'])
+const AVAILABLE_APPEARANCE_IDS = new Set(['base', 'neon'])
 const AVAILABLE_ACCENT_IDS = new Set(['violet', 'cyan', 'pink', 'lime'])
 const AVAILABLE_DANCE_IDS = new Set(['side-step'])
 const AVAILABLE_GENDER_IDS = new Set(['male', 'female'])

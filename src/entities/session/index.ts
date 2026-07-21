@@ -7,6 +7,7 @@ export {
   defaultUserCharacter,
   getCharacterAccent,
   getCharacterSpriteUrl,
+  preloadCharacterSprites,
   resolveUserCharacter,
 } from './model/character'
 export type {

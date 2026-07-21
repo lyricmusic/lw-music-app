@@ -67,7 +67,7 @@ service cloud.firestore {
           (!('genderId' in character)
             && character.appearanceId in ['base', 'female'])
           || (character.genderId in ['male', 'female']
-            && character.appearanceId == 'base')
+            && character.appearanceId in ['base', 'neon'])
         )
         && character.accentColor in ['violet', 'cyan', 'pink', 'lime']
         && character.danceId == 'side-step';
@@ -864,8 +864,9 @@ service cloud.firestore {
     match /rooms/{roomId}/messages/{messageId} {
       allow read: if canReadRoomContent(roomId)
         && exists(/databases/$(database)/documents/rooms/$(roomId));
-      // Sending is server-only: rate limits, link checks and repeat detection
-      // must not depend on client-controlled writes.
+      // createdAt and the retention field expiresAt are server-managed.
+      // Sending is server-only so rate limits, link checks and retention
+      // cannot depend on client-controlled writes.
       allow create, update, delete: if false;
     }
 

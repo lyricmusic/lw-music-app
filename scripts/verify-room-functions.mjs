@@ -281,7 +281,19 @@ const firstMessage = await callFunction(
   futureOwner.idToken,
 )
 assert.equal(firstMessage.ok, true, JSON.stringify(firstMessage))
-await readDocument(`rooms/${roomId}/messages/${firstMessage.body.messageId}`)
+const storedMessage = await readDocument(
+  `rooms/${roomId}/messages/${firstMessage.body.messageId}`,
+)
+const storedMessageCreatedAt = Date.parse(
+  storedMessage.createdAt.timestampValue,
+)
+const storedMessageExpiresAt = Date.parse(
+  storedMessage.expiresAt.timestampValue,
+)
+assert.equal(
+  storedMessageExpiresAt - storedMessageCreatedAt,
+  24 * 60 * 60 * 1000,
+)
 
 const tooFastMessage = await callFunction(
   'sendRoomMessage',

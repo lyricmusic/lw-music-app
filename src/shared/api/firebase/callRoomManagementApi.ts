@@ -20,8 +20,8 @@ export async function callRoomManagementApi<
     response = await fetch(roomManagementApiUrl, {
       body: JSON.stringify({ ...input, operation }),
       headers: {
-        Authorization: `Bearer ${await user.getIdToken()}`,
         'Content-Type': 'application/json',
+        'X-Firebase-Authorization': `Bearer ${await user.getIdToken()}`,
         ...(appCheckToken
           ? { 'X-Firebase-AppCheck': appCheckToken.token }
           : {}),
@@ -33,9 +33,16 @@ export async function callRoomManagementApi<
   }
 
   const result = (await response.json().catch(() => null)) as
-    (TResult & { error?: string; message?: string }) | null
+    | (TResult & {
+        error?: string
+        errorMessage?: string
+        message?: string
+      })
+    | null
   if (!response.ok) {
-    throw new Error(result?.message || 'Сервер отклонил действие.')
+    throw new Error(
+      result?.message || result?.errorMessage || 'Сервер отклонил действие.',
+    )
   }
   if (!result) throw new Error('Сервер вернул некорректный ответ.')
   return result

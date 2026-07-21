@@ -1,26 +1,9 @@
 param(
   [string]$YcPath = 'yc',
-  [bool]$EnforceAppCheck = $false,
-  [string]$YouTubeApiKey = $env:YOUTUBE_API_KEY,
-  [string[]]$AllowedOrigins = @(
-    'https://syncly.lyricweb.ru',
-    'https://lwmusic-ffe83.web.app',
-    'https://lwmusic-ffe83.firebaseapp.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173'
-  )
+  [string]$Schedule = '0 * ? * * *'
 )
 
 $ErrorActionPreference = 'Stop'
-
-if ([string]::IsNullOrWhiteSpace($YouTubeApiKey)) {
-  throw 'Set YOUTUBE_API_KEY or pass -YouTubeApiKey before deploying room-management.'
-}
-$YouTubeApiKey = $YouTubeApiKey.Trim()
-if ($YouTubeApiKey.Contains(',')) {
-  throw 'YOUTUBE_API_KEY must not contain a comma.'
-}
 
 function Invoke-YcJson {
   param([string[]]$Arguments)
@@ -84,9 +67,10 @@ if ($LASTEXITCODE -ne 0 -or -not $folderId) {
 
 $serviceAccountName = 'lw-music-auth'
 $secretName = 'lw-music-yandex-auth'
-$functionName = 'lw-music-room-management'
+$functionName = 'lw-music-message-cleanup'
+$triggerName = 'lw-music-message-cleanup'
 $functionSource = (
-  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-management')
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\message-cleanup')
 ).Path
 
 $serviceAccount = Find-YcJson @(
@@ -107,6 +91,11 @@ Invoke-YcCommand @(
   '--role', 'lockbox.payloadViewer',
   '--service-account-id', $serviceAccount.id
 )
+Invoke-YcCommand @(
+  'resource-manager', 'folder', 'add-access-binding', $folderId,
+  '--role', 'functions.functionInvoker',
+  '--service-account-id', $serviceAccount.id
+)
 
 $function = Find-YcJson @(
   'serverless', 'function', 'get', '--name', $functionName
@@ -115,16 +104,14 @@ if (-not $function) {
   $function = Invoke-YcJson @(
     'serverless', 'function', 'create',
     '--name', $functionName,
-    '--description', 'Authorizes and atomically applies LW Music room management actions'
+    '--description', 'Deletes expired LW Music room messages on schedule'
   )
 }
 
 $deploymentSource = Join-Path (
   [System.IO.Path]::GetTempPath()
-) "lw-music-room-management-$([guid]::NewGuid().ToString('N'))"
+) "lw-music-message-cleanup-$([guid]::NewGuid().ToString('N'))"
 $sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
-$allowedOriginsValue = $AllowedOrigins -join ';'
-$enforceAppCheckValue = $EnforceAppCheck.ToString().ToLowerInvariant()
 
 New-Item -ItemType Directory -Path $deploymentSource | Out-Null
 try {
@@ -142,10 +129,9 @@ try {
     '--runtime', 'nodejs22',
     '--entrypoint', 'index.handler',
     '--memory', '256MB',
-    '--execution-timeout', '20s',
+    '--execution-timeout', '60s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue,YOUTUBE_API_KEY=$YouTubeApiKey",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {
@@ -154,13 +140,35 @@ try {
   }
 }
 
-Invoke-YcCommand @(
-  'serverless', 'function', 'allow-unauthenticated-invoke', $function.id
+$trigger = Find-YcJson @(
+  'serverless', 'trigger', 'get', '--name', $triggerName
 )
+if ($trigger) {
+  $trigger = Invoke-YcJson @(
+    'serverless', 'trigger', 'update', 'timer',
+    '--id', $trigger.id,
+    '--new-cron-expression', $Schedule,
+    '--new-invoke-function-id', $function.id,
+    '--new-invoke-function-service-account-id', $serviceAccount.id,
+    '--new-function-retry-attempts', '3',
+    '--new-function-retry-interval', '30s'
+  )
+} else {
+  $trigger = Invoke-YcJson @(
+    'serverless', 'trigger', 'create', 'timer',
+    '--name', $triggerName,
+    '--description', 'Deletes room messages older than 24 hours every hour',
+    '--cron-expression', $Schedule,
+    '--invoke-function-id', $function.id,
+    '--invoke-function-service-account-id', $serviceAccount.id,
+    '--retry-attempts', '3',
+    '--retry-interval', '30s'
+  )
+}
 
-$functionUrl = "https://functions.yandexcloud.net/$($function.id)"
 [PSCustomObject]@{
   functionId = $function.id
-  functionUrl = $functionUrl
-  viteVariable = "VITE_ROOM_MANAGEMENT_API_URL=$functionUrl"
+  schedule = $Schedule
+  triggerId = $trigger.id
+  triggerStatus = $trigger.status
 } | ConvertTo-Json

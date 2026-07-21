@@ -11,6 +11,7 @@ import {
   characterGenderOptions,
   getCharacterAccent,
   getCharacterSpriteUrl,
+  preloadCharacterSprites,
 } from '@/entities/session'
 import { Box, Button, Typography } from '@mui/material'
 
@@ -76,14 +77,6 @@ function getFloorCapacity(width: number): FloorCapacity {
   return 12
 }
 
-function getAnimationDelay(participantId: string) {
-  const hash = Array.from(participantId).reduce(
-    (result, character) => (result * 31 + character.charCodeAt(0)) % 200,
-    0,
-  )
-  return -(hash / 100)
-}
-
 function getCharacterLabels(participant: RoomParticipant) {
   const appearance =
     characterAppearanceOptions.find(
@@ -139,11 +132,9 @@ function DanceFloorDancer({
       )}
       <Box aria-hidden="true" className="room-dance-floor__avatar-wrap">
         <Box
-          className="room-dance-floor__sprite"
-          key={isDancing ? participant.character.danceId : 'idle'}
+          className="character-sprite room-dance-floor__sprite"
           sx={{
-            animationDelay: `${getAnimationDelay(participant.id)}s`,
-            backgroundImage: `url(${getCharacterSpriteUrl(participant.character, isDancing)})`,
+            '--character-sprite-image': `url(${getCharacterSpriteUrl(participant.character, isDancing)})`,
             filter: `${accent.filter} drop-shadow(0 0 6px ${accent.color})`,
           }}
         />
@@ -188,10 +179,9 @@ function DanceFloorDj({
       )}
       <Box
         aria-hidden="true"
-        className="room-dance-floor__dj-sprite"
-        key="idle"
+        className="character-sprite room-dance-floor__dj-sprite"
         sx={{
-          backgroundImage: `url(${getCharacterSpriteUrl(participant.character, false)})`,
+          '--character-sprite-image': `url(${getCharacterSpriteUrl(participant.character, false)})`,
           filter: `${accent.filter} drop-shadow(0 0 8px ${accent.color})`,
         }}
       />
@@ -232,6 +222,12 @@ export function RoomDanceFloor({
 }: RoomDanceFloorProps) {
   const sceneRef = useRef<HTMLDivElement>(null)
   const [capacity, setCapacity] = useState<FloorCapacity>(8)
+
+  useEffect(() => {
+    participants.forEach(participant => {
+      preloadCharacterSprites(participant.character)
+    })
+  }, [participants])
 
   useEffect(() => {
     const scene = sceneRef.current
@@ -300,10 +296,9 @@ export function RoomDanceFloor({
             className="room-dance-floor__collapsed-avatar"
           >
             <Box
-              className="room-dance-floor__sprite room-dance-floor__sprite--collapsed"
-              key="idle"
+              className="character-sprite room-dance-floor__sprite room-dance-floor__sprite--collapsed"
               sx={{
-                backgroundImage: `url(${getCharacterSpriteUrl(featuredParticipant.character, false)})`,
+                '--character-sprite-image': `url(${getCharacterSpriteUrl(featuredParticipant.character, false)})`,
                 filter: `${featuredAccent.filter} drop-shadow(0 0 5px ${featuredAccent.color})`,
               }}
             />

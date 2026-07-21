@@ -23,7 +23,9 @@ export function extractYouTubeVideoId(value: string) {
       return id && /^[\w-]{11}$/.test(id) ? id : null
     }
 
-    if (hostname === 'youtube.com' || hostname === 'm.youtube.com') {
+    if (
+      ['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(hostname)
+    ) {
       const queryId = url.searchParams.get('v')
       if (queryId && /^[\w-]{11}$/.test(queryId)) return queryId
 

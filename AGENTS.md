@@ -30,3 +30,13 @@
 
 - When the user asks to upload or push the current changes without explicitly requesting a pull request, include all current working-tree changes, commit them, and push directly to `develop`.
 - Do not create a pull request or a separate publishing branch unless the user explicitly requests one.
+
+## Changelog posts
+
+- When the user asks for a changelog, write it as a ready-to-publish Russian Telegram post for Syncly.
+- Follow this structure: an emoji and a short benefit-led title; a concise introduction; numbered steps when the feature has a sequence; user-facing capabilities listed with `•`; important limitations or safeguards in plain language; and a final availability line with `https://syncly.lyricweb.ru` and an emoji.
+- Return the finished Telegram post inside one plain-text fenced code block so the user can copy it in one action without losing line breaks or spacing.
+- Put a blank line between the title, introduction, each logical list section, explanatory paragraphs, and the final availability line. Do not place commentary inside the copyable block.
+- Keep paragraphs short, avoid developer jargon, implementation details, filenames, commit references, and test results unless the user explicitly requests them.
+- Describe the practical value for listeners, guests, room owners, or moderators instead of merely enumerating technical changes.
+- Use reactions and emojis more generously than in technical handoffs, while keeping the post readable and professional.

@@ -1,4 +1,4 @@
-/* global Buffer, console, exports, process, require */
+/* global AbortSignal, Buffer, URLSearchParams, console, exports, fetch, process, require */
 
 const { createHash, randomBytes } = require('node:crypto')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
@@ -61,6 +61,7 @@ const MAX_REPORT_COMMENT_LENGTH = 1000
 const MAX_MESSAGE_LENGTH = 1000
 const MAX_MESSAGE_LINKS = 2
 const MAX_MESSAGES_PER_WINDOW = 5
+const MESSAGE_RETENTION_MILLISECONDS = 24 * 60 * 60_000
 const MESSAGE_WINDOW_MILLISECONDS = 20_000
 const REGISTERED_MESSAGE_INTERVAL_MILLISECONDS = 2_000
 const GUEST_MESSAGE_INTERVAL_MILLISECONDS = 5_000
@@ -81,6 +82,15 @@ const REPORT_TARGET_TYPES = new Set([
   'user',
 ])
 const ROOM_VISIBILITIES = new Set(['private', 'public', 'unlisted'])
+const YOUTUBE_SEARCH_CACHE_LIMIT = 200
+const YOUTUBE_SEARCH_CACHE_TTL_MILLISECONDS = 30 * 60_000
+const YOUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS = 1_500
+const YOUTUBE_SEARCH_FETCH_LIMIT = 15
+const YOUTUBE_SEARCH_RESULT_LIMIT = 5
+const YOUTUBE_SEARCH_REGION_CODE = 'RU'
+const youtubeSearchCache = new Map()
+const youtubeSearchInFlight = new Map()
+const youtubeSearchLastRequestAt = new Map()
 const ROOM_CATEGORIES = new Map([
   [1, 'Поп'],
   [2, 'Рок'],
@@ -245,6 +255,227 @@ async function activeMember(transaction, roomId, userId) {
     )
   }
   return { member, ref: snapshot.ref }
+}
+
+async function requireRoomQueueSearchAccess(roomId, userId) {
+  const [memberSnapshot, roomSnapshot] = await Promise.all([
+    memberRef(roomId, userId).get(),
+    db.doc(`rooms/${roomId}`).get(),
+  ])
+  const member = memberSnapshot.data()
+  const room = roomSnapshot.data()
+  if (
+    !memberSnapshot.exists ||
+    member?.status !== 'active' ||
+    !roomSnapshot.exists ||
+    room?.status !== 'active'
+  ) {
+    throw new HttpsError(
+      'permission-denied',
+      'У вас больше нет доступа к этой комнате.',
+    )
+  }
+  if (member.isGuest && room?.settings?.allowGuestQueue !== true) {
+    throw new HttpsError(
+      'permission-denied',
+      'Владелец комнаты отключил очередь для гостей.',
+    )
+  }
+}
+
+function normalizeYouTubeQuery(value) {
+  if (typeof value !== 'string') return ''
+  return value.normalize('NFKC').replace(/\s+/gu, ' ').trim()
+}
+
+function decodeYouTubeText(value) {
+  if (typeof value !== 'string') return ''
+
+  const namedEntities = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    quot: '"',
+  }
+
+  return value
+    .replace(/&#(\d+);/gu, (match, code) => {
+      const codePoint = Number(code)
+      return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : match
+    })
+    .replace(/&#x([\da-f]+);/giu, (match, code) => {
+      const codePoint = Number.parseInt(code, 16)
+      return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : match
+    })
+    .replace(/&(amp|apos|gt|lt|quot);/gu, (_, name) => namedEntities[name])
+}
+
+function safeYouTubeSearchItem(item) {
+  const videoId = item?.id?.videoId
+  const snippet = item?.snippet
+  if (!/^[\w-]{11}$/.test(videoId) || typeof snippet !== 'object') {
+    return null
+  }
+
+  const thumbnailUrl = [
+    snippet.thumbnails?.high?.url,
+    snippet.thumbnails?.medium?.url,
+    snippet.thumbnails?.default?.url,
+  ].find(value => typeof value === 'string' && value.startsWith('https://'))
+  const title = decodeYouTubeText(snippet.title).trim()
+  if (!thumbnailUrl || !title) return null
+
+  return {
+    channelTitle: decodeYouTubeText(snippet.channelTitle).trim(),
+    thumbnailUrl,
+    title,
+    videoId,
+  }
+}
+
+function cachedYouTubeSearch(cacheKey) {
+  const cached = youtubeSearchCache.get(cacheKey)
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    youtubeSearchCache.delete(cacheKey)
+    return null
+  }
+
+  youtubeSearchCache.delete(cacheKey)
+  youtubeSearchCache.set(cacheKey, cached)
+  return cached.items
+}
+
+function cacheYouTubeSearch(cacheKey, items) {
+  youtubeSearchCache.set(cacheKey, {
+    expiresAt: Date.now() + YOUTUBE_SEARCH_CACHE_TTL_MILLISECONDS,
+    items,
+  })
+  while (youtubeSearchCache.size > YOUTUBE_SEARCH_CACHE_LIMIT) {
+    youtubeSearchCache.delete(youtubeSearchCache.keys().next().value)
+  }
+}
+
+async function requestYouTubeSearch(query, musicOnly) {
+  const apiKey = process.env.YOUTUBE_API_KEY
+  if (!apiKey) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Поиск YouTube пока не настроен. Вставьте ссылку на видео.',
+    )
+  }
+
+  const parameters = new URLSearchParams({
+    key: apiKey,
+    maxResults: String(YOUTUBE_SEARCH_FETCH_LIMIT),
+    part: 'snippet',
+    q: query,
+    regionCode: YOUTUBE_SEARCH_REGION_CODE,
+    relevanceLanguage: 'ru',
+    safeSearch: 'moderate',
+    type: 'video',
+    videoEmbeddable: 'true',
+    videoSyndicated: 'true',
+  })
+  if (musicOnly) parameters.set('topicId', '/m/04rlf')
+
+  let response
+  try {
+    response = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?${parameters}`,
+      { signal: AbortSignal.timeout(8_000) },
+    )
+  } catch {
+    throw new HttpsError(
+      'internal',
+      'YouTube не ответил вовремя. Повторите поиск.',
+    )
+  }
+
+  if (!response.ok) {
+    if (response.status === 403 || response.status === 429) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Лимит поиска YouTube временно исчерпан. Вставьте ссылку на видео.',
+      )
+    }
+    console.error('YouTube search failed:', response.status)
+    throw new HttpsError('internal', 'Не удалось выполнить поиск на YouTube.')
+  }
+
+  const payload = await response.json()
+  const searchItems = Array.isArray(payload?.items)
+    ? payload.items.map(safeYouTubeSearchItem).filter(Boolean)
+    : []
+  if (searchItems.length === 0) return []
+
+  const detailsParameters = new URLSearchParams({
+    fields:
+      'items(id,status(embeddable,privacyStatus,uploadStatus),contentDetails(contentRating,regionRestriction))',
+    id: searchItems.map(item => item.videoId).join(','),
+    key: apiKey,
+    part: 'contentDetails,status',
+  })
+
+  let detailsResponse
+  try {
+    detailsResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?${detailsParameters}`,
+      { signal: AbortSignal.timeout(8_000) },
+    )
+  } catch {
+    throw new HttpsError(
+      'internal',
+      'YouTube не смог проверить доступность видео. Повторите поиск.',
+    )
+  }
+
+  if (!detailsResponse.ok) {
+    console.error(
+      'YouTube video availability check failed:',
+      detailsResponse.status,
+    )
+    throw new HttpsError(
+      detailsResponse.status === 403 || detailsResponse.status === 429
+        ? 'failed-precondition'
+        : 'internal',
+      'Не удалось проверить доступность видео YouTube.',
+    )
+  }
+
+  const detailsPayload = await detailsResponse.json()
+  const playableVideoIds = new Set(
+    Array.isArray(detailsPayload?.items)
+      ? detailsPayload.items
+          .filter(item => {
+            const restriction = item?.contentDetails?.regionRestriction
+            const allowedRegions = restriction?.allowed
+            const blockedRegions = restriction?.blocked
+
+            return (
+              item?.status?.embeddable === true &&
+              item?.status?.privacyStatus === 'public' &&
+              item?.status?.uploadStatus === 'processed' &&
+              item?.contentDetails?.contentRating?.ytRating !==
+                'ytAgeRestricted' &&
+              (!Array.isArray(allowedRegions) ||
+                allowedRegions.includes(YOUTUBE_SEARCH_REGION_CODE)) &&
+              (!Array.isArray(blockedRegions) ||
+                !blockedRegions.includes(YOUTUBE_SEARCH_REGION_CODE))
+            )
+          })
+          .map(item => item.id)
+      : [],
+  )
+
+  return searchItems
+    .filter(item => playableVideoIds.has(item.videoId))
+    .slice(0, YOUTUBE_SEARCH_RESULT_LIMIT)
 }
 
 function requireRole(member, roles, message) {
@@ -415,6 +646,59 @@ function callable(handler) {
     }
   }
 }
+
+exports.searchYouTubeVideos = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const query = normalizeYouTubeQuery(request.data?.query)
+  const musicOnly = request.data?.musicOnly
+
+  if (query.length < 2 || query.length > 100) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Запрос должен содержать от 2 до 100 символов.',
+    )
+  }
+  if (typeof musicOnly !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Некорректный фильтр поиска.')
+  }
+
+  await requireRoomQueueSearchAccess(roomId, actorId)
+
+  const cacheKey = `${musicOnly ? 'music' : 'all'}:${query.toLocaleLowerCase(
+    'ru-RU',
+  )}`
+  const cachedItems = cachedYouTubeSearch(cacheKey)
+  if (cachedItems) return { items: cachedItems }
+
+  const existingRequest = youtubeSearchInFlight.get(cacheKey)
+  if (existingRequest) return { items: await existingRequest }
+
+  const now = Date.now()
+  const lastRequestAt = youtubeSearchLastRequestAt.get(actorId) ?? 0
+  const retryAfter =
+    YOUTUBE_SEARCH_MIN_INTERVAL_MILLISECONDS - (now - lastRequestAt)
+  if (retryAfter > 0) {
+    throw retryAfterError(retryAfter, 'Слишком частый поиск.')
+  }
+  youtubeSearchLastRequestAt.delete(actorId)
+  youtubeSearchLastRequestAt.set(actorId, now)
+  while (youtubeSearchLastRequestAt.size > 1_000) {
+    youtubeSearchLastRequestAt.delete(
+      youtubeSearchLastRequestAt.keys().next().value,
+    )
+  }
+
+  const pendingRequest = requestYouTubeSearch(query, musicOnly)
+  youtubeSearchInFlight.set(cacheKey, pendingRequest)
+  try {
+    const items = await pendingRequest
+    cacheYouTubeSearch(cacheKey, items)
+    return { items }
+  } finally {
+    youtubeSearchInFlight.delete(cacheKey)
+  }
+})
 
 exports.createRoom = callable(async request => {
   const actorId = requireAuth(request)
@@ -1132,6 +1416,9 @@ exports.sendRoomMessage = callable(async request => {
       authorPhotoURL:
         typeof profile.photoURL === 'string' ? profile.photoURL : null,
       createdAt: now,
+      expiresAt: Timestamp.fromMillis(
+        nowMillis + MESSAGE_RETENTION_MILLISECONDS,
+      ),
       text,
     })
     transaction.set(activityRef, {
@@ -1349,6 +1636,7 @@ const OPERATIONS = {
   moderateRoomMember: exports.moderateRoomMember,
   reportRoomMessage: exports.reportRoomMessage,
   revokeRoomInvite: exports.revokeRoomInvite,
+  searchYouTubeVideos: exports.searchYouTubeVideos,
   sendRoomMessage: exports.sendRoomMessage,
   setRoomMemberRole: exports.setRoomMemberRole,
   skipRoomVideo: exports.skipRoomVideo,
@@ -1379,7 +1667,7 @@ function getCorsHeaders(event) {
 
   return {
     'Access-Control-Allow-Headers':
-      'Authorization, Content-Type, X-Firebase-AppCheck',
+      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
     'Cache-Control': 'no-store, max-age=0',
@@ -1415,7 +1703,9 @@ function parseJsonBody(event) {
 }
 
 async function authenticate(event) {
-  const authorization = getHeader(event, 'authorization')
+  const authorization =
+    getHeader(event, 'x-firebase-authorization') ??
+    getHeader(event, 'authorization')
   const match = /^Bearer\s+(.+)$/i.exec(authorization ?? '')
   if (!match) {
     throw new HttpsError('unauthenticated', 'Авторизация обязательна.')
