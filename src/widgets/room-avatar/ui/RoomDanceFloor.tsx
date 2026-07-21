@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 
 import {
   defaultUserCharacter,
@@ -9,8 +9,6 @@ import {
   type UserCharacter,
 } from '@/entities/session'
 import { Box, Button, Typography } from '@mui/material'
-
-type DanceFloorMode = 'auto' | 'idle' | 'side-step'
 
 interface RoomDanceFloorProps {
   character?: null | UserCharacter
@@ -154,18 +152,12 @@ const TEST_DANCERS: Dancer[] = [
   },
 ]
 
-const MODE_LABELS: Record<DanceFloorMode, string> = {
-  auto: 'Авто',
-  idle: 'Стоять',
-  'side-step': 'Шаги',
-}
-
 function DanceFloorDancer({
   dancer,
-  isDancing,
+  isMusicPlaying,
 }: {
   dancer: Dancer
-  isDancing: boolean
+  isMusicPlaying: boolean
 }) {
   const character = {
     ...defaultUserCharacter,
@@ -175,7 +167,7 @@ function DanceFloorDancer({
 
   return (
     <Box
-      aria-label={`${dancer.name}. ${isDancing ? 'Танцует' : 'Стоит спокойно'}.`}
+      aria-label={`${dancer.name}. ${isMusicPlaying ? 'Танцует' : 'Стоит спокойно'}.`}
       className="room-dance-floor__dancer"
       component="li"
       style={
@@ -190,10 +182,10 @@ function DanceFloorDancer({
       <Box aria-hidden="true" className="room-dance-floor__avatar-wrap">
         <Box
           className="room-dance-floor__sprite"
-          key={isDancing ? 'side-step' : 'idle'}
+          key={isMusicPlaying ? character.danceId : 'idle'}
           sx={{
             animationDelay: `${dancer.animationDelaySeconds}s`,
-            backgroundImage: `url(${getCharacterSpriteUrl(character, isDancing)})`,
+            backgroundImage: `url(${getCharacterSpriteUrl(character, isMusicPlaying)})`,
             filter: `${accent.filter} drop-shadow(0 0 6px ${accent.color})`,
           }}
         />
@@ -211,16 +203,9 @@ export function RoomDanceFloor({
 }: RoomDanceFloorProps) {
   const userCharacter = resolveUserCharacter(character)
   const userAccent = getCharacterAccent(userCharacter.accentColor)
-  const [mode, setMode] = useState<DanceFloorMode>('auto')
-  const isDancing = mode === 'auto' ? isMusicPlaying : mode === 'side-step'
-  const statusLabel =
-    mode === 'auto'
-      ? isMusicPlaying
-        ? 'Авто · музыка играет'
-        : 'Авто · ждём музыку'
-      : mode === 'side-step'
-        ? 'Локально · шаги'
-        : 'Локально · ожидание'
+  const statusLabel = isMusicPlaying
+    ? 'Музыка играет · танцпол танцует'
+    : 'Музыка не играет · персонажи отдыхают'
   const djName = displayName?.trim() || 'Ваш персонаж'
 
   if (collapsed) {
@@ -233,9 +218,9 @@ export function RoomDanceFloor({
         <Box aria-hidden="true" className="room-dance-floor__collapsed-avatar">
           <Box
             className="room-dance-floor__sprite room-dance-floor__sprite--collapsed"
-            key={isDancing ? 'side-step' : 'idle'}
+            key="idle"
             sx={{
-              backgroundImage: `url(${getCharacterSpriteUrl(userCharacter, isDancing)})`,
+              backgroundImage: `url(${getCharacterSpriteUrl(userCharacter, false)})`,
               filter: `${userAccent.filter} drop-shadow(0 0 5px ${userAccent.color})`,
             }}
           />
@@ -300,27 +285,6 @@ export function RoomDanceFloor({
         </Button>
       </Box>
 
-      <Box aria-label="Режим танца" className="room-dance-floor__controls">
-        {(Object.keys(MODE_LABELS) as DanceFloorMode[]).map(modeId => (
-          <Button
-            aria-pressed={mode === modeId}
-            key={modeId}
-            onClick={() => setMode(modeId)}
-            size="small"
-            sx={{
-              backgroundColor: mode === modeId ? '#5D3A82' : '#32204B',
-              borderColor: mode === modeId ? userAccent.color : '#4A2B6D',
-              color: '#F8F3FF',
-              minWidth: 0,
-              padding: '5px 9px',
-            }}
-            variant="outlined"
-          >
-            {MODE_LABELS[modeId]}
-          </Button>
-        ))}
-      </Box>
-
       <Box className="room-dance-floor__scene">
         <Box aria-hidden="true" className="room-dance-floor__lights" />
         <Box
@@ -331,23 +295,23 @@ export function RoomDanceFloor({
           {TEST_DANCERS.map(dancer => (
             <DanceFloorDancer
               dancer={dancer}
-              isDancing={isDancing}
+              isMusicPlaying={isMusicPlaying}
               key={dancer.id}
             />
           ))}
         </Box>
 
         <Box
-          aria-label={`DJ ${djName}. ${isDancing ? 'Музыка играет' : 'Ожидает музыку'}.`}
+          aria-label={`DJ ${djName}. ${isMusicPlaying ? 'Музыка играет' : 'Ожидает музыку'}.`}
           className="room-dance-floor__dj"
           role="img"
         >
           <Box
             aria-hidden="true"
             className="room-dance-floor__dj-sprite"
-            key={isDancing ? 'side-step' : 'idle'}
+            key="idle"
             sx={{
-              backgroundImage: `url(${getCharacterSpriteUrl(userCharacter, isDancing)})`,
+              backgroundImage: `url(${getCharacterSpriteUrl(userCharacter, false)})`,
               filter: `${userAccent.filter} drop-shadow(0 0 8px ${userAccent.color})`,
             }}
           />

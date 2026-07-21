@@ -393,12 +393,6 @@ h6 {
   min-width: 0;
 }
 
-.room-dance-floor__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .room-dance-floor__scene {
   background:
     linear-gradient(180deg, rgb(14 4 29 / 4%) 0 28%, rgb(42 17 66 / 88%) 28%),
