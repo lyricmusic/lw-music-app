@@ -9,6 +9,7 @@ import {
   SaveAccountDialog,
   signOutCurrentUser,
 } from '@/features/auth'
+import { CharacterEditorDialog } from '@/features/edit-character'
 import { routes } from '@/shared/config/routes'
 import { LogoutIcon, MemberIcon } from '@/shared/ui/icons'
 import { List, ListItem, ListItemButton } from '@mui/material'
@@ -17,6 +18,7 @@ export function UserMenu() {
   const navigate = useNavigate()
   const { profile, user } = useSession()
   const [saveAccountOpen, setSaveAccountOpen] = useState(false)
+  const [characterEditorOpen, setCharacterEditorOpen] = useState(false)
 
   const handleLogout = async () => {
     try {
@@ -40,18 +42,27 @@ export function UserMenu() {
         </div>
 
         <List>
+          {user?.isAnonymous && (
+            <ListItem disablePadding sx={{ borderTop: '1px solid #4A2B6D' }}>
+              <ListItemButton onClick={() => setSaveAccountOpen(true)}>
+                <MemberIcon
+                  className="fill-light-brand mr-2"
+                  sx={{ width: '16px' }}
+                />
+                <span className="text-nowrap py-4 text-[#E7DDF4]">
+                  Сохранить профиль
+                </span>
+              </ListItemButton>
+            </ListItem>
+          )}
           <ListItem disablePadding sx={{ borderTop: '1px solid #4A2B6D' }}>
-            <ListItemButton
-              onClick={
-                user?.isAnonymous ? () => setSaveAccountOpen(true) : undefined
-              }
-            >
+            <ListItemButton onClick={() => setCharacterEditorOpen(true)}>
               <MemberIcon
                 className="fill-light-brand mr-2"
                 sx={{ width: '16px' }}
               />
               <span className="text-nowrap py-4 text-[#E7DDF4]">
-                {user?.isAnonymous ? 'Сохранить профиль' : 'Открыть профиль'}
+                Мой персонаж
               </span>
             </ListItemButton>
           </ListItem>
@@ -72,6 +83,10 @@ export function UserMenu() {
           open={saveAccountOpen}
         />
       )}
+      <CharacterEditorDialog
+        onClose={() => setCharacterEditorOpen(false)}
+        open={characterEditorOpen}
+      />
     </>
   )
 }

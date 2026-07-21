@@ -49,9 +49,28 @@ service cloud.firestore {
         );
     }
 
+    function hasValidCharacter() {
+      let character = request.resource.data.character;
+      return character is map
+        && character.keys().hasAll([
+          'accentColor',
+          'appearanceId',
+          'danceId'
+        ])
+        && character.keys().hasOnly([
+          'accentColor',
+          'appearanceId',
+          'danceId'
+        ])
+        && character.appearanceId == 'base'
+        && character.accentColor in ['violet', 'cyan', 'pink', 'lime']
+        && character.danceId == 'side-step';
+    }
+
     function hasValidUserProfile(userId) {
       return request.resource.data.keys().hasAll([
           'avatar',
+          'character',
           'createdAt',
           'displayName',
           'email',
@@ -61,6 +80,7 @@ service cloud.firestore {
         ])
         && request.resource.data.keys().hasOnly([
           'avatar',
+          'character',
           'createdAt',
           'displayName',
           'email',
@@ -69,6 +89,7 @@ service cloud.firestore {
           'updatedAt'
         ])
         && hasValidAvatar(userId)
+        && hasValidCharacter()
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 50

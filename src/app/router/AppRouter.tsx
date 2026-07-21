@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 
 import { routes } from '@/shared/config/routes'
+import { CharacterEditorDialog } from '@/features/edit-character'
 import { ProfileOnboardingDialog } from '@/features/profile-onboarding'
 import { AppHeader } from '@/widgets/app-header'
 import { SyncedYouTubePlayer } from '@/widgets/synced-youtube-player'
@@ -60,6 +61,14 @@ function PlayerSmokeTestPage() {
   )
 }
 
+function CharacterEditorSmokeTestPage() {
+  return (
+    <main className="min-h-dvh bg-[#12071F]">
+      <CharacterEditorDialog onClose={() => undefined} open />
+    </main>
+  )
+}
+
 function ProfileOnboardingSmokeTestPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-[#12071F]">
@@ -80,6 +89,10 @@ export function AppRouter() {
       <Routes>
         {import.meta.env.DEV && (
           <>
+            <Route
+              element={<CharacterEditorSmokeTestPage />}
+              path={routes.characterEditorSmokeTest}
+            />
             <Route
               element={<PlayerSmokeTestPage />}
               path={routes.playerSmokeTest}

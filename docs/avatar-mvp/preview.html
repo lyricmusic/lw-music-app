@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Avatar MVP — idle and side-step preview</title>
+    <style>
+      :root {
+        color: #f8f3ff;
+        font-family: Arial, sans-serif;
+        background: #12071f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        padding: clamp(16px, 4vw, 40px);
+        background:
+          radial-gradient(circle at 50% 0%, #32204b 0, transparent 44%), #12071f;
+      }
+
+      main {
+        width: min(960px, 100%);
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 6vw, 44px);
+      }
+
+      p {
+        margin: 0;
+        color: #cdbce2;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 24px 0;
+      }
+
+      button {
+        min-height: 44px;
+        padding: 10px 20px;
+        border: 1px solid #b88cff;
+        border-radius: 14px;
+        color: #f8f3ff;
+        font: inherit;
+        font-weight: 700;
+        background: #3b2158;
+        cursor: pointer;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .showcase {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        display: grid;
+        min-height: 250px;
+        place-items: center;
+        padding: 20px;
+        border: 1px solid #4a2b6d;
+        border-radius: 20px;
+        background: #24143d;
+      }
+
+      .stage {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        min-height: 160px;
+        border-radius: 16px;
+        background:
+          linear-gradient(180deg, transparent 68%, rgb(184 140 255 / 12%)),
+          #1b0c32;
+      }
+
+      .sprite {
+        width: var(--size);
+        height: var(--size);
+        background-image: url('../../public/avatars/animated/base-idle-v1.webp');
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        background-size: 1600% 100%;
+        animation: idle 2s steps(16) infinite;
+      }
+
+      .paused .sprite {
+        animation-play-state: paused;
+      }
+
+      .dancing .sprite {
+        background-image: url('../../public/avatars/animated/base-side-step-v1.webp');
+      }
+
+      .shadow {
+        width: calc(var(--size) * 0.58);
+        height: calc(var(--size) * 0.09);
+        margin: calc(var(--size) * -0.1) auto 0;
+        border-radius: 50%;
+        background: rgb(0 0 0 / 35%);
+        filter: blur(2px);
+      }
+
+      .label {
+        margin-top: 14px;
+        color: #cdbce2;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      @keyframes idle {
+        to {
+          background-position: calc(var(--size) * -16) 0;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .showcase {
+          grid-template-columns: 1fr;
+        }
+
+        .card {
+          min-height: 220px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .sprite {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Avatar animation v1</h1>
+      <p>16 кадров · 8 FPS · цикл 2 секунды · прозрачный WebP</p>
+
+      <div class="toolbar">
+        <p>Проверка читаемости на трёх целевых размерах</p>
+        <div class="controls">
+          <button id="mode" type="button">Включить side-step</button>
+          <button id="toggle" type="button">Пауза</button>
+        </div>
+      </div>
+
+      <section class="showcase">
+        <article class="card">
+          <div>
+            <div class="stage">
+              <div>
+                <div class="sprite" style="--size: 80px"></div>
+                <div class="shadow" style="--size: 80px"></div>
+              </div>
+            </div>
+            <div class="label">80 px · компактный телефон</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div>
+            <div class="stage">
+              <div>
+                <div class="sprite" style="--size: 96px"></div>
+                <div class="shadow" style="--size: 96px"></div>
+              </div>
+            </div>
+            <div class="label">96 px · мобильная сцена</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div>
+            <div class="stage">
+              <div>
+                <div class="sprite" style="--size: 128px"></div>
+                <div class="shadow" style="--size: 128px"></div>
+              </div>
+            </div>
+            <div class="label">128 px · компьютер</div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const button = document.querySelector('#toggle')
+      const modeButton = document.querySelector('#mode')
+
+      if (
+        new URLSearchParams(window.location.search).get('mode') === 'side-step'
+      ) {
+        document.body.classList.add('dancing')
+        modeButton.textContent = 'Вернуть idle'
+      }
+
+      modeButton.addEventListener('click', () => {
+        const dancing = document.body.classList.toggle('dancing')
+        modeButton.textContent = dancing ? 'Вернуть idle' : 'Включить side-step'
+      })
+
+      button.addEventListener('click', () => {
+        const paused = document.body.classList.toggle('paused')
+        button.textContent = paused ? 'Продолжить' : 'Пауза'
+      })
+    </script>
+  </body>
+</html>

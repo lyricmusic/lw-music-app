@@ -1,5 +1,7 @@
 import type { Timestamp } from 'firebase/firestore'
 
+import type { UserCharacter } from './character'
+
 export type UserAvatarType = 'custom' | 'none' | 'preset' | 'provider'
 
 export interface UserAvatar {
@@ -10,6 +12,7 @@ export interface UserAvatar {
 
 export interface UserProfile {
   avatar: UserAvatar
+  character?: UserCharacter
   createdAt: Timestamp
   displayName: string
   email: string

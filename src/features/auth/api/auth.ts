@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 
+import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
 
 const YANDEX_AUTH_MESSAGE_TYPE = 'syncly:yandex-auth'
@@ -94,6 +95,7 @@ async function saveUserProfile(
 
   await setDoc(userRef, {
     avatar,
+    character: resolveUserCharacter(existingProfile?.character),
     createdAt: existingProfile?.createdAt ?? serverTimestamp(),
     displayName: resolvedDisplayName,
     email: user.email ?? '',

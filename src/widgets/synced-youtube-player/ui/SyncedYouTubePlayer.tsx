@@ -28,6 +28,7 @@ import {
   loadYouTubeIframeApi,
 } from '@/shared/lib/youtube'
 import { Button } from '@/shared/ui/button'
+import { RoomAvatarStage } from '@/widgets/room-avatar'
 import {
   Avatar,
   Box,
@@ -324,6 +325,7 @@ export function SyncedYouTubePlayer({
     null,
   )
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
+  const avatarIsPlaying = remoteState?.status === 'playing'
 
   useEffect(() => {
     activeQueueUserIdRef.current = queueItems[0]?.userId ?? null
@@ -363,7 +365,9 @@ export function SyncedYouTubePlayer({
         .catch(reason => {
           console.error('Не удалось перейти к следующему видео:', reason)
           setError(
-            'Firestore отклонил переход к следующему видео. Опубликуйте обновлённые firestore.rules.',
+            reason instanceof Error
+              ? reason.message
+              : 'Не удалось перейти к следующему видео.',
           )
           setSyncStatus('error')
         })
@@ -562,7 +566,9 @@ export function SyncedYouTubePlayer({
       reason => {
         console.error('Не удалось подписаться на состояние плеера:', reason)
         setError(
-          'Нет доступа к состоянию плеера. Опубликуйте обновлённые firestore.rules.',
+          reason.code === 'permission-denied'
+            ? 'Нет доступа к состоянию плеера. Проверьте, что вы вошли в комнату как активный участник.'
+            : 'Не удалось загрузить состояние плеера. Проверьте соединение и попробуйте ещё раз.',
         )
         setSyncStatus('error')
       },
@@ -840,226 +846,242 @@ export function SyncedYouTubePlayer({
           color: '#FFFFFF',
         }}
       >
-        <Tabs
-          aria-label="Содержимое комнаты"
-          onChange={(_event, value: 'participants' | 'queue') =>
-            setActiveRoomTab(value)
-          }
-          sx={{
-            minHeight: 0,
-            '& .MuiTab-root': {
-              backgroundColor: '#3F3F59',
-              borderRadius: '12px',
-              color: '#D7DBF0',
-              fontFamily: 'Golos Text, sans-serif',
-              fontWeight: 700,
-              fontSize: { xs: '16px', sm: '20px' },
-              minHeight: { xs: '44px', sm: '48px' },
-              minWidth: 0,
-              padding: { xs: '7px 11px', sm: '8px 16px' },
-              textTransform: 'none',
-            },
-            '& .MuiTab-root.Mui-selected': {
-              backgroundColor: '#5D3A82',
-              color: '#FFFFFF',
-            },
-            '& .MuiTabs-flexContainer': { gap: '8px' },
-            '& .MuiTabs-indicator': { display: 'none' },
-          }}
-          value={activeRoomTab}
-        >
-          <Tab label="Очередь" value="queue" />
-          <Tab label="Участники" value="participants" />
-        </Tabs>
+        <Box className="flex min-w-0 flex-col gap-3 sm:grid sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-4">
+          <RoomAvatarStage
+            character={profile?.character}
+            isPlaying={avatarIsPlaying}
+          />
 
-        {activeRoomTab === 'queue' ? (
-          <Box className="mt-3 min-w-0 max-w-[500px]">
-            {queueLoading ? (
-              <Box className="flex min-h-12 items-center justify-center">
-                <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+          <Box className="min-w-0">
+            <Tabs
+              aria-label="Содержимое комнаты"
+              onChange={(_event, value: 'participants' | 'queue') =>
+                setActiveRoomTab(value)
+              }
+              sx={{
+                minHeight: 0,
+                '& .MuiTab-root': {
+                  backgroundColor: '#3F3F59',
+                  borderRadius: '12px',
+                  color: '#D7DBF0',
+                  fontFamily: 'Golos Text, sans-serif',
+                  fontWeight: 700,
+                  fontSize: { xs: '16px', sm: '20px' },
+                  minHeight: { xs: '44px', sm: '48px' },
+                  minWidth: 0,
+                  padding: { xs: '7px 11px', sm: '8px 16px' },
+                  textTransform: 'none',
+                },
+                '& .MuiTab-root.Mui-selected': {
+                  backgroundColor: '#5D3A82',
+                  color: '#FFFFFF',
+                },
+                '& .MuiTabs-flexContainer': { gap: '8px' },
+                '& .MuiTabs-indicator': { display: 'none' },
+              }}
+              value={activeRoomTab}
+            >
+              <Tab label="Очередь" value="queue" />
+              <Tab label="Участники" value="participants" />
+            </Tabs>
+
+            {activeRoomTab === 'queue' ? (
+              <Box className="mt-3 min-w-0 max-w-[500px]">
+                {queueLoading ? (
+                  <Box className="flex min-h-12 items-center justify-center">
+                    <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+                  </Box>
+                ) : (
+                  <Box
+                    className="grid min-w-0 gap-2 overflow-x-auto pb-1"
+                    component="ul"
+                    sx={{
+                      gridAutoColumns: {
+                        xs: 'min(243px, calc(100vw - 60px))',
+                        sm: '243px',
+                      },
+                      gridAutoFlow: 'column',
+                      gridTemplateRows: 'repeat(4, 48px)',
+                      listStyle: 'none',
+                      marginLeft: 0,
+                      marginRight: 0,
+                      scrollbarColor: '#5C5D7E transparent',
+                      scrollbarWidth: 'thin',
+                    }}
+                  >
+                    {queueItems.map((queueItem, queueItemIndex) => {
+                      return (
+                        <RoomUserListItem
+                          displayName={queueItem.displayName}
+                          key={queueItem.id}
+                          pending={queueItem.pending}
+                          photoURL={queueItem.photoURL}
+                          status={
+                            queueItemIndex === 0
+                              ? 'current'
+                              : queueItemIndex === 1
+                                ? 'next'
+                                : undefined
+                          }
+                        />
+                      )
+                    })}
+
+                    <Box
+                      className="min-w-0 overflow-hidden"
+                      component="li"
+                      sx={{
+                        backgroundColor: '#3F3F59',
+                        borderRadius: '8px',
+                        height: '48px',
+                        width: {
+                          xs: 'min(243px, calc(100vw - 60px))',
+                          sm: '243px',
+                        },
+                      }}
+                    >
+                      <Button
+                        aria-label={
+                          currentUserAlreadyQueued
+                            ? 'Покинуть очередь'
+                            : 'Встать в очередь'
+                        }
+                        aria-busy={queueLeaving}
+                        disabled={queueButtonDisabled}
+                        fullWidth
+                        onClick={() => {
+                          if (currentUserAlreadyQueued) {
+                            void handleLeaveQueue()
+                          } else {
+                            setQueueDialogOpen(true)
+                          }
+                        }}
+                        sx={{
+                          '&.Mui-disabled': {
+                            color: '#FFFFFF',
+                            opacity: 0.5,
+                          },
+                          '&:hover': { backgroundColor: '#4A4A68' },
+                          backgroundColor: 'transparent',
+                          borderRadius: '8px',
+                          color: '#FFFFFF',
+                          display: 'flex',
+                          fontSize: '14px',
+                          fontWeight: 400,
+                          gap: '12px',
+                          height: '48px',
+                          justifyContent: 'flex-start',
+                          padding: '2px 12px 2px 2px',
+                          textTransform: 'none',
+                          width: '100%',
+                        }}
+                      >
+                        <Box
+                          className="flex h-11 w-11 shrink-0 items-center justify-center text-[28px] font-light leading-none"
+                          component="span"
+                          sx={{
+                            backgroundColor: '#6F70E7',
+                            borderRadius: '6px',
+                            color: '#FFFFFF',
+                          }}
+                        >
+                          {currentUserAlreadyQueued ? '−' : '+'}
+                        </Box>
+                        <Box className="min-w-0 truncate" component="span">
+                          {queueLeaving
+                            ? 'Покидаем очередь…'
+                            : currentUserAlreadyQueued
+                              ? 'Покинуть очередь'
+                              : 'Встать в очередь'}
+                        </Box>
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
+
+                {queueError && (
+                  <Typography
+                    className="mt-2 text-sm"
+                    role="alert"
+                    sx={{ color: '#FF9BAD' }}
+                  >
+                    {queueError}
+                  </Typography>
+                )}
+
+                {!queueEnabled && (
+                  <Typography
+                    className="mt-2 text-sm"
+                    sx={{ color: '#D7DBF0' }}
+                  >
+                    Владелец комнаты отключил очередь для гостей.
+                  </Typography>
+                )}
+
+                {!queueLoading && queueItems.length === 0 && !queueError && (
+                  <Typography className="sr-only">
+                    Очередь пока пуста. Встаньте в очередь первым.
+                  </Typography>
+                )}
+
+                {currentUserAlreadyQueued && (
+                  <Typography className="sr-only">
+                    Вы уже находитесь в очереди.
+                  </Typography>
+                )}
               </Box>
             ) : (
               <Box
-                className="grid min-w-0 gap-2 overflow-x-auto pb-1"
+                className="mt-4 flex max-w-[500px] flex-col gap-2"
                 component="ul"
-                sx={{
-                  gridAutoColumns: {
-                    xs: 'min(243px, calc(100vw - 60px))',
-                    sm: '243px',
-                  },
-                  gridAutoFlow: 'column',
-                  gridTemplateRows: 'repeat(4, 48px)',
-                  listStyle: 'none',
-                  marginLeft: 0,
-                  marginRight: 0,
-                  scrollbarColor: '#5C5D7E transparent',
-                  scrollbarWidth: 'thin',
-                }}
+                sx={{ listStyle: 'none', marginLeft: 0, marginRight: 0 }}
               >
-                {queueItems.map((queueItem, queueItemIndex) => {
-                  return (
-                    <RoomUserListItem
-                      displayName={queueItem.displayName}
-                      key={queueItem.id}
-                      pending={queueItem.pending}
-                      photoURL={queueItem.photoURL}
-                      status={
-                        queueItemIndex === 0
-                          ? 'current'
-                          : queueItemIndex === 1
-                            ? 'next'
-                            : undefined
-                      }
-                    />
-                  )
-                })}
-
-                <Box
-                  className="min-w-0 overflow-hidden"
-                  component="li"
-                  sx={{
-                    backgroundColor: '#3F3F59',
-                    borderRadius: '8px',
-                    height: '48px',
-                    width: {
-                      xs: 'min(243px, calc(100vw - 60px))',
-                      sm: '243px',
-                    },
-                  }}
-                >
-                  <Button
-                    aria-label={
-                      currentUserAlreadyQueued
-                        ? 'Покинуть очередь'
-                        : 'Встать в очередь'
+                {participants.map(participant => (
+                  <RoomUserListItem
+                    actions={
+                      <RoomParticipantActions
+                        actorRole={currentMemberRole}
+                        blocked={blockedUserIds.has(participant.id)}
+                        participant={participant}
+                        roomId={roomId}
+                      />
                     }
-                    aria-busy={queueLeaving}
-                    disabled={queueButtonDisabled}
-                    fullWidth
-                    onClick={() => {
-                      if (currentUserAlreadyQueued) {
-                        void handleLeaveQueue()
-                      } else {
-                        setQueueDialogOpen(true)
-                      }
-                    }}
-                    sx={{
-                      '&.Mui-disabled': {
-                        color: '#FFFFFF',
-                        opacity: 0.5,
-                      },
-                      '&:hover': { backgroundColor: '#4A4A68' },
-                      backgroundColor: 'transparent',
-                      borderRadius: '8px',
-                      color: '#FFFFFF',
-                      display: 'flex',
-                      fontSize: '14px',
-                      fontWeight: 400,
-                      gap: '12px',
-                      height: '48px',
-                      justifyContent: 'flex-start',
-                      padding: '2px 12px 2px 2px',
-                      textTransform: 'none',
-                      width: '100%',
-                    }}
-                  >
-                    <Box
-                      className="flex h-11 w-11 shrink-0 items-center justify-center text-[28px] font-light leading-none"
-                      component="span"
-                      sx={{
-                        backgroundColor: '#6F70E7',
-                        borderRadius: '6px',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      {currentUserAlreadyQueued ? '−' : '+'}
-                    </Box>
-                    <Box className="min-w-0 truncate" component="span">
-                      {queueLeaving
-                        ? 'Покидаем очередь…'
-                        : currentUserAlreadyQueued
-                          ? 'Покинуть очередь'
-                          : 'Встать в очередь'}
-                    </Box>
-                  </Button>
-                </Box>
-              </Box>
-            )}
-
-            {queueError && (
-              <Typography
-                className="mt-2 text-sm"
-                role="alert"
-                sx={{ color: '#FF9BAD' }}
-              >
-                {queueError}
-              </Typography>
-            )}
-
-            {!queueEnabled && (
-              <Typography className="mt-2 text-sm" sx={{ color: '#D7DBF0' }}>
-                Владелец комнаты отключил очередь для гостей.
-              </Typography>
-            )}
-
-            {!queueLoading && queueItems.length === 0 && !queueError && (
-              <Typography className="sr-only">
-                Очередь пока пуста. Встаньте в очередь первым.
-              </Typography>
-            )}
-
-            {currentUserAlreadyQueued && (
-              <Typography className="sr-only">
-                Вы уже находитесь в очереди.
-              </Typography>
-            )}
-          </Box>
-        ) : (
-          <Box
-            className="mt-4 flex max-w-[500px] flex-col gap-2"
-            component="ul"
-            sx={{ listStyle: 'none', marginLeft: 0, marginRight: 0 }}
-          >
-            {participants.map(participant => (
-              <RoomUserListItem
-                actions={
-                  <RoomParticipantActions
-                    actorRole={currentMemberRole}
-                    blocked={blockedUserIds.has(participant.id)}
-                    participant={participant}
-                    roomId={roomId}
+                    displayName={participant.displayName}
+                    key={participant.id}
+                    online={participant.online}
+                    photoURL={participant.photoURL}
+                    roleBadge={<RoomRoleBadge role={participant.role} />}
+                    secondaryLabel={`${ROOM_ROLE_LABELS[participant.role]}${participant.isGuest ? ' · гость' : ''}${participant.online ? '' : ' · не в сети'}`}
                   />
-                }
-                displayName={participant.displayName}
-                key={participant.id}
-                online={participant.online}
-                photoURL={participant.photoURL}
-                roleBadge={<RoomRoleBadge role={participant.role} />}
-                secondaryLabel={`${ROOM_ROLE_LABELS[participant.role]}${participant.isGuest ? ' · гость' : ''}${participant.online ? '' : ' · не в сети'}`}
-              />
-            ))}
+                ))}
 
-            {participantsLoading && (
-              <Box className="flex min-h-[52px] items-center justify-center">
-                <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+                {participantsLoading && (
+                  <Box className="flex min-h-[52px] items-center justify-center">
+                    <CircularProgress size={24} sx={{ color: '#8B8DB3' }} />
+                  </Box>
+                )}
+
+                {!participantsLoading &&
+                  !participantsError &&
+                  participants.length === 0 && (
+                    <Typography component="li" sx={{ color: '#D7DBF0' }}>
+                      В комнате пока никого нет.
+                    </Typography>
+                  )}
+
+                {participantsError && (
+                  <Typography
+                    component="li"
+                    role="alert"
+                    sx={{ color: '#FF9BAD' }}
+                  >
+                    {participantsError}
+                  </Typography>
+                )}
               </Box>
             )}
-
-            {!participantsLoading &&
-              !participantsError &&
-              participants.length === 0 && (
-                <Typography component="li" sx={{ color: '#D7DBF0' }}>
-                  В комнате пока никого нет.
-                </Typography>
-              )}
-
-            {participantsError && (
-              <Typography component="li" role="alert" sx={{ color: '#FF9BAD' }}>
-                {participantsError}
-              </Typography>
-            )}
           </Box>
-        )}
+        </Box>
 
         {error && (
           <Box className="mt-4 rounded-xl border border-[#8B3755] bg-[#35152C] p-3 text-sm text-[#FFB4C2]">

@@ -1,6 +1,7 @@
 import { updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 
+import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
 import {
   callMediaUploadApi,
@@ -64,6 +65,7 @@ export async function completeProfile({
         storagePath: avatarPath,
         type: avatarType,
       },
+      character: resolveUserCharacter(profileSnapshot.data()?.character),
       createdAt: profileSnapshot.data()?.createdAt ?? serverTimestamp(),
       displayName: normalizedDisplayName,
       email: user.email ?? '',

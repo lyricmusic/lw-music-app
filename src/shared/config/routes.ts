@@ -3,6 +3,7 @@ export const routes = {
   join: (inviteToken: string) => `/join/${inviteToken}`,
   joinPattern: '/join/:inviteToken',
   legacySignUp: '/register',
+  characterEditorSmokeTest: '/__character-editor-smoke',
   playerSmokeTest: '/__player-smoke',
   profileOnboardingSmokeTest: '/__profile-onboarding-smoke',
   room: (roomId: string) => `/rooms/${roomId}`,

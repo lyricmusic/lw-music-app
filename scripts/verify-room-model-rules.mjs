@@ -329,6 +329,11 @@ const anonymousProfile = await commit(
           storagePath: nullValue(),
           type: stringValue('preset'),
         }),
+        character: mapValue({
+          accentColor: stringValue('violet'),
+          appearanceId: stringValue('base'),
+          danceId: stringValue('side-step'),
+        }),
         displayName: stringValue('Guest'),
         email: stringValue(''),
         onboardingCompleted: booleanValue(true),
@@ -710,6 +715,11 @@ const registeredProfile = await commit(
           storagePath: nullValue(),
           type: stringValue('preset'),
         }),
+        character: mapValue({
+          accentColor: stringValue('cyan'),
+          appearanceId: stringValue('base'),
+          danceId: stringValue('side-step'),
+        }),
         displayName: stringValue('Registered member'),
         email: stringValue(otherUser.email),
         onboardingCompleted: booleanValue(true),
@@ -721,6 +731,52 @@ const registeredProfile = await commit(
   otherUser.idToken,
 )
 assert.equal(registeredProfile.ok, true, JSON.stringify(registeredProfile))
+
+const validCharacterUpdate = await commit(
+  [
+    patch(
+      `users/${otherUser.uid}`,
+      {
+        character: mapValue({
+          accentColor: stringValue('pink'),
+          appearanceId: stringValue('base'),
+          danceId: stringValue('side-step'),
+        }),
+      },
+      ['character'],
+      [requestTime('updatedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  validCharacterUpdate.ok,
+  true,
+  JSON.stringify(validCharacterUpdate),
+)
+
+const unavailableCharacterUpdate = await commit(
+  [
+    patch(
+      `users/${otherUser.uid}`,
+      {
+        character: mapValue({
+          accentColor: stringValue('pink'),
+          appearanceId: stringValue('neon'),
+          danceId: stringValue('side-step'),
+        }),
+      },
+      ['character'],
+      [requestTime('updatedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  unavailableCharacterUpdate.ok,
+  false,
+  JSON.stringify(unavailableCharacterUpdate),
+)
 
 const userBlock = await commit(
   [
