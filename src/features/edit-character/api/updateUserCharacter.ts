@@ -6,6 +6,7 @@ import { auth, db } from '@/shared/api/firebase'
 const AVAILABLE_APPEARANCE_IDS = new Set(['base'])
 const AVAILABLE_ACCENT_IDS = new Set(['violet', 'cyan', 'pink', 'lime'])
 const AVAILABLE_DANCE_IDS = new Set(['side-step'])
+const AVAILABLE_GENDER_IDS = new Set(['male', 'female'])
 
 export async function updateUserCharacter(character: UserCharacter) {
   const user = auth.currentUser
@@ -14,7 +15,8 @@ export async function updateUserCharacter(character: UserCharacter) {
   if (
     !AVAILABLE_APPEARANCE_IDS.has(character.appearanceId) ||
     !AVAILABLE_ACCENT_IDS.has(character.accentColor) ||
-    !AVAILABLE_DANCE_IDS.has(character.danceId)
+    !AVAILABLE_DANCE_IDS.has(character.danceId) ||
+    !AVAILABLE_GENDER_IDS.has(character.genderId)
   ) {
     throw new Error('Выбранный вариант персонажа пока недоступен.')
   }

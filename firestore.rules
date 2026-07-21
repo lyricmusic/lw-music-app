@@ -60,9 +60,15 @@ service cloud.firestore {
         && character.keys().hasOnly([
           'accentColor',
           'appearanceId',
-          'danceId'
+          'danceId',
+          'genderId'
         ])
-        && character.appearanceId == 'base'
+        && (
+          (!('genderId' in character)
+            && character.appearanceId in ['base', 'female'])
+          || (character.genderId in ['male', 'female']
+            && character.appearanceId == 'base')
+        )
         && character.accentColor in ['violet', 'cyan', 'pink', 'lime']
         && character.danceId == 'side-step';
     }

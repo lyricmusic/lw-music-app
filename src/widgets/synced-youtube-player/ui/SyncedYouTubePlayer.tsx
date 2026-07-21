@@ -838,7 +838,7 @@ export function SyncedYouTubePlayer({
       </Paper>
 
       <Paper
-        className="room-queue-panel min-h-0 overflow-y-auto p-3 sm:p-4"
+        className="room-queue-panel min-h-0 p-3 sm:p-4"
         component="section"
         elevation={0}
         sx={{
@@ -848,17 +848,9 @@ export function SyncedYouTubePlayer({
         }}
       >
         <Box
-          sx={{
-            display: { xs: 'flex', sm: 'grid' },
-            flexDirection: 'column',
-            gap: { xs: 1.5, sm: 2 },
-            gridTemplateColumns: {
-              sm: danceFloorCollapsed
-                ? '152px minmax(0, 1fr)'
-                : 'minmax(260px, 330px) minmax(0, 1fr)',
-            },
-            minWidth: 0,
-          }}
+          className={`room-lower-layout ${
+            danceFloorCollapsed ? 'room-lower-layout--dance-collapsed' : ''
+          }`}
         >
           <RoomDanceFloor
             character={profile?.character}
@@ -868,7 +860,7 @@ export function SyncedYouTubePlayer({
             onCollapsedChange={setDanceFloorCollapsed}
           />
 
-          <Box className="min-w-0">
+          <Box className="room-lower-layout__details min-w-0">
             <Tabs
               aria-label="Содержимое комнаты"
               onChange={(_event, value: 'participants' | 'queue') =>

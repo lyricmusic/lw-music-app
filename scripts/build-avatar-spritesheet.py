@@ -16,8 +16,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--columns", default=4, type=int)
     parser.add_argument("--rows", default=4, type=int)
     parser.add_argument("--frame-size", default=256, type=int)
+    parser.add_argument(
+        "--frame-order",
+        help="Comma-separated 1-based source frame indexes for the output strip.",
+    )
     parser.add_argument("--lossless", action="store_true")
     parser.add_argument("--quality", default=92, type=int)
+    parser.add_argument(
+        "--min-component-area",
+        default=0,
+        type=int,
+        help="Remove isolated alpha components smaller than this many pixels per frame.",
+    )
     parser.add_argument(
         "--auto-trim",
         action="store_true",
@@ -77,10 +87,74 @@ def get_frame_regions(
     ]
 
 
+def remove_small_alpha_components(
+    image: Image.Image,
+    min_component_area: int,
+) -> Image.Image:
+    if min_component_area <= 0:
+        return image
+
+    alpha = image.getchannel("A")
+    width, height = alpha.size
+    alpha_bytes = bytearray(alpha.tobytes())
+    active = bytearray(value > 8 for value in alpha_bytes)
+    visited = bytearray(width * height)
+
+    for start in range(width * height):
+        if not active[start] or visited[start]:
+            continue
+
+        component: list[int] = []
+        stack = [start]
+        visited[start] = 1
+        while stack:
+            current = stack.pop()
+            component.append(current)
+            x = current % width
+            y = current // width
+            for next_y in range(max(0, y - 1), min(height, y + 2)):
+                row_offset = next_y * width
+                for next_x in range(max(0, x - 1), min(width, x + 2)):
+                    neighbor = row_offset + next_x
+                    if active[neighbor] and not visited[neighbor]:
+                        visited[neighbor] = 1
+                        stack.append(neighbor)
+
+        if len(component) < min_component_area:
+            for pixel_index in component:
+                alpha_bytes[pixel_index] = 0
+
+    cleaned = image.copy()
+    cleaned.putalpha(Image.frombytes("L", alpha.size, bytes(alpha_bytes)))
+    return cleaned
+
+
+def reorder_frames(
+    frames: list[Image.Image],
+    frame_order: str | None,
+) -> list[Image.Image]:
+    if not frame_order:
+        return frames
+
+    try:
+        indexes = [int(value.strip()) for value in frame_order.split(",")]
+    except ValueError as error:
+        raise SystemExit("frame-order must contain only comma-separated integers") from error
+
+    if not indexes or any(index < 1 or index > len(frames) for index in indexes):
+        raise SystemExit(
+            f"frame-order indexes must be between 1 and {len(frames)}"
+        )
+
+    return [frames[index - 1] for index in indexes]
+
+
 def main() -> None:
     args = parse_args()
     if args.columns < 1 or args.rows < 1 or args.frame_size < 1:
         raise SystemExit("columns, rows and frame-size must be positive")
+    if args.min_component_area < 0:
+        raise SystemExit("min-component-area cannot be negative")
     if not 0 <= args.quality <= 100:
         raise SystemExit("quality must be between 0 and 100")
 
@@ -95,13 +169,18 @@ def main() -> None:
     )
     frames: list[Image.Image] = []
     for region in frame_regions:
-        cell = grid.crop(region)
+        cell = remove_small_alpha_components(
+            grid.crop(region),
+            args.min_component_area,
+        )
         content_bounds = cell.getchannel("A").point(
             lambda alpha: 255 if alpha > 8 else 0
         ).getbbox()
         if content_bounds is None:
             raise SystemExit(f"Empty frame region detected: {region}")
         frames.append(cell.crop(content_bounds))
+
+    frames = reorder_frames(frames, args.frame_order)
 
     frame_count = len(frames)
     sheet = Image.new(

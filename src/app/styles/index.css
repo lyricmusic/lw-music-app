@@ -281,13 +281,12 @@ h6 {
 }
 
 .room-player-layout--with-video {
-  /* 620px / 308px in the 1024px-high layout, excluding the 4px gap. */
   grid-template-areas:
     'video'
     'queue';
   grid-template-rows:
-    minmax(0, calc(66.8103% - 2.6724px))
-    minmax(0, calc(33.1897% - 1.3276px));
+    minmax(0, calc(52% - 2.08px))
+    minmax(0, calc(48% - 1.92px));
 }
 
 .room-video-panel {
@@ -296,6 +295,28 @@ h6 {
 
 .room-queue-panel {
   grid-area: queue;
+  overflow: hidden;
+}
+
+.room-lower-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 32%);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.room-lower-layout--dance-collapsed {
+  grid-template-columns: 152px minmax(0, 1fr);
+}
+
+.room-lower-layout__details {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-color: #6d4a8f transparent;
+  scrollbar-width: thin;
 }
 
 .room-avatar-stage {
@@ -338,7 +359,7 @@ h6 {
 }
 
 .room-dance-floor {
-  align-self: start;
+  align-self: stretch;
   background:
     radial-gradient(circle at 50% 18%, rgb(111 112 231 / 24%), transparent 42%),
     #1b0c32;
@@ -349,7 +370,8 @@ h6 {
   flex-direction: column;
   gap: 8px;
   max-width: 100%;
-  min-height: 232px;
+  height: 100%;
+  min-height: 300px;
   min-width: 0;
   overflow: hidden;
   padding: 10px;
@@ -379,7 +401,12 @@ h6 {
 
 .room-dance-floor__scene {
   background:
-    linear-gradient(180deg, rgb(14 4 29 / 4%) 0 58%, rgb(42 17 66 / 88%) 58%),
+    linear-gradient(180deg, rgb(14 4 29 / 4%) 0 28%, rgb(42 17 66 / 88%) 28%),
+    repeating-linear-gradient(
+      112deg,
+      transparent 0 44px,
+      rgb(184 140 255 / 6%) 44px 45px
+    ),
     repeating-linear-gradient(
       90deg,
       transparent 0 30px,
@@ -438,20 +465,12 @@ h6 {
 }
 
 .room-dance-floor__track {
-  display: grid;
-  gap: 2px 4px;
-  grid-auto-columns: 58px;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(2, 62px);
-  inset: 8px 4px 28px;
+  inset: 0;
   list-style: none;
   margin: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0 80px 4px 2px;
+  overflow: hidden;
+  padding: 0;
   position: absolute;
-  scrollbar-color: #6d4a8f transparent;
-  scrollbar-width: thin;
   z-index: 1;
 }
 
@@ -460,13 +479,13 @@ h6 {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  min-width: 0;
+  left: var(--dancer-x);
   opacity: 0.82;
-  position: relative;
-}
-
-.room-dance-floor__dancer:nth-child(even) {
-  transform: translateY(5px) scale(0.94);
+  position: absolute;
+  top: var(--dancer-y);
+  transform: translate(-50%, -50%) scale(var(--dancer-scale));
+  transform-origin: center;
+  z-index: 2;
 }
 
 .room-dance-floor__avatar-wrap {
@@ -494,12 +513,12 @@ h6 {
 
 .room-dance-floor__dj {
   align-items: center;
-  bottom: 6px;
   display: flex;
   flex-direction: column;
   left: 50%;
   pointer-events: none;
   position: absolute;
+  top: 8px;
   transform: translateX(-50%);
   z-index: 3;
 }
@@ -528,6 +547,19 @@ h6 {
   position: relative;
   width: 132px;
   z-index: 2;
+}
+
+.room-dance-floor__dj::after {
+  background: radial-gradient(ellipse, rgb(184 140 255 / 22%), transparent 68%);
+  content: '';
+  height: 34px;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 80px;
+  transform: translateX(-50%);
+  width: 210px;
+  z-index: -1;
 }
 
 .room-dance-floor__deck {
@@ -654,11 +686,47 @@ h6 {
 
   .room-queue-panel {
     max-height: none;
+    overflow: visible;
     overflow-y: visible;
+  }
+
+  .room-lower-layout,
+  .room-lower-layout--dance-collapsed {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
+  .room-lower-layout__details {
+    overflow-y: visible;
+  }
+
+  .room-dance-floor {
+    height: auto;
+    min-height: 360px;
+  }
+
+  .room-dance-floor--collapsed {
+    min-height: 72px;
   }
 
   .room-chat-column {
     min-height: 520px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .room-dance-floor__dancer {
+    left: var(--dancer-x-wide);
+  }
+
+  .room-dance-floor__avatar-wrap {
+    height: 84px;
+    width: 84px;
+  }
+
+  .room-dance-floor__sprite {
+    --room-avatar-size: 84px;
   }
 }
 
@@ -669,5 +737,26 @@ h6 {
 
   .room-chat-column {
     min-height: 460px;
+  }
+
+  .room-dance-floor {
+    min-height: 380px;
+  }
+
+  .room-dance-floor--collapsed {
+    min-height: 72px;
+  }
+
+  .room-dance-floor__avatar-wrap {
+    height: 44px;
+    width: 44px;
+  }
+
+  .room-dance-floor__sprite {
+    --room-avatar-size: 44px;
+  }
+
+  .room-dance-floor__dj-label {
+    display: none;
   }
 }

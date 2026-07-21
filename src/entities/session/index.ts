@@ -3,6 +3,7 @@ export {
   characterAccentOptions,
   characterAppearanceOptions,
   characterDanceOptions,
+  characterGenderOptions,
   defaultUserCharacter,
   getCharacterAccent,
   getCharacterSpriteUrl,
@@ -12,6 +13,7 @@ export type {
   CharacterAccentId,
   CharacterAppearanceId,
   CharacterDanceId,
+  CharacterGenderId,
   UserCharacter,
 } from './model/character'
 export type { UserProfile } from './model/types'

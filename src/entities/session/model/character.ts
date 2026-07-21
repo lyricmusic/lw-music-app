@@ -1,7 +1,12 @@
+export const characterGenderOptions = [
+  { id: 'male', label: 'Мужской' },
+  { id: 'female', label: 'Женский' },
+] as const
+
 export const characterAppearanceOptions = [
-  { available: true, id: 'base', label: 'Базовый' },
-  { available: false, id: 'neon', label: 'Неоновый' },
-  { available: false, id: 'club', label: 'Клубный' },
+  { available: true, id: 'base', label: 'Базовая' },
+  { available: false, id: 'neon', label: 'Неоновая' },
+  { available: false, id: 'club', label: 'Клубная' },
 ] as const
 
 export const characterAccentOptions = [
@@ -46,17 +51,20 @@ export type CharacterAppearanceId =
   (typeof characterAppearanceOptions)[number]['id']
 export type CharacterAccentId = (typeof characterAccentOptions)[number]['id']
 export type CharacterDanceId = (typeof characterDanceOptions)[number]['id']
+export type CharacterGenderId = (typeof characterGenderOptions)[number]['id']
 
 export interface UserCharacter {
   accentColor: CharacterAccentId
   appearanceId: CharacterAppearanceId
   danceId: CharacterDanceId
+  genderId: CharacterGenderId
 }
 
 export const defaultUserCharacter: UserCharacter = {
   accentColor: 'violet',
   appearanceId: 'base',
   danceId: 'side-step',
+  genderId: 'male',
 }
 
 function isOptionId<T extends readonly { id: string }[]>(
@@ -70,6 +78,13 @@ export function resolveUserCharacter(value: unknown): UserCharacter {
   if (!value || typeof value !== 'object') return defaultUserCharacter
 
   const candidate = value as Partial<Record<keyof UserCharacter, unknown>>
+  const isLegacyFemale =
+    candidate.genderId === undefined && candidate.appearanceId === 'female'
+  const genderId = isLegacyFemale
+    ? 'female'
+    : isOptionId(characterGenderOptions, candidate.genderId)
+      ? candidate.genderId
+      : defaultUserCharacter.genderId
   const appearanceId = isOptionId(
     characterAppearanceOptions,
     candidate.appearanceId,
@@ -83,7 +98,7 @@ export function resolveUserCharacter(value: unknown): UserCharacter {
     ? candidate.danceId
     : defaultUserCharacter.danceId
 
-  return { accentColor, appearanceId, danceId }
+  return { accentColor, appearanceId, danceId, genderId }
 }
 
 export function getCharacterAccent(accentColor: CharacterAccentId) {
@@ -97,13 +112,15 @@ export function getCharacterSpriteUrl(
   character: UserCharacter,
   isPlaying: boolean,
 ) {
-  if (!isPlaying) return '/avatars/animated/base-idle-v1.webp'
+  const spritePrefix = character.genderId === 'female' ? 'female' : 'base'
+
+  if (!isPlaying) return `/avatars/animated/${spritePrefix}-idle-v1.webp`
 
   // Only side-step has a production sprite today. Planned choices stay
   // disabled in the editor until their matching WebP files are ready.
   if (character.danceId === 'side-step') {
-    return '/avatars/animated/base-side-step-v1.webp'
+    return `/avatars/animated/${spritePrefix}-side-step-v1.webp`
   }
 
-  return '/avatars/animated/base-idle-v1.webp'
+  return `/avatars/animated/${spritePrefix}-idle-v1.webp`
 }

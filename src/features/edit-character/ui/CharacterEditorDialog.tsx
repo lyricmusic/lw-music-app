@@ -5,12 +5,14 @@ import {
   characterAccentOptions,
   characterAppearanceOptions,
   characterDanceOptions,
+  characterGenderOptions,
   getCharacterAccent,
   getCharacterSpriteUrl,
   resolveUserCharacter,
   type CharacterAccentId,
   type CharacterAppearanceId,
   type CharacterDanceId,
+  type CharacterGenderId,
   type UserCharacter,
   useSession,
 } from '@/entities/session'
@@ -119,14 +121,18 @@ export function CharacterEditorDialog({
   const accent = getCharacterAccent(draft.accentColor)
   const appearanceLabel =
     characterAppearanceOptions.find(option => option.id === draft.appearanceId)
-      ?.label ?? 'Базовый'
+      ?.label ?? 'Базовая'
+  const genderLabel =
+    characterGenderOptions.find(option => option.id === draft.genderId)
+      ?.label ?? 'Мужской'
   const danceLabel =
     characterDanceOptions.find(option => option.id === draft.danceId)?.label ??
     'Шаги'
   const hasChanges =
     draft.appearanceId !== savedCharacter.appearanceId ||
     draft.accentColor !== savedCharacter.accentColor ||
-    draft.danceId !== savedCharacter.danceId
+    draft.danceId !== savedCharacter.danceId ||
+    draft.genderId !== savedCharacter.genderId
 
   const updateDraft = <K extends keyof UserCharacter>(
     key: K,
@@ -227,9 +233,9 @@ export function CharacterEditorDialog({
             }}
           >
             <Box
-              aria-label={`Предпросмотр: ${appearanceLabel}, танец «${danceLabel}»`}
+              aria-label={`Предпросмотр: ${genderLabel}, внешность «${appearanceLabel}», танец «${danceLabel}»`}
               className="character-editor-sprite"
-              key={`${draft.appearanceId}-${draft.danceId}`}
+              key={`${draft.genderId}-${draft.appearanceId}-${draft.danceId}`}
               role="img"
               sx={{
                 backgroundImage: `url(${getCharacterSpriteUrl(draft, true)})`,
@@ -239,7 +245,7 @@ export function CharacterEditorDialog({
             <Typography
               sx={{ color: '#F8F3FF', fontWeight: 700, marginTop: 1 }}
             >
-              {appearanceLabel}
+              {genderLabel} · {appearanceLabel}
             </Typography>
             <Typography sx={{ color: accent.color, fontSize: 13 }}>
               Танец: {danceLabel}
@@ -259,7 +265,34 @@ export function CharacterEditorDialog({
                 component="legend"
                 sx={{ color: '#F8F3FF', fontWeight: 700, marginBottom: 1 }}
               >
-                Образ
+                Пол
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 1,
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                }}
+              >
+                {characterGenderOptions.map(option => (
+                  <OptionCard<CharacterGenderId>
+                    available
+                    key={option.id}
+                    label={option.label}
+                    onSelect={value => updateDraft('genderId', value)}
+                    selected={draft.genderId === option.id}
+                    value={option.id}
+                  />
+                ))}
+              </Box>
+            </Box>
+
+            <Box component="fieldset" sx={{ border: 0, margin: 0, padding: 0 }}>
+              <Typography
+                component="legend"
+                sx={{ color: '#F8F3FF', fontWeight: 700, marginBottom: 1 }}
+              >
+                Внешность
               </Typography>
               <Box
                 sx={{
