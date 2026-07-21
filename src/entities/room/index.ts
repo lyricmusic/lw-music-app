@@ -13,6 +13,12 @@ export { useRoomPresence } from './api/useRoomPresence'
 export { useRoomParticipants } from './api/useRoomParticipants'
 export type { RoomParticipant } from './api/useRoomParticipants'
 export {
+  ROOM_REACTION_OPTIONS,
+  sendRoomReaction,
+  useRoomReactions,
+  type RoomReactionEmoji,
+} from './api/roomReactions'
+export {
   useRoomRestrictions,
   type RoomRestriction,
   type RoomRestrictionKind,

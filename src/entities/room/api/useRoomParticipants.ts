@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { resolveUserCharacter, type UserCharacter } from '@/entities/session'
 import { db, realtimeDb } from '@/shared/api/firebase'
 import { onValue, ref } from 'firebase/database'
 import { collection, doc, onSnapshot } from 'firebase/firestore'
@@ -7,6 +8,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore'
 import type { RoomMemberRole } from '../model/types'
 
 export interface RoomParticipant {
+  character: UserCharacter
   displayName: string
   id: string
   isGuest: boolean
@@ -16,6 +18,7 @@ export interface RoomParticipant {
 }
 
 interface ParticipantProfile {
+  character: UserCharacter
   displayName: string
   photoURL: null | string
 }
@@ -142,6 +145,7 @@ export function useRoomParticipants(roomId: string): RoomParticipantsState {
               const profile = profileSnapshot.data() as ParticipantProfile
               if (profile.displayName.trim()) {
                 profilesById.set(participantId, {
+                  character: resolveUserCharacter(profile.character),
                   displayName: profile.displayName,
                   photoURL: profile.photoURL,
                 })

@@ -11,11 +11,14 @@ import {
   advanceRoomQueue,
   enqueueRoomVideo,
   leaveRoomQueue,
+  sendRoomReaction,
   setRoomPlaybackStatus,
   skipRoomVideo,
   type RoomMemberRole,
+  type RoomReactionEmoji,
   useRoomParticipants,
   useRoomQueue,
+  useRoomReactions,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
 import { useBlockedUsers } from '@/entities/user'
@@ -289,6 +292,7 @@ export function SyncedYouTubePlayer({
     loading: participantsLoading,
     participants,
   } = useRoomParticipants(roomId)
+  const roomReactions = useRoomReactions(roomId)
   const {
     error: queueError,
     items: queueItems,
@@ -319,6 +323,7 @@ export function SyncedYouTubePlayer({
   const [queueSkipping, setQueueSkipping] = useState(false)
   const [playbackChanging, setPlaybackChanging] = useState(false)
   const [danceFloorCollapsed, setDanceFloorCollapsed] = useState(false)
+  const [reactionPending, setReactionPending] = useState(false)
   const [activeRoomTab, setActiveRoomTab] = useState<'participants' | 'queue'>(
     'queue',
   )
@@ -327,6 +332,45 @@ export function SyncedYouTubePlayer({
   )
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
   const avatarIsPlaying = remoteState?.status === 'playing'
+  const danceFloorParticipants = useMemo(
+    () =>
+      participants.filter(participant => !blockedUserIds.has(participant.id)),
+    [blockedUserIds, participants],
+  )
+  const danceFloorDjUserId = useMemo(() => {
+    const activeQueueUserId = queueItems[0]?.userId
+    return (
+      danceFloorParticipants.find(
+        participant => participant.id === activeQueueUserId,
+      )?.id ??
+      danceFloorParticipants.find(participant => participant.role === 'owner')
+        ?.id ??
+      danceFloorParticipants.find(participant => participant.id === user?.uid)
+        ?.id ??
+      danceFloorParticipants[0]?.id ??
+      null
+    )
+  }, [danceFloorParticipants, queueItems, user?.uid])
+
+  const handleRoomReaction = useCallback(
+    async (reaction: RoomReactionEmoji) => {
+      if (reactionPending) return
+
+      setReactionPending(true)
+      try {
+        await sendRoomReaction(roomId, reaction)
+      } catch (reason) {
+        toast.error(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось отправить реакцию.',
+        )
+      } finally {
+        setReactionPending(false)
+      }
+    },
+    [reactionPending, roomId],
+  )
 
   useEffect(() => {
     activeQueueUserIdRef.current = queueItems[0]?.userId ?? null
@@ -853,11 +897,16 @@ export function SyncedYouTubePlayer({
           }`}
         >
           <RoomDanceFloor
-            character={profile?.character}
             collapsed={danceFloorCollapsed}
-            displayName={profile?.displayName}
+            currentUserId={user?.uid}
+            djUserId={danceFloorDjUserId}
             isMusicPlaying={avatarIsPlaying}
             onCollapsedChange={setDanceFloorCollapsed}
+            onReaction={reaction => void handleRoomReaction(reaction)}
+            onShowAllParticipants={() => setActiveRoomTab('participants')}
+            participants={danceFloorParticipants}
+            reactionPending={reactionPending}
+            reactions={roomReactions}
           />
 
           <Box className="room-lower-layout__details min-w-0">

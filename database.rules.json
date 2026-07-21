@@ -12,6 +12,24 @@
           }
         }
       }
+    },
+    "roomReactions": {
+      "$roomId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "!newData.exists() || newData.hasChildren(['emoji', 'expiresAt'])",
+          "emoji": {
+            ".validate": "newData.isString() && (newData.val() === '🔥' || newData.val() === '💜' || newData.val() === '👏' || newData.val() === '✨')"
+          },
+          "expiresAt": {
+            ".validate": "newData.isNumber() && newData.val() > now && newData.val() <= now + 10000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
     }
   }
 }
