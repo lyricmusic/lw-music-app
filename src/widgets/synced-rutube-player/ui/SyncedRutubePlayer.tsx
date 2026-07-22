@@ -62,6 +62,7 @@ interface PlaybackState {
 
 const REMOTE_DRIFT_THRESHOLD_SECONDS = 1.5
 const PLAYBACK_RETRY_INTERVAL_MILLISECONDS = 10_000
+const AUTOPLAY_WARNING_DELAY_MILLISECONDS = 15_000
 
 function getParticipantInitials(displayName: string) {
   return displayName
@@ -315,6 +316,7 @@ export function SyncedRutubePlayer({
   const activeQueueUserIdRef = useRef<null | string>(null)
   const suppressPlayerEventsUntilRef = useRef(0)
   const nextPlaybackRetryAtRef = useRef(0)
+  const playbackRequestedAtRef = useRef(0)
   const queueMutationRef = useRef(Promise.resolve())
 
   const [playerReady, setPlayerReady] = useState(false)
@@ -341,7 +343,7 @@ export function SyncedRutubePlayer({
   const activeVideoId = remoteState?.videoId ?? localQueuedVideoId
   const rutubeVideoId = isRutubeVideoId(activeVideoId) ? activeVideoId : null
   const playerSrc = iframeVideoId
-    ? `https://rutube.ru/play/embed/${iframeVideoId}?skinColor=6F70E7&getPlayOptions=duration,title,thumbnail_url`
+    ? `https://rutube.ru/play/embed/${iframeVideoId}?autostartmute=true&autoplay=true&skinColor=6F70E7&getPlayOptions=duration,title,thumbnail_url`
     : undefined
   const hasVideo = Boolean(remoteState || localQueuedVideoId)
   const avatarIsPlaying = remoteState?.status === 'playing'
@@ -445,6 +447,15 @@ export function SyncedRutubePlayer({
     [],
   )
 
+  const requestPlayerPlayback = useCallback(() => {
+    if (playbackRequestedAtRef.current === 0) {
+      playbackRequestedAtRef.current = Date.now()
+    }
+    sendPlayerCommand('player:play')
+    nextPlaybackRetryAtRef.current =
+      Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
+  }, [sendPlayerCommand])
+
   const applyRemoteState = useCallback(
     (state: PlaybackState) => {
       if (
@@ -470,12 +481,10 @@ export function SyncedRutubePlayer({
           sendPlayerCommand('player:pause')
         }
       } else if (playerStateRef.current !== 'playing') {
-        sendPlayerCommand('player:play')
-        nextPlaybackRetryAtRef.current =
-          Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
+        requestPlayerPlayback()
       }
     },
-    [sendPlayerCommand],
+    [requestPlayerPlayback, sendPlayerCommand],
   )
 
   const finishCurrentVideo = useCallback(() => {
@@ -493,7 +502,9 @@ export function SyncedRutubePlayer({
     playerStateRef.current = 'unknown'
     currentTimeRef.current = 0
     adPlayingRef.current = false
+    playbackRequestedAtRef.current = 0
     completedVideoIdRef.current = null
+    setAutoplayBlocked(false)
     setCurrentTime(0)
     setDuration(0)
 
@@ -575,7 +586,7 @@ export function SyncedRutubePlayer({
           applyRemoteState(remote)
         } else {
           sendPlayerCommand('player:setCurrentTime', { time: 0 })
-          sendPlayerCommand('player:play')
+          requestPlayerPlayback()
         }
         return
       }
@@ -592,7 +603,7 @@ export function SyncedRutubePlayer({
           applyRemoteState(remote)
         } else if (activeVideoIdRef.current === loadedVideoIdRef.current) {
           sendPlayerCommand('player:setCurrentTime', { time: 0 })
-          sendPlayerCommand('player:play')
+          requestPlayerPlayback()
         }
         return
       }
@@ -600,8 +611,13 @@ export function SyncedRutubePlayer({
       if (message.type === 'player:currentTime') {
         const time = data.time
         if (typeof time === 'number' && Number.isFinite(time)) {
+          const previousTime = currentTimeRef.current
           currentTimeRef.current = Math.max(0, time)
           setCurrentTime(currentTimeRef.current)
+          if (currentTimeRef.current > previousTime + 0.05) {
+            playbackRequestedAtRef.current = 0
+            setAutoplayBlocked(false)
+          }
         }
         return
       }
@@ -619,6 +635,7 @@ export function SyncedRutubePlayer({
         if (state === 'paused' || state === 'playing' || state === 'stopped') {
           playerStateRef.current = state
           if (state === 'playing') {
+            playbackRequestedAtRef.current = 0
             setAutoplayBlocked(false)
             nextPlaybackRetryAtRef.current =
               Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
@@ -629,10 +646,28 @@ export function SyncedRutubePlayer({
 
       if (message.type === 'player:rollState') {
         adPlayingRef.current = data.state === 'play'
+        if (data.state === 'play') {
+          playbackRequestedAtRef.current = 0
+          setAutoplayBlocked(false)
+        }
         if (data.state === 'complete') {
           const remote = lastRemoteStateRef.current
           if (remote) applyRemoteState(remote)
         }
+        return
+      }
+
+      if (message.type === 'player:adStart') {
+        adPlayingRef.current = true
+        playbackRequestedAtRef.current = 0
+        setAutoplayBlocked(false)
+        return
+      }
+
+      if (message.type === 'player:adEnd') {
+        adPlayingRef.current = false
+        const remote = lastRemoteStateRef.current
+        if (remote) applyRemoteState(remote)
         return
       }
 
@@ -654,7 +689,13 @@ export function SyncedRutubePlayer({
 
     window.addEventListener('message', handlePlayerMessage)
     return () => window.removeEventListener('message', handlePlayerMessage)
-  }, [applyRemoteState, finishCurrentVideo, iframeVideoId, sendPlayerCommand])
+  }, [
+    applyRemoteState,
+    finishCurrentVideo,
+    iframeVideoId,
+    requestPlayerPlayback,
+    sendPlayerCommand,
+  ])
 
   useEffect(() => {
     if (!syncEnabled) {
@@ -727,15 +768,17 @@ export function SyncedRutubePlayer({
         playerStateRef.current !== 'stopped' &&
         Date.now() >= nextPlaybackRetryAtRef.current
       ) {
-        sendPlayerCommand('player:play')
-        setAutoplayBlocked(true)
-        nextPlaybackRetryAtRef.current =
-          Date.now() + PLAYBACK_RETRY_INTERVAL_MILLISECONDS
+        requestPlayerPlayback()
+        setAutoplayBlocked(
+          playbackRequestedAtRef.current > 0 &&
+            Date.now() - playbackRequestedAtRef.current >=
+              AUTOPLAY_WARNING_DELAY_MILLISECONDS,
+        )
       }
     }, 750)
 
     return () => window.clearInterval(interval)
-  }, [playerReady, sendPlayerCommand])
+  }, [playerReady, requestPlayerPlayback, sendPlayerCommand])
 
   const handleJoinQueue = async (videoId: string) => {
     if (!profile || !user) {
@@ -768,9 +811,10 @@ export function SyncedRutubePlayer({
       sendPlayerCommand('player:unMute')
       mutedRef.current = false
       setMuted(false)
-      if (lastRemoteStateRef.current?.status === 'playing') {
-        sendPlayerCommand('player:play')
+      if (lastRemoteStateRef.current?.status !== 'paused') {
+        requestPlayerPlayback()
       }
+      setAutoplayBlocked(false)
     } else {
       sendPlayerCommand('player:mute')
       mutedRef.current = true
@@ -855,7 +899,7 @@ export function SyncedRutubePlayer({
           )}
           {playerSrc && (
             <Box
-              allow="autoplay; fullscreen; picture-in-picture"
+              allow="clipboard-write; autoplay; fullscreen; picture-in-picture"
               allowFullScreen
               className="pointer-events-none h-full w-full border-0"
               component="iframe"
@@ -904,15 +948,19 @@ export function SyncedRutubePlayer({
                 }}
                 variant="outlined"
               >
-                {muted ? 'Включить звук' : 'Выключить звук'}
+                {muted
+                  ? autoplayBlocked
+                    ? 'Запустить со звуком'
+                    : 'Включить звук'
+                  : 'Выключить звук'}
               </Button>
             </Box>
           </Box>
 
           {autoplayBlocked && (
             <Box className="absolute left-4 right-4 top-4 rounded-xl border border-[#6D4A8F] bg-[#24143D] p-3 text-sm text-[#F8F3FF]">
-              Браузер задержал автоматический запуск. Нажмите «Включить звук»
-              один раз.
+              Браузер не разрешил автоматический запуск. Нажмите «Запустить со
+              звуком» один раз — дальше плеер продолжит синхронизацию сам.
             </Box>
           )}
         </Box>
