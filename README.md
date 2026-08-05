@@ -44,6 +44,34 @@ pnpm install
 pnpm dev
 ```
 
+Локальная разработка всегда использует отдельный Firebase-проект
+`lwmusic-dev-ffe83`. Его публичная Web SDK конфигурация и URL dev-функций
+хранятся в отслеживаемом `.env.development`, поэтому после `git pull` на другом
+устройстве локальные ключи и URL добавлять не нужно. Production-сборка берёт явную
+конфигурацию `lwmusic-ffe83` из `.env.production`. Клиент прекращает запуск,
+если `VITE_APP_ENV=development` указывает на production-проект или наоборот.
+
+Секретные Firebase Admin credentials, Yandex OAuth client secret и ключи Object
+Storage в env-файлы не записываются: функции получают их из отдельных Yandex
+Lockbox secrets соответствующего окружения.
+
+Повторный dev-деплой с другого устройства не требует локальных JSON-ключей или
+OAuth secrets. Достаточно установить Firebase/Yandex CLI, войти в аккаунты с
+доступом к проектам и выполнить:
+
+```powershell
+./scripts/deploy-yandex-auth.ps1 -Environment dev
+./scripts/deploy-room-invites.ps1 -Environment dev
+./scripts/deploy-room-management.ps1 -Environment dev
+./scripts/deploy-yandex-storage.ps1 -Environment dev
+```
+
+Firebase CLI aliases настроены так: `default` и `dev` указывают на
+`lwmusic-dev-ffe83`, а `prod` — на `lwmusic-ffe83`. Поэтому локальные команды
+по умолчанию безопасны, а production-деплой всегда должен содержать
+`--project prod`. Yandex deploy-скрипты также по умолчанию используют `dev`;
+для production нужно явно передать `-Environment prod`.
+
 Для быстрой проверки только RUTUBE-плеера без входа и Firestore в dev-режиме доступен `http://localhost:5173/__player-smoke`. В production-сборке этого маршрута нет.
 
 Проверки перед коммитом:
@@ -55,19 +83,24 @@ pnpm verify:room-model-rules
 pnpm verify:room-invite-function
 ```
 
-## Применение Firestore Rules
+## Применение Firebase Rules
 
-Код плеера пишет состояние в `rooms/{roomId}/playback/current`. До проверки синхронизации нужно один раз опубликовать актуальный файл `firestore.rules`:
+Правила Firestore и Realtime Database, а также Firestore indexes разворачиваются
+в каждый Firebase-проект отдельно:
 
 ```bash
-pnpm dlx firebase-tools login
-pnpm dlx firebase-tools use lwmusic-ffe83
-pnpm dlx firebase-tools deploy --only firestore:rules
+pnpm exec firebase deploy --only firestore:rules,firestore:indexes,database --project dev
+pnpm exec firebase deploy --only firestore:rules,firestore:indexes,database --project prod
 ```
 
-В репозитории уже указан проект `lwmusic-ffe83`. Web-конфигурация из `src/shared/api/firebase` используется как fallback; для другого проекта скопируйте `.env.example` в `.env.local` и заполните переменные.
+Production-команду запускайте только как осознанный релиз. В Firebase-конфиге
+нет production fallback: отсутствие обязательной env-переменной завершает
+запуск понятной ошибкой до инициализации Firebase.
 
-В Firebase Console должен быть включён Authentication → Email/Password. Для входа через Яндекс отдельный Firebase-провайдер не требуется: серверная функция проверяет Яндекс ID и выпускает Firebase custom token.
+В обоих проектах должны быть включены Authentication → Email/Password и
+Anonymous. Для входа через Яндекс отдельный Firebase-провайдер не требуется:
+серверная функция соответствующего окружения проверяет Яндекс ID и выпускает
+Firebase custom token для того же Firebase-проекта.
 
 ## Вход через Яндекс ID
 

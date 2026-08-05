@@ -1,18 +1,34 @@
 param(
   [string]$YcPath = 'yc',
-  [string]$FirebaseDatabaseUrl = 'https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app',
+  [ValidateSet('prod', 'dev')]
+  [string]$Environment = 'dev',
+  [string]$FirebaseDatabaseUrl = '',
   [bool]$EnforceAppCheck = $false,
-  [string[]]$AllowedOrigins = @(
-    'https://syncly.lyricweb.ru',
-    'https://lwmusic-ffe83.web.app',
-    'https://lwmusic-ffe83.firebaseapp.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173'
-  )
+  [string[]]$AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Stop'
+$isDevelopment = $Environment -eq 'dev'
+$environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+
+if (-not $FirebaseDatabaseUrl) {
+  $FirebaseDatabaseUrl = if ($isDevelopment) {
+    'https://lwmusic-dev-ffe83-default-rtdb.europe-west1.firebasedatabase.app'
+  } else {
+    'https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app'
+  }
+}
+if ($AllowedOrigins.Count -eq 0) {
+  $AllowedOrigins = if ($isDevelopment) {
+    @('http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173')
+  } else {
+    @(
+      'https://syncly.lyricweb.ru',
+      'https://lwmusic-ffe83.web.app',
+      'https://lwmusic-ffe83.firebaseapp.com'
+    )
+  }
+}
 
 function Invoke-YcJson {
   param([string[]]$Arguments)
@@ -75,8 +91,8 @@ if ($LASTEXITCODE -ne 0 -or -not $folderId) {
 }
 
 $serviceAccountName = 'lw-music-auth'
-$secretName = 'lw-music-yandex-auth'
-$functionName = 'lw-music-room-management'
+$secretName = "lw-music-yandex-auth$environmentSuffix"
+$functionName = "lw-music-room-management$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-management')
 ).Path
@@ -152,6 +168,7 @@ Invoke-YcCommand @(
 
 $functionUrl = "https://functions.yandexcloud.net/$($function.id)"
 [PSCustomObject]@{
+  environment = $Environment
   functionId = $function.id
   functionUrl = $functionUrl
   viteVariable = "VITE_ROOM_MANAGEMENT_API_URL=$functionUrl"

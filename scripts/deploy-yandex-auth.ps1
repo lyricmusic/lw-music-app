@@ -1,16 +1,25 @@
 param(
   [string]$YcPath = 'yc',
-  [string[]]$AllowedOrigins = @(
-    'https://syncly.lyricweb.ru',
-    'https://lwmusic-ffe83.web.app',
-    'https://lwmusic-ffe83.firebaseapp.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173'
-  )
+  [ValidateSet('prod', 'dev')]
+  [string]$Environment = 'dev',
+  [string[]]$AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Stop'
+$isDevelopment = $Environment -eq 'dev'
+$environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+
+if ($AllowedOrigins.Count -eq 0) {
+  $AllowedOrigins = if ($isDevelopment) {
+    @('http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173')
+  } else {
+    @(
+      'https://syncly.lyricweb.ru',
+      'https://lwmusic-ffe83.web.app',
+      'https://lwmusic-ffe83.firebaseapp.com'
+    )
+  }
+}
 
 function Invoke-YcJson {
   param(
@@ -125,8 +134,8 @@ if ($hasAllLocalSecretInputs) {
 }
 
 $serviceAccountName = 'lw-music-auth'
-$secretName = 'lw-music-yandex-auth'
-$functionName = 'lw-music-yandex-auth'
+$secretName = "lw-music-yandex-auth$environmentSuffix"
+$functionName = "lw-music-yandex-auth$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\yandex-auth')
 ).Path
@@ -238,6 +247,7 @@ Invoke-YcCommand @(
 )
 
 [PSCustomObject]@{
+  environment = $Environment
   functionId = $function.id
   functionUrl = $redirectUri
   redirectUri = $redirectUri

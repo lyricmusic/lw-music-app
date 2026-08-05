@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "lwmusic-ffe83"
+    "default": "lwmusic-dev-ffe83",
+    "dev": "lwmusic-dev-ffe83",
+    "prod": "lwmusic-ffe83"
   }
 }

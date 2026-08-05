@@ -1,17 +1,33 @@
 param(
-  [string]$YcPath = 'C:\Users\cools\yandex-cloud\bin\yc.exe',
-  [string]$FirebaseProjectId = 'lwmusic-ffe83',
-  [string[]]$AllowedOrigins = @(
-    'https://syncly.lyricweb.ru',
-    'https://lwmusic-ffe83.web.app',
-    'https://lwmusic-ffe83.firebaseapp.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173'
-  )
+  [string]$YcPath = 'yc',
+  [ValidateSet('prod', 'dev')]
+  [string]$Environment = 'dev',
+  [string]$FirebaseProjectId = '',
+  [string[]]$AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Continue'
+$isDevelopment = $Environment -eq 'dev'
+$environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+
+if (-not $FirebaseProjectId) {
+  $FirebaseProjectId = if ($isDevelopment) {
+    'lwmusic-dev-ffe83'
+  } else {
+    'lwmusic-ffe83'
+  }
+}
+if ($AllowedOrigins.Count -eq 0) {
+  $AllowedOrigins = if ($isDevelopment) {
+    @('http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173')
+  } else {
+    @(
+      'https://syncly.lyricweb.ru',
+      'https://lwmusic-ffe83.web.app',
+      'https://lwmusic-ffe83.firebaseapp.com'
+    )
+  }
+}
 
 function Invoke-YcJson {
   param([string[]]$Arguments)
@@ -40,10 +56,10 @@ if ($LASTEXITCODE -ne 0 -or -not $folderId) {
   throw 'Run yc init and select a default folder before deploying.'
 }
 
-$serviceAccountName = 'lw-music-storage'
-$secretName = 'lw-music-storage-key'
-$functionName = 'lw-music-room-cover-upload'
-$bucketName = "lw-music-room-covers-$folderId"
+$serviceAccountName = "lw-music-storage$environmentSuffix"
+$secretName = "lw-music-storage-key$environmentSuffix"
+$functionName = "lw-music-room-cover-upload$environmentSuffix"
+$bucketName = "lw-music-room-covers$environmentSuffix-$folderId"
 $functionSource = Join-Path $PSScriptRoot '..\serverless\room-cover-upload'
 
 $serviceAccount = Find-YcJson @(
@@ -154,6 +170,7 @@ $deployedFunction = Invoke-YcJson @(
 )
 
 [PSCustomObject]@{
+  environment = $Environment
   bucket = $bucketName
   functionId = $function.id
   functionUrl = $deployedFunction.http_invoke_url

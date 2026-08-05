@@ -1,16 +1,25 @@
 param(
   [string]$YcPath = 'yc',
-  [string[]]$AllowedOrigins = @(
-    'https://syncly.lyricweb.ru',
-    'https://lwmusic-ffe83.web.app',
-    'https://lwmusic-ffe83.firebaseapp.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173'
-  )
+  [ValidateSet('prod', 'dev')]
+  [string]$Environment = 'dev',
+  [string[]]$AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Stop'
+$isDevelopment = $Environment -eq 'dev'
+$environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+
+if ($AllowedOrigins.Count -eq 0) {
+  $AllowedOrigins = if ($isDevelopment) {
+    @('http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173')
+  } else {
+    @(
+      'https://syncly.lyricweb.ru',
+      'https://lwmusic-ffe83.web.app',
+      'https://lwmusic-ffe83.firebaseapp.com'
+    )
+  }
+}
 
 function Invoke-YcJson {
   param([string[]]$Arguments)
@@ -73,8 +82,8 @@ if ($LASTEXITCODE -ne 0 -or -not $folderId) {
 }
 
 $serviceAccountName = 'lw-music-auth'
-$secretName = 'lw-music-yandex-auth'
-$functionName = 'lw-music-room-invites'
+$secretName = "lw-music-yandex-auth$environmentSuffix"
+$functionName = "lw-music-room-invites$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-invites')
 ).Path
@@ -149,6 +158,7 @@ Invoke-YcCommand @(
 
 $functionUrl = "https://functions.yandexcloud.net/$($function.id)"
 [PSCustomObject]@{
+  environment = $Environment
   functionId = $function.id
   functionUrl = $functionUrl
   viteVariable = "VITE_ROOM_INVITE_API_URL=$functionUrl"
