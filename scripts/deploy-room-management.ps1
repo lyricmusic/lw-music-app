@@ -1,5 +1,6 @@
 param(
   [string]$YcPath = 'yc',
+  [string]$FirebaseDatabaseUrl = 'https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app',
   [bool]$EnforceAppCheck = $false,
   [string[]]$AllowedOrigins = @(
     'https://syncly.lyricweb.ru',
@@ -136,7 +137,7 @@ try {
     '--execution-timeout', '20s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue,FIREBASE_DATABASE_URL=$FirebaseDatabaseUrl",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

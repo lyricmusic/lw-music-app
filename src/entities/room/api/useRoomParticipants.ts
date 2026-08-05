@@ -137,7 +137,7 @@ export function useRoomParticipants(roomId: string): RoomParticipantsState {
         if (profileUnsubscribers.has(participantId)) continue
 
         const unsubscribeProfile = onSnapshot(
-          doc(db, 'users', participantId),
+          doc(db, 'userProfiles', participantId),
           profileSnapshot => {
             resolvedProfileIds.add(participantId)
 

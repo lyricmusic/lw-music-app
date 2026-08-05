@@ -10,6 +10,10 @@ export {
   type RoomMembershipStatus,
 } from './api/useRoomMembership'
 export { useRoomPresence } from './api/useRoomPresence'
+export {
+  useRealtimeRoomAccess,
+  type RealtimeRoomAccessStatus,
+} from './api/useRealtimeRoomAccess'
 export { useRoomParticipants } from './api/useRoomParticipants'
 export type { RoomParticipant } from './api/useRoomParticipants'
 export {

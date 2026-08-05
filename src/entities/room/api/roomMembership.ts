@@ -20,6 +20,7 @@ export async function leaveRoom(roomId: string) {
 
     transaction.update(memberRef, { status: 'left' })
   })
+  await callRoomManagementApi('revokeRealtimeRoomAccess', { roomId })
 }
 
 export async function kickRoomMember(roomId: string, memberId: string) {

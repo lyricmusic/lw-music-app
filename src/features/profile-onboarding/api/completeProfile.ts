@@ -1,5 +1,5 @@
 import { updateProfile } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 
 import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
@@ -59,7 +59,7 @@ export async function completeProfile({
     const profileRef = doc(db, 'users', user.uid)
     const profileSnapshot = await getDoc(profileRef)
 
-    await setDoc(profileRef, {
+    const profile = {
       avatar: {
         presetId: presetAvatarId,
         storagePath: avatarPath,
@@ -72,7 +72,18 @@ export async function completeProfile({
       onboardingCompleted: true,
       photoURL,
       updatedAt: serverTimestamp(),
+    }
+    const batch = writeBatch(db)
+    batch.set(profileRef, profile)
+    batch.set(doc(db, 'userProfiles', user.uid), {
+      avatar: profile.avatar,
+      character: profile.character,
+      createdAt: profile.createdAt,
+      displayName: profile.displayName,
+      photoURL: profile.photoURL,
+      updatedAt: profile.updatedAt,
     })
+    await batch.commit()
     try {
       await updateProfile(user, {
         displayName: normalizedDisplayName,

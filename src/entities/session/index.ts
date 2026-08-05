@@ -17,4 +17,4 @@ export type {
   CharacterGenderId,
   UserCharacter,
 } from './model/character'
-export type { UserProfile } from './model/types'
+export type { PublicUserProfile, UserProfile } from './model/types'

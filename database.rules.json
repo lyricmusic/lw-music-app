@@ -2,22 +2,26 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "roomAccess": {
+      ".read": false,
+      ".write": false
+    },
     "roomPresence": {
       "$roomId": {
-        ".read": "auth != null",
+        ".read": "auth != null && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
         "$uid": {
           "$connectionId": {
-            ".write": "auth != null && auth.uid === $uid",
-            ".validate": "newData.isNumber() && newData.val() <= now"
+            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && root.child('roomAccess').child($roomId).child('status').val() === 'active' && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))))",
+            ".validate": "newData.isNumber() && newData.val() >= now - 60000 && newData.val() <= now"
           }
         }
       }
     },
     "roomReactions": {
       "$roomId": {
-        ".read": "auth != null",
+        ".read": "auth != null && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && root.child('roomAccess').child($roomId).child('status').val() === 'active' && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))))",
           ".validate": "!newData.exists() || newData.hasChildren(['emoji', 'expiresAt'])",
           "emoji": {
             ".validate": "newData.isString() && (newData.val() === '🔥' || newData.val() === '💜' || newData.val() === '👏' || newData.val() === '✨')"

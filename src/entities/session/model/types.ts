@@ -10,13 +10,16 @@ export interface UserAvatar {
   type: UserAvatarType
 }
 
-export interface UserProfile {
+export interface PublicUserProfile {
   avatar: UserAvatar
   character?: UserCharacter
   createdAt: Timestamp
   displayName: string
-  email: string
-  onboardingCompleted: boolean
   photoURL: null | string
   updatedAt: Timestamp
+}
+
+export interface UserProfile extends PublicUserProfile {
+  email: string
+  onboardingCompleted: boolean
 }

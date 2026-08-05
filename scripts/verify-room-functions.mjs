@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { getApps, initializeApp } from 'firebase-admin/app'
+import { getDatabase } from 'firebase-admin/database'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099'
@@ -12,9 +13,16 @@ const databaseRoot = `projects/${projectId}/databases/(default)/documents`
 const firestoreUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents`
 
 process.env.FIREBASE_PROJECT_ID = projectId
+process.env.FIREBASE_DATABASE_URL = `https://${projectId}-default-rtdb.firebaseio.com`
 process.env.ALLOWED_ORIGINS = allowedOrigin
 
-getApps()[0] ?? initializeApp({ projectId })
+const app =
+  getApps()[0] ??
+  initializeApp({
+    databaseURL: process.env.FIREBASE_DATABASE_URL,
+    projectId,
+  })
+const realtimeDb = getDatabase(app)
 const require = createRequire(import.meta.url)
 const { handler } = require('../serverless/room-management/index.js')
 
@@ -96,6 +104,7 @@ async function callFunction(name, data, token) {
 const owner = await createAuthUser('owner')
 const futureOwner = await createAuthUser('future-owner')
 const member = await createAuthUser('member')
+const bannedTarget = await createAuthUser('banned-target')
 const roomId = `room-functions-${Date.now()}`
 const firstItemId = '000000000001'
 const secondItemId = '000000000002'
@@ -142,9 +151,14 @@ await commit([
     displayName: stringValue('Member'),
     photoURL: nullValue(),
   }),
+  update(`users/${bannedTarget.uid}`, {
+    displayName: stringValue('Banned target'),
+    photoURL: nullValue(),
+  }),
   update(`rooms/${roomId}/members/${owner.uid}`, membership('owner')),
   update(`rooms/${roomId}/members/${futureOwner.uid}`, membership('member')),
   update(`rooms/${roomId}/members/${member.uid}`, membership('member')),
+  update(`rooms/${roomId}/members/${bannedTarget.uid}`, membership('member')),
   update(`rooms/${roomId}/queueState/current`, {
     activePosition: integerValue(1),
     itemIds: arrayValue([firstItemId, secondItemId]),
@@ -193,6 +207,53 @@ await commit([
     text: stringValue('Message under moderation'),
   }),
 ])
+
+const realtimeAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  member.idToken,
+)
+assert.equal(
+  realtimeAuthorization.ok,
+  true,
+  JSON.stringify(realtimeAuthorization),
+)
+const realtimeMemberLease = (
+  await realtimeDb.ref(`roomAccess/${roomId}/members/${member.uid}`).get()
+).val()
+assert.equal(
+  typeof realtimeMemberLease === 'number' && realtimeMemberLease > Date.now(),
+  true,
+  JSON.stringify(realtimeMemberLease),
+)
+
+const targetRealtimeAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  bannedTarget.idToken,
+)
+assert.equal(
+  targetRealtimeAuthorization.ok,
+  true,
+  JSON.stringify(targetRealtimeAuthorization),
+)
+const targetBan = await callFunction(
+  'moderateRoomMember',
+  {
+    action: 'ban',
+    expiresAtMillis: null,
+    memberId: bannedTarget.uid,
+    reason: 'Realtime ban mirror verification',
+    roomId,
+  },
+  owner.idToken,
+)
+assert.equal(targetBan.ok, true, JSON.stringify(targetBan))
+const bannedRealtimeAccess = (
+  await realtimeDb.ref(`roomAccess/${roomId}`).get()
+).val()
+assert.equal(bannedRealtimeAccess.bans[bannedTarget.uid], 0)
+assert.equal(bannedRealtimeAccess.members?.[bannedTarget.uid] ?? null, null)
 
 for (let index = 1; index < 10; index += 1) {
   const limitedRoomId = `server-room-${Date.now()}-${index}`
@@ -381,6 +442,27 @@ const nextOwner = await readDocument(
 )
 assert.equal(nextOwner.role.stringValue, 'owner')
 
+const roomAccessUpdate = await callFunction(
+  'updateRoomAccess',
+  {
+    roomId,
+    settings: {
+      allowGuestChat: false,
+      allowGuestQueue: false,
+      slowModeSeconds: 30,
+    },
+    status: 'archived',
+    visibility: 'unlisted',
+  },
+  futureOwner.idToken,
+)
+assert.equal(roomAccessUpdate.ok, true, JSON.stringify(roomAccessUpdate))
+const realtimeRoomAccess = (
+  await realtimeDb.ref(`roomAccess/${roomId}`).get()
+).val()
+assert.equal(realtimeRoomAccess.status, 'archived')
+assert.equal(realtimeRoomAccess.visibility, 'unlisted')
+
 console.log(
-  'Room management verification passed: room/invite limits, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, and ownership transfer.',
+  'Room management verification passed: room/invite limits, realtime leases, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, ownership transfer, and mirrored room access updates.',
 )

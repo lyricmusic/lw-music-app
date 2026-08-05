@@ -99,7 +99,7 @@ export function useRoomRestrictions(roomId: string, enabled: boolean) {
         profileUnsubscribers.set(
           userId,
           onSnapshot(
-            doc(db, 'users', userId),
+            doc(db, 'userProfiles', userId),
             snapshot => {
               resolvedProfiles.add(userId)
               const data = snapshot.data()

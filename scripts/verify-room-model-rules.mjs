@@ -302,6 +302,23 @@ assert.equal(
 const publicRoomList = await queryRooms(otherUser.idToken, true)
 assert.equal(publicRoomList.ok, true, JSON.stringify(publicRoomList))
 
+const clientRoomAccessUpdate = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}`,
+      { visibility: stringValue('private') },
+      ['visibility'],
+      [requestTime('updatedAt')],
+    ),
+  ],
+  owner.idToken,
+)
+assert.equal(
+  clientRoomAccessUpdate.ok,
+  false,
+  JSON.stringify(clientRoomAccessUpdate),
+)
+
 const anonymousPublicRoomList = await queryRooms(anonymousUser.idToken, true)
 assert.equal(
   anonymousPublicRoomList.ok,
@@ -727,15 +744,98 @@ const registeredProfile = await commit(
       },
       [requestTime('createdAt'), requestTime('updatedAt')],
     ),
+    update(
+      `userProfiles/${otherUser.uid}`,
+      {
+        avatar: mapValue({
+          presetId: stringValue('beat'),
+          storagePath: nullValue(),
+          type: stringValue('preset'),
+        }),
+        character: mapValue({
+          accentColor: stringValue('cyan'),
+          appearanceId: stringValue('base'),
+          danceId: stringValue('side-step'),
+        }),
+        displayName: stringValue('Registered member'),
+        photoURL: stringValue('/avatars/beat.svg'),
+      },
+      [requestTime('createdAt'), requestTime('updatedAt')],
+    ),
   ],
   otherUser.idToken,
 )
 assert.equal(registeredProfile.ok, true, JSON.stringify(registeredProfile))
 
+const privateProfileOwnerRead = await readDocument(
+  `users/${otherUser.uid}`,
+  otherUser.idToken,
+)
+assert.equal(
+  privateProfileOwnerRead.ok,
+  true,
+  JSON.stringify(privateProfileOwnerRead),
+)
+
+const privateProfileOtherUserRead = await readDocument(
+  `users/${otherUser.uid}`,
+  owner.idToken,
+)
+assert.equal(
+  privateProfileOtherUserRead.ok,
+  false,
+  JSON.stringify(privateProfileOtherUserRead),
+)
+
+const publicProfileOtherUserRead = await readDocument(
+  `userProfiles/${otherUser.uid}`,
+  owner.idToken,
+)
+assert.equal(
+  publicProfileOtherUserRead.ok,
+  true,
+  JSON.stringify(publicProfileOtherUserRead),
+)
+assert.equal(
+  JSON.stringify(publicProfileOtherUserRead.body).includes(otherUser.email),
+  false,
+  'Public profile must not expose email.',
+)
+
+const publicProfileEmailWrite = await commit(
+  [
+    patch(
+      `userProfiles/${otherUser.uid}`,
+      { email: stringValue(otherUser.email) },
+      ['email'],
+      [requestTime('updatedAt')],
+    ),
+  ],
+  otherUser.idToken,
+)
+assert.equal(
+  publicProfileEmailWrite.ok,
+  false,
+  JSON.stringify(publicProfileEmailWrite),
+)
+
 const validCharacterUpdate = await commit(
   [
     patch(
       `users/${otherUser.uid}`,
+      {
+        character: mapValue({
+          accentColor: stringValue('pink'),
+          appearanceId: stringValue('base'),
+          danceId: stringValue('side-step'),
+          genderId: stringValue('female'),
+        }),
+      },
+      ['character'],
+      [requestTime('updatedAt')],
+    ),
+    patch(
+      `userProfiles/${otherUser.uid}`,
       {
         character: mapValue({
           accentColor: stringValue('pink'),

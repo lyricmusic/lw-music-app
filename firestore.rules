@@ -112,6 +112,35 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    function hasValidPublicUserProfile(userId) {
+      return request.resource.data.keys().hasAll([
+          'avatar',
+          'character',
+          'createdAt',
+          'displayName',
+          'photoURL',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'avatar',
+          'character',
+          'createdAt',
+          'displayName',
+          'photoURL',
+          'updatedAt'
+        ])
+        && hasValidAvatar(userId)
+        && hasValidCharacter()
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 50
+        && (request.resource.data.photoURL == null
+          || (request.resource.data.photoURL is string
+            && request.resource.data.photoURL.size() <= 2048))
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     function hasValidCategory(category) {
       return category is map
         && category.keys().hasAll(['id', 'title'])
@@ -693,7 +722,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn();
+      allow get: if isOwner(userId);
       allow list: if false;
       allow create: if isOwner(userId)
         && hasValidUserProfile(userId)
@@ -707,6 +736,25 @@ service cloud.firestore {
         && (!('onboardingCompleted' in resource.data)
           || !resource.data.onboardingCompleted
           || request.resource.data.onboardingCompleted)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /userProfiles/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && hasValidPublicUserProfile(userId)
+        && existsAfter(
+          /databases/$(database)/documents/users/$(userId)
+        )
+        && request.resource.data.createdAt == getAfter(
+          /databases/$(database)/documents/users/$(userId)
+        ).data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && hasValidPublicUserProfile(userId)
+        && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time;
       allow delete: if false;
     }
@@ -725,18 +773,9 @@ service cloud.firestore {
         && resource.data.visibility == 'public';
       // Room creation is server-only so the per-owner quota cannot be bypassed.
       allow create: if false;
-      allow update: if isOwner(resource.data.ownerId)
-        && hasValidRoom(roomId)
-        && request.resource.data.name == resource.data.name
-        && request.resource.data.nameKey == resource.data.nameKey
-        && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
-      allow delete: if isOwner(resource.data.ownerId)
-        && (!('nameKey' in resource.data)
-          || !existsAfter(
-            /databases/$(database)/documents/roomNames/$(resource.data.nameKey)
-          ));
+      // Updates are server-only so the RTDB room-access mirror cannot drift.
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /rooms/{roomId}/members/{memberId} {

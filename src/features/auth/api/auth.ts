@@ -9,7 +9,7 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 
 import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
@@ -93,7 +93,7 @@ async function saveUserProfile(
             type: resolvedPhotoURL ? 'provider' : 'none',
           })
 
-  await setDoc(userRef, {
+  const profile = {
     avatar,
     character: resolveUserCharacter(existingProfile?.character),
     createdAt: existingProfile?.createdAt ?? serverTimestamp(),
@@ -105,7 +105,18 @@ async function saveUserProfile(
         !(requireOnboarding || isNewProfile)),
     photoURL: requireOnboarding && isNewProfile ? null : resolvedPhotoURL,
     updatedAt: serverTimestamp(),
+  }
+  const batch = writeBatch(db)
+  batch.set(userRef, profile)
+  batch.set(doc(db, 'userProfiles', user.uid), {
+    avatar: profile.avatar,
+    character: profile.character,
+    createdAt: profile.createdAt,
+    displayName: profile.displayName,
+    photoURL: profile.photoURL,
+    updatedAt: profile.updatedAt,
   })
+  await batch.commit()
 }
 
 export async function signUpWithEmail({

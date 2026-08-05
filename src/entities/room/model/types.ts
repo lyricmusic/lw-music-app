@@ -8,7 +8,7 @@ export type Room = {
   imageUrl: string
   name: string
   ownerId: string
-  participantCount: number
+  participantCount: null | number
   settings: RoomSettings
   status: RoomStatus
   updatedAt: Timestamp

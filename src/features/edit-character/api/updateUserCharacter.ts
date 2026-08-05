@@ -1,4 +1,4 @@
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 
 import type { UserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
@@ -21,8 +21,26 @@ export async function updateUserCharacter(character: UserCharacter) {
     throw new Error('Выбранный вариант персонажа пока недоступен.')
   }
 
-  await updateDoc(doc(db, 'users', user.uid), {
+  const privateProfileRef = doc(db, 'users', user.uid)
+  const privateProfileSnapshot = await getDoc(privateProfileRef)
+  if (!privateProfileSnapshot.exists()) {
+    throw new Error('Профиль пользователя не найден.')
+  }
+
+  const privateProfile = privateProfileSnapshot.data()
+  const updatedAt = serverTimestamp()
+  const batch = writeBatch(db)
+  batch.update(privateProfileRef, {
     character,
-    updatedAt: serverTimestamp(),
+    updatedAt,
   })
+  batch.set(doc(db, 'userProfiles', user.uid), {
+    avatar: privateProfile.avatar,
+    character,
+    createdAt: privateProfile.createdAt,
+    displayName: privateProfile.displayName,
+    photoURL: privateProfile.photoURL ?? null,
+    updatedAt,
+  })
+  await batch.commit()
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   useCurrentRoomMember,
+  useRealtimeRoomAccess,
   useRoomExists,
   useRoomMembership,
   useRoomPresence,
@@ -74,7 +75,11 @@ export function RoomPage() {
   const currentMember = useCurrentRoomMember(
     membership.status === 'joined' ? roomId : '',
   )
-  useRoomPresence(membership.status === 'joined' ? roomId : '')
+  const realtimeAccessStatus = useRealtimeRoomAccess(
+    roomId,
+    membership.status === 'joined' && room.access?.status === 'active',
+  )
+  useRoomPresence(realtimeAccessStatus === 'ready' ? roomId : '')
 
   const leaveRoomEntry = () =>
     navigate(user?.isAnonymous ? routes.signIn : routes.rooms, {
@@ -125,7 +130,21 @@ export function RoomPage() {
     )
   }
 
-  if (room.exists !== true || membership.status !== 'joined') {
+  if (room.access?.status === 'active' && realtimeAccessStatus === 'error') {
+    return (
+      <RoomEntryState
+        actionLabel="Попробовать снова"
+        message="Не удалось безопасно подключить присутствие и реакции комнаты."
+        onAction={() => window.location.reload()}
+      />
+    )
+  }
+
+  if (
+    room.exists !== true ||
+    membership.status !== 'joined' ||
+    (room.access?.status === 'active' && realtimeAccessStatus !== 'ready')
+  ) {
     return (
       <RoomEntryState
         message={

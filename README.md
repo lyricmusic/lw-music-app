@@ -284,6 +284,34 @@ pnpm migrate:room-model -- --project lwmusic-ffe83 --firebase-cli-auth
 pnpm migrate:room-model -- --project lwmusic-ffe83 --firebase-cli-auth --apply --backup .migration-backups/room-model-before.json
 ```
 
+### Безопасные границы профилей и realtime-комнат
+
+`users/{uid}` содержит приватный профиль с email и читается только владельцем.
+Публичные поля для участников комнаты хранятся отдельно в
+`userProfiles/{uid}`. Доступ к `roomPresence` и `roomReactions` проверяется по
+закрытому RTDB-индексу `roomAccess`: сервер выдаёт активному участнику
+двухминутный lease, синхронизирует видимость/статус комнаты и немедленно
+отзывает lease при кике или бане.
+
+Перед публикацией новых rules нужно сначала развернуть обновлённую
+`room-management` function, затем выполнить dry run миграции:
+
+```powershell
+pnpm migrate:security-boundaries -- --project lwmusic-ffe83 --database-url https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app --firebase-cli-auth
+```
+
+Применение требует backup и также подготавливает RTDB ACL для существующих
+комнат. Команда не запускается автоматически:
+
+```powershell
+pnpm migrate:security-boundaries -- --project lwmusic-ffe83 --database-url https://lwmusic-ffe83-default-rtdb.europe-west1.firebasedatabase.app --firebase-cli-auth --apply --backup .migration-backups/security-boundaries-before.json
+```
+
+После успешного backfill правила Firestore и Realtime Database публикуются
+вместе, а frontend выкладывается сразу после них. До завершения всех этих шагов
+новый клиент и опубликованные правила могут быть несовместимы; выпуск следует
+считать единым изменением.
+
 ## Следующие этапы
 
 1. Добавить закрытую панель рассмотрения жалоб со сменой статусов и поиском по нарушителю.

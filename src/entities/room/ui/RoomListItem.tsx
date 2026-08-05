@@ -43,12 +43,14 @@ export function RoomListItem({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center rounded-full bg-[#32204B] px-2.5 py-2 text-sm text-[#E7DDF4] sm:px-3">
-        <MembersIcon className="mr-1.5" sx={{ width: { xs: 18, sm: 22 } }} />
-        <span aria-label={`Участников: ${room.participantCount}`}>
-          {room.participantCount}
-        </span>
-      </div>
+      {room.participantCount !== null && (
+        <div className="flex shrink-0 items-center rounded-full bg-[#32204B] px-2.5 py-2 text-sm text-[#E7DDF4] sm:px-3">
+          <MembersIcon className="mr-1.5" sx={{ width: { xs: 18, sm: 22 } }} />
+          <span aria-label={`Участников: ${room.participantCount}`}>
+            {room.participantCount}
+          </span>
+        </div>
+      )}
     </button>
   )
 }

@@ -4,6 +4,7 @@ const { createHash, randomBytes } = require('node:crypto')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getAppCheck } = require('firebase-admin/app-check')
 const { getAuth } = require('firebase-admin/auth')
+const { getDatabase } = require('firebase-admin/database')
 const {
   FieldValue,
   Timestamp,
@@ -38,19 +39,28 @@ function getFirebaseApp() {
   if (getApps().length > 0) return getApps()[0]
 
   if (process.env.FIRESTORE_EMULATOR_HOST) {
+    const projectId = process.env.FIREBASE_PROJECT_ID || 'demo-lwmusic'
     return initializeApp({
-      projectId: process.env.FIREBASE_PROJECT_ID || 'demo-lwmusic',
+      databaseURL:
+        process.env.FIREBASE_DATABASE_URL ||
+        `https://${projectId}-default-rtdb.firebaseio.com`,
+      projectId,
     })
   }
 
   const serviceAccount = JSON.parse(
     requiredEnvironment('FIREBASE_SERVICE_ACCOUNT_JSON'),
   )
-  return initializeApp({ credential: cert(serviceAccount) })
+  return initializeApp({
+    credential: cert(serviceAccount),
+    databaseURL: requiredEnvironment('FIREBASE_DATABASE_URL'),
+  })
 }
 
 const db = getFirestore(getFirebaseApp())
+const realtimeDb = getDatabase(getFirebaseApp())
 const SERVER_TIMESTAMP = FieldValue.serverTimestamp()
+const REALTIME_ACCESS_LEASE_MILLISECONDS = 2 * 60_000
 const ASSIGNABLE_ROLES = new Set(['host', 'member', 'moderator'])
 const MODERATION_ROLES = new Set(['host', 'moderator', 'owner'])
 const ROLE_RANK = { host: 2, member: 0, moderator: 1, owner: 3 }
@@ -244,6 +254,72 @@ function restrictionExpiration(data) {
 
 function memberRef(roomId, userId) {
   return db.doc(`rooms/${roomId}/members/${userId}`)
+}
+
+function validatedRoomAccess(data) {
+  const settings = data?.settings
+  const status = data?.status
+  const visibility = data?.visibility
+  if (
+    !settings ||
+    typeof settings.allowGuestChat !== 'boolean' ||
+    typeof settings.allowGuestQueue !== 'boolean' ||
+    !Number.isInteger(settings.slowModeSeconds) ||
+    settings.slowModeSeconds < 0 ||
+    settings.slowModeSeconds > 300 ||
+    !['active', 'archived'].includes(status) ||
+    !ROOM_VISIBILITIES.has(visibility)
+  ) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Некорректные настройки доступа к комнате.',
+    )
+  }
+  return {
+    settings: {
+      allowGuestChat: settings.allowGuestChat,
+      allowGuestQueue: settings.allowGuestQueue,
+      slowModeSeconds: settings.slowModeSeconds,
+    },
+    status,
+    visibility,
+  }
+}
+
+function realtimeRoomAccessRef(roomId) {
+  return realtimeDb.ref(`roomAccess/${roomId}`)
+}
+
+function isActiveBan(ban, nowMillis = Date.now()) {
+  return (
+    ban != null &&
+    (ban.expiresAt == null ||
+      (typeof ban.expiresAt.toMillis === 'function' &&
+        ban.expiresAt.toMillis() > nowMillis))
+  )
+}
+
+function realtimeBanExpiration(expiresAt) {
+  return expiresAt == null ? 0 : expiresAt.toMillis()
+}
+
+async function grantRealtimeRoomAccess(roomId, userId, room) {
+  await realtimeRoomAccessRef(roomId).update({
+    [`members/${userId}`]: Date.now() + REALTIME_ACCESS_LEASE_MILLISECONDS,
+    status: room.status,
+    visibility: room.visibility,
+  })
+}
+
+async function revokeRealtimeRoomAccess(roomId, userId) {
+  await realtimeRoomAccessRef(roomId).child(`members/${userId}`).remove()
+}
+
+async function syncRealtimeRoomMetadata(roomId, room) {
+  await realtimeRoomAccessRef(roomId).update({
+    status: room.status,
+    visibility: room.visibility,
+  })
 }
 
 async function activeMember(transaction, roomId, userId) {
@@ -833,7 +909,105 @@ exports.createRoom = callable(async request => {
     })
   })
 
+  await syncRealtimeRoomMetadata(roomId, { status: 'active', visibility })
+  await grantRealtimeRoomAccess(roomId, actorId, {
+    status: 'active',
+    visibility,
+  })
+
   return { ok: true, roomId }
+})
+
+exports.authorizeRealtimeRoom = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const [roomSnapshot, memberSnapshot, banSnapshot] = await Promise.all([
+    db.doc(`rooms/${roomId}`).get(),
+    memberRef(roomId, actorId).get(),
+    db.doc(`rooms/${roomId}/bans/${actorId}`).get(),
+  ])
+  const room = roomSnapshot.data()
+  const member = memberSnapshot.data()
+  const ban = banSnapshot.exists ? banSnapshot.data() : null
+  if (isActiveBan(ban)) {
+    await realtimeRoomAccessRef(roomId).update({
+      [`bans/${actorId}`]: realtimeBanExpiration(ban.expiresAt),
+      [`members/${actorId}`]: null,
+    })
+    throw new HttpsError(
+      'permission-denied',
+      'У вас нет доступа к realtime-данным этой комнаты.',
+    )
+  }
+  if (
+    !roomSnapshot.exists ||
+    room?.status !== 'active' ||
+    !ROOM_VISIBILITIES.has(room?.visibility) ||
+    !memberSnapshot.exists ||
+    member?.status !== 'active'
+  ) {
+    if (
+      roomSnapshot.exists &&
+      ['active', 'archived'].includes(room?.status) &&
+      ROOM_VISIBILITIES.has(room?.visibility)
+    ) {
+      await syncRealtimeRoomMetadata(roomId, room)
+    }
+    await revokeRealtimeRoomAccess(roomId, actorId)
+    throw new HttpsError(
+      'permission-denied',
+      'У вас нет доступа к realtime-данным этой комнаты.',
+    )
+  }
+
+  await grantRealtimeRoomAccess(roomId, actorId, room)
+  if (banSnapshot.exists) {
+    await realtimeRoomAccessRef(roomId).child(`bans/${actorId}`).remove()
+  }
+  return {
+    expiresAt: Date.now() + REALTIME_ACCESS_LEASE_MILLISECONDS,
+    ok: true,
+  }
+})
+
+exports.revokeRealtimeRoomAccess = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  await revokeRealtimeRoomAccess(roomId, actorId)
+  return { ok: true }
+})
+
+exports.updateRoomAccess = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  const access = validatedRoomAccess(request.data)
+  const roomRef = db.doc(`rooms/${roomId}`)
+
+  await db.runTransaction(async transaction => {
+    const [roomSnapshot, actorSnapshot] = await Promise.all([
+      transaction.get(roomRef),
+      transaction.get(memberRef(roomId, actorId)),
+    ])
+    if (
+      !roomSnapshot.exists ||
+      roomSnapshot.data()?.ownerId !== actorId ||
+      !actorSnapshot.exists ||
+      actorSnapshot.data()?.status !== 'active' ||
+      actorSnapshot.data()?.role !== 'owner'
+    ) {
+      throw new HttpsError(
+        'permission-denied',
+        'Только владелец может менять настройки комнаты.',
+      )
+    }
+    transaction.update(roomRef, {
+      ...access,
+      updatedAt: SERVER_TIMESTAMP,
+    })
+  })
+
+  await syncRealtimeRoomMetadata(roomId, access)
+  return { ok: true }
 })
 
 exports.createRoomInvite = callable(async request => {
@@ -1158,6 +1332,15 @@ exports.moderateRoomMember = callable(async request => {
     })
   })
 
+  if (action === 'ban') {
+    await realtimeRoomAccessRef(roomId).update({
+      [`bans/${targetId}`]: realtimeBanExpiration(expiresAt),
+      [`members/${targetId}`]: null,
+    })
+  } else if (action === 'kick') {
+    await revokeRealtimeRoomAccess(roomId, targetId)
+  }
+
   return { ok: true }
 })
 
@@ -1183,6 +1366,10 @@ exports.clearRoomRestriction = callable(async request => {
       targetId,
     })
   })
+
+  if (action === 'unban') {
+    await realtimeRoomAccessRef(roomId).child(`bans/${targetId}`).remove()
+  }
 
   return { ok: true }
 })
@@ -1653,6 +1840,7 @@ exports.reportRoomMessage = callable(async request =>
 
 const OPERATIONS = {
   advanceRoomVideo: exports.advanceRoomVideo,
+  authorizeRealtimeRoom: exports.authorizeRealtimeRoom,
   clearRoomRestriction: exports.clearRoomRestriction,
   createReport: exports.createReport,
   createRoom: exports.createRoom,
@@ -1661,12 +1849,14 @@ const OPERATIONS = {
   getRutubeVideo: exports.getRutubeVideo,
   moderateRoomMember: exports.moderateRoomMember,
   reportRoomMessage: exports.reportRoomMessage,
+  revokeRealtimeRoomAccess: exports.revokeRealtimeRoomAccess,
   revokeRoomInvite: exports.revokeRoomInvite,
   searchRutubeVideos: exports.searchRutubeVideos,
   sendRoomMessage: exports.sendRoomMessage,
   setRoomMemberRole: exports.setRoomMemberRole,
   skipRoomVideo: exports.skipRoomVideo,
   transferRoomOwnership: exports.transferRoomOwnership,
+  updateRoomAccess: exports.updateRoomAccess,
 }
 
 function getAllowedOrigins() {

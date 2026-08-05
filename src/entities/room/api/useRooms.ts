@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { db, realtimeDb } from '@/shared/api/firebase'
-import { onValue, ref } from 'firebase/database'
+import { db } from '@/shared/api/firebase'
 import {
   collection,
   type DocumentData,
@@ -63,9 +62,6 @@ function publicRoomsQuery(cursor?: QueryDocumentSnapshot<DocumentData>) {
 
 export function useRooms() {
   const [roomDocuments, setRoomDocuments] = useState<RoomWithoutPresence[]>([])
-  const [presenceCounts, setPresenceCounts] = useState<Record<string, number>>(
-    {},
-  )
   const [lastDocument, setLastDocument] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -129,45 +125,13 @@ export function useRooms() {
     }
   }, [hasMore, lastDocument])
 
-  useEffect(() => {
-    setPresenceCounts(previousCounts =>
-      Object.fromEntries(
-        roomDocuments.map(room => [room.id, previousCounts[room.id] ?? 0]),
-      ),
-    )
-
-    const unsubscribers = roomDocuments.map(room =>
-      onValue(
-        ref(realtimeDb, `roomPresence/${room.id}`),
-        snapshot => {
-          let participantCount = 0
-          snapshot.forEach(userSnapshot => {
-            if (userSnapshot.hasChildren()) participantCount += 1
-          })
-          setPresenceCounts(previousCounts => ({
-            ...previousCounts,
-            [room.id]: participantCount,
-          }))
-        },
-        reason => {
-          console.error(
-            `Не удалось загрузить присутствие в комнате ${room.id}:`,
-            reason,
-          )
-        },
-      ),
-    )
-
-    return () => unsubscribers.forEach(unsubscribe => unsubscribe())
-  }, [roomDocuments])
-
   const rooms = useMemo(
     () =>
       roomDocuments.map(room => ({
         ...room,
-        participantCount: presenceCounts[room.id] ?? 0,
+        participantCount: null,
       })),
-    [presenceCounts, roomDocuments],
+    [roomDocuments],
   )
 
   return { error, hasMore, loadMore, loading, loadingMore, rooms }
