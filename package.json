@@ -22,6 +22,7 @@
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "migrate:message-retention": "node scripts/migrate-message-retention.mjs",
     "migrate:room-model": "node scripts/migrate-room-model.mjs",
+    "migrate:room-membership-index": "node scripts/migrate-room-membership-index.mjs",
     "migrate:security-boundaries": "node scripts/migrate-security-boundaries.mjs",
     "preview": "vite preview",
     "verify:room-model-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-model-rules.mjs\"",

@@ -14,40 +14,15 @@ import {
 } from 'firebase/firestore'
 
 import {
-  parseRoomSettings,
-  parseRoomStatus,
-  parseRoomVisibility,
-} from '../model/roomAccess'
-import type { Category, Room } from '../model/types'
+  parseRoomDocument,
+  type RoomWithoutPresence,
+} from './parseRoomDocument'
 
 const ROOMS_PAGE_SIZE = 20
 
-type RoomWithoutPresence = Omit<Room, 'participantCount'>
-
-function parseRoomDocument(
-  roomSnapshot: QueryDocumentSnapshot<DocumentData>,
-): RoomWithoutPresence {
-  const data = roomSnapshot.data()
-
-  return {
-    categories: Array.isArray(data.categories)
-      ? (data.categories as Category[])
-      : [],
-    createdAt: data.createdAt,
-    id: roomSnapshot.id,
-    imagePath: typeof data.imagePath === 'string' ? data.imagePath : '',
-    imageUrl: typeof data.imageUrl === 'string' ? data.imageUrl : '',
-    name: typeof data.name === 'string' ? data.name : '',
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
-    settings: parseRoomSettings(data.settings),
-    status: parseRoomStatus(data.status),
-    updatedAt: data.updatedAt,
-    visibility: parseRoomVisibility(data.visibility),
-  }
-}
-
 function publicRoomsQuery(cursor?: QueryDocumentSnapshot<DocumentData>) {
   const baseConstraints = [
+    where('status', '==', 'active'),
     where('visibility', '==', 'public'),
     orderBy('createdAt', 'desc'),
   ]
@@ -60,7 +35,7 @@ function publicRoomsQuery(cursor?: QueryDocumentSnapshot<DocumentData>) {
   )
 }
 
-export function useRooms() {
+export function useRooms(enabled = true) {
   const [roomDocuments, setRoomDocuments] = useState<RoomWithoutPresence[]>([])
   const [lastDocument, setLastDocument] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null)
@@ -73,13 +48,27 @@ export function useRooms() {
   useEffect(() => {
     let disposed = false
 
+    if (!enabled) {
+      setRoomDocuments([])
+      setLastDocument(null)
+      setHasMore(false)
+      setLoading(false)
+      setLoadingMore(false)
+      setError(null)
+      return
+    }
+
     setLoading(true)
     setError(null)
     void getDocs(publicRoomsQuery())
       .then(snapshot => {
         if (disposed) return
 
-        setRoomDocuments(snapshot.docs.map(parseRoomDocument))
+        setRoomDocuments(
+          snapshot.docs
+            .map(parseRoomDocument)
+            .filter((room): room is RoomWithoutPresence => room !== null),
+        )
         setLastDocument(snapshot.docs[snapshot.docs.length - 1] ?? null)
         setHasMore(snapshot.size === ROOMS_PAGE_SIZE)
         setLoading(false)
@@ -95,7 +84,7 @@ export function useRooms() {
     return () => {
       disposed = true
     }
-  }, [])
+  }, [enabled])
 
   const loadMore = useCallback(async () => {
     if (!hasMore || !lastDocument || loadingMoreRef.current) return
@@ -104,7 +93,9 @@ export function useRooms() {
     setLoadingMore(true)
     try {
       const snapshot = await getDocs(publicRoomsQuery(lastDocument))
-      const nextRooms = snapshot.docs.map(parseRoomDocument)
+      const nextRooms = snapshot.docs
+        .map(parseRoomDocument)
+        .filter((room): room is RoomWithoutPresence => room !== null)
 
       setRoomDocuments(currentRooms => {
         const loadedIds = new Set(currentRooms.map(room => room.id))

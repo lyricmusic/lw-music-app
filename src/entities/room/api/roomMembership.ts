@@ -7,20 +7,9 @@ const ASSIGNABLE_ROLES: RoomMemberRole[] = ['host', 'member', 'moderator']
 export async function leaveRoom(roomId: string) {
   const user = auth.currentUser
   if (!user) throw new Error('Чтобы покинуть комнату, авторизуйтесь.')
+  if (!roomId) throw new Error('Комната не найдена.')
 
-  const memberRef = doc(db, 'rooms', roomId, 'members', user.uid)
-  await runTransaction(db, async transaction => {
-    const memberSnapshot = await transaction.get(memberRef)
-    if (!memberSnapshot.exists() || memberSnapshot.data().status !== 'active') {
-      return
-    }
-    if (memberSnapshot.data().role === 'owner') {
-      throw new Error('Владелец не может покинуть комнату без передачи прав.')
-    }
-
-    transaction.update(memberRef, { status: 'left' })
-  })
-  await callRoomManagementApi('revokeRealtimeRoomAccess', { roomId })
+  await callRoomManagementApi('leaveRoom', { roomId })
 }
 
 export async function kickRoomMember(roomId: string, memberId: string) {
@@ -80,6 +69,7 @@ export async function restorePublicRoomMembership(roomId: string) {
       joinedAt: serverTimestamp(),
       role: 'member',
       status: 'active',
+      userId: user.uid,
     })
   })
 }

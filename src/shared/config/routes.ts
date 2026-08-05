@@ -6,6 +6,8 @@ export const routes = {
   characterEditorSmokeTest: '/__character-editor-smoke',
   playerSmokeTest: '/__player-smoke',
   profileOnboardingSmokeTest: '/__profile-onboarding-smoke',
+  roomsSmokeTest: '/__rooms-smoke',
+  leaveRoomSmokeTest: '/__leave-room-smoke',
   room: (roomId: string) => `/rooms/${roomId}`,
   roomPattern: '/rooms/:roomId',
   rooms: '/rooms',

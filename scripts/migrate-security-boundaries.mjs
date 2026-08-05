@@ -189,6 +189,7 @@ for (const roomSnapshot of roomsSnapshot.docs) {
   const members = {}
   for (const memberSnapshot of membersSnapshot.docs) {
     if (
+      room.status === 'active' &&
       memberSnapshot.data()?.status === 'active' &&
       bans[memberSnapshot.id] === undefined
     ) {

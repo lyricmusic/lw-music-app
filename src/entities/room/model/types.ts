@@ -41,6 +41,7 @@ export type RoomMember = {
   joinedAt: Timestamp
   role: RoomMemberRole
   status: RoomMemberStatus
+  userId?: string
 }
 
 export type RoomBan = {

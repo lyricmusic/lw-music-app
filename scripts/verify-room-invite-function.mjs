@@ -116,12 +116,14 @@ assert.deepEqual(
     isGuest: registeredMember.data().isGuest,
     role: registeredMember.data().role,
     status: registeredMember.data().status,
+    userId: registeredMember.data().userId,
   },
   {
     invitedBy: owner.uid,
     isGuest: false,
     role: 'member',
     status: 'active',
+    userId: registered.uid,
   },
 )
 
@@ -137,6 +139,7 @@ const anonymousMember = await firestore
   .get()
 assert.equal(anonymousMember.data().isGuest, true)
 assert.equal(anonymousMember.data().role, 'member')
+assert.equal(anonymousMember.data().userId, anonymous.uid)
 
 const exhaustedResponse = await invoke(exhaustedUser.idToken, {
   token: standardToken,

@@ -1,4 +1,5 @@
 export { useRooms } from './api/useRooms'
+export { useMyRooms, type MyRoom } from './api/useMyRooms'
 export { useRoomExists } from './api/useRoomExists'
 export {
   useCurrentRoomMember,

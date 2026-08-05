@@ -312,10 +312,25 @@ async function grantRealtimeRoomAccess(roomId, userId, room) {
 }
 
 async function revokeRealtimeRoomAccess(roomId, userId) {
-  await realtimeRoomAccessRef(roomId).child(`members/${userId}`).remove()
+  await realtimeDb.ref().update({
+    [`roomAccess/${roomId}/members/${userId}`]: null,
+    [`roomPresence/${roomId}/${userId}`]: null,
+    [`roomReactions/${roomId}/${userId}`]: null,
+  })
 }
 
 async function syncRealtimeRoomMetadata(roomId, room) {
+  if (room.status === 'archived') {
+    await realtimeDb.ref().update({
+      [`roomAccess/${roomId}/members`]: null,
+      [`roomAccess/${roomId}/status`]: room.status,
+      [`roomAccess/${roomId}/visibility`]: room.visibility,
+      [`roomPresence/${roomId}`]: null,
+      [`roomReactions/${roomId}`]: null,
+    })
+    return
+  }
+
   await realtimeRoomAccessRef(roomId).update({
     status: room.status,
     visibility: room.visibility,
@@ -906,6 +921,7 @@ exports.createRoom = callable(async request => {
       joinedAt: SERVER_TIMESTAMP,
       role: 'owner',
       status: 'active',
+      userId: actorId,
     })
   })
 
@@ -930,9 +946,13 @@ exports.authorizeRealtimeRoom = callable(async request => {
   const member = memberSnapshot.data()
   const ban = banSnapshot.exists ? banSnapshot.data() : null
   if (isActiveBan(ban)) {
-    await realtimeRoomAccessRef(roomId).update({
-      [`bans/${actorId}`]: realtimeBanExpiration(ban.expiresAt),
-      [`members/${actorId}`]: null,
+    await realtimeDb.ref().update({
+      [`roomAccess/${roomId}/bans/${actorId}`]: realtimeBanExpiration(
+        ban.expiresAt,
+      ),
+      [`roomAccess/${roomId}/members/${actorId}`]: null,
+      [`roomPresence/${roomId}/${actorId}`]: null,
+      [`roomReactions/${roomId}/${actorId}`]: null,
     })
     throw new HttpsError(
       'permission-denied',
@@ -960,6 +980,9 @@ exports.authorizeRealtimeRoom = callable(async request => {
     )
   }
 
+  if (member.userId !== actorId) {
+    await memberRef(roomId, actorId).update({ userId: actorId })
+  }
   await grantRealtimeRoomAccess(roomId, actorId, room)
   if (banSnapshot.exists) {
     await realtimeRoomAccessRef(roomId).child(`bans/${actorId}`).remove()
@@ -975,6 +998,43 @@ exports.revokeRealtimeRoomAccess = callable(async request => {
   const roomId = requiredId(request.data, 'roomId', 'Комната')
   await revokeRealtimeRoomAccess(roomId, actorId)
   return { ok: true }
+})
+
+exports.leaveRoom = callable(async request => {
+  const actorId = requireAuth(request)
+  const roomId = requiredId(request.data, 'roomId', 'Комната')
+  let membershipChanged = false
+
+  await db.runTransaction(async transaction => {
+    const [roomSnapshot, memberSnapshot] = await Promise.all([
+      transaction.get(db.doc(`rooms/${roomId}`)),
+      transaction.get(memberRef(roomId, actorId)),
+    ])
+    const member = memberSnapshot.data()
+    if (
+      member?.role === 'owner' ||
+      (roomSnapshot.exists && roomSnapshot.data()?.ownerId === actorId)
+    ) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Владелец не может покинуть комнату без передачи прав.',
+      )
+    }
+    if (!memberSnapshot.exists || member?.status !== 'active') return
+
+    const removal = await readQueueRemoval(transaction, roomId, actorId)
+    transaction.update(memberSnapshot.ref, { status: 'left' })
+    applyQueueRemoval(transaction, removal, actorId)
+    writeAudit(transaction, roomId, {
+      action: 'member_left',
+      actorId,
+      targetId: actorId,
+    })
+    membershipChanged = true
+  })
+
+  await revokeRealtimeRoomAccess(roomId, actorId)
+  return { membershipChanged, ok: true }
 })
 
 exports.updateRoomAccess = callable(async request => {
@@ -1333,9 +1393,12 @@ exports.moderateRoomMember = callable(async request => {
   })
 
   if (action === 'ban') {
-    await realtimeRoomAccessRef(roomId).update({
-      [`bans/${targetId}`]: realtimeBanExpiration(expiresAt),
-      [`members/${targetId}`]: null,
+    await realtimeDb.ref().update({
+      [`roomAccess/${roomId}/bans/${targetId}`]:
+        realtimeBanExpiration(expiresAt),
+      [`roomAccess/${roomId}/members/${targetId}`]: null,
+      [`roomPresence/${roomId}/${targetId}`]: null,
+      [`roomReactions/${roomId}/${targetId}`]: null,
     })
   } else if (action === 'kick') {
     await revokeRealtimeRoomAccess(roomId, targetId)
@@ -1847,6 +1910,7 @@ const OPERATIONS = {
   createRoomInvite: exports.createRoomInvite,
   deleteRoomMessage: exports.deleteRoomMessage,
   getRutubeVideo: exports.getRutubeVideo,
+  leaveRoom: exports.leaveRoom,
   moderateRoomMember: exports.moderateRoomMember,
   reportRoomMessage: exports.reportRoomMessage,
   revokeRealtimeRoomAccess: exports.revokeRealtimeRoomAccess,

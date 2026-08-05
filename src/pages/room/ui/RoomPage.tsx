@@ -77,7 +77,9 @@ export function RoomPage() {
   )
   const realtimeAccessStatus = useRealtimeRoomAccess(
     roomId,
-    membership.status === 'joined' && room.access?.status === 'active',
+    membership.status === 'joined' &&
+      currentMember?.status === 'active' &&
+      room.access?.status === 'active',
   )
   useRoomPresence(realtimeAccessStatus === 'ready' ? roomId : '')
 
@@ -130,6 +132,16 @@ export function RoomPage() {
     )
   }
 
+  if (currentMember?.status === 'left') {
+    return (
+      <RoomEntryState
+        actionLabel="К комнатам"
+        message="Вы больше не участвуете в этой комнате."
+        onAction={() => navigate(routes.rooms, { replace: true })}
+      />
+    )
+  }
+
   if (room.access?.status === 'active' && realtimeAccessStatus === 'error') {
     return (
       <RoomEntryState
@@ -143,7 +155,10 @@ export function RoomPage() {
   if (
     room.exists !== true ||
     membership.status !== 'joined' ||
-    (room.access?.status === 'active' && realtimeAccessStatus !== 'ready')
+    currentMember === null ||
+    (room.access?.status === 'active' &&
+      currentMember?.status === 'active' &&
+      realtimeAccessStatus !== 'ready')
   ) {
     return (
       <RoomEntryState
@@ -153,16 +168,6 @@ export function RoomPage() {
             : 'Подготавливаем гостевой профиль…'
         }
         pending
-      />
-    )
-  }
-
-  if (currentMember?.status === 'left') {
-    return (
-      <RoomEntryState
-        actionLabel="К комнатам"
-        message="Вы больше не участвуете в этой комнате."
-        onAction={() => navigate(routes.rooms, { replace: true })}
       />
     )
   }

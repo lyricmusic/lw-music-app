@@ -181,7 +181,7 @@ service cloud.firestore {
         && settings.slowModeSeconds <= 300;
     }
 
-    function hasValidRoomMemberData(member) {
+    function hasValidRoomMemberData(member, memberId) {
       return member is map
         && member.keys().hasAll([
           'invitedBy',
@@ -195,7 +195,8 @@ service cloud.firestore {
           'isGuest',
           'joinedAt',
           'role',
-          'status'
+          'status',
+          'userId'
         ])
         && (member.invitedBy == null
           || (member.invitedBy is string
@@ -204,7 +205,8 @@ service cloud.firestore {
         && member.isGuest is bool
         && member.joinedAt is timestamp
         && member.role in ['host', 'member', 'moderator', 'owner']
-        && member.status in ['active', 'left'];
+        && member.status in ['active', 'left']
+        && (!('userId' in member) || member.userId == memberId);
     }
 
     function isRoomActive(room) {
@@ -308,7 +310,7 @@ service cloud.firestore {
         && existsAfter(
           /databases/$(database)/documents/rooms/$(roomId)
         )
-        && hasValidRoomMemberData(member)
+        && hasValidRoomMemberData(member, memberId)
         && member.invitedBy == null
         && member.joinedAt == request.time
         && member.status == 'active'
@@ -324,15 +326,6 @@ service cloud.firestore {
         );
     }
 
-    function isValidSelfLeave(memberId) {
-      return memberId == request.auth.uid
-        && resource.data.role != 'owner'
-        && resource.data.status == 'active'
-        && request.resource.data.status == 'left'
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status']);
-    }
-
     function isValidGuestAccountUpgrade(memberId) {
       return memberId == request.auth.uid
         && !isAnonymous()
@@ -340,6 +333,17 @@ service cloud.firestore {
         && request.resource.data.isGuest == false
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['isGuest']);
+    }
+
+    function isValidMembershipIndexUpgrade(memberId) {
+      return memberId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isGuest', 'userId'])
+        && (request.resource.data.isGuest == resource.data.isGuest
+          || (!isAnonymous()
+            && resource.data.isGuest == true
+            && request.resource.data.isGuest == false));
     }
 
     function hasValidRoom(roomId) {
@@ -770,7 +774,8 @@ service cloud.firestore {
         && (!exists(/databases/$(database)/documents/rooms/$(roomId))
           || canAccessRoom(roomId));
       allow list: if isSignedIn()
-        && resource.data.visibility == 'public';
+        && (resource.data.visibility == 'public'
+          || resource.data.ownerId == request.auth.uid);
       // Room creation is server-only so the per-owner quota cannot be bypassed.
       allow create: if false;
       // Updates are server-only so the RTDB room-access mirror cannot drift.
@@ -781,16 +786,24 @@ service cloud.firestore {
     match /rooms/{roomId}/members/{memberId} {
       allow get: if (isSignedIn() && memberId == request.auth.uid)
         || canReadRoomContent(roomId);
-      allow list: if canReadRoomContent(roomId);
+      allow list: if canReadRoomContent(roomId)
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn()
         && hasValidSelfJoinedMember(roomId, memberId);
       allow update: if isSignedIn()
-        && hasValidRoomMemberData(request.resource.data)
-        && (isValidSelfLeave(memberId)
-          || (resource.data.status == 'left'
+        && hasValidRoomMemberData(request.resource.data, memberId)
+        && ((resource.data.status == 'left'
             && hasValidSelfJoinedMember(roomId, memberId))
-          || isValidGuestAccountUpgrade(memberId));
+          || isValidGuestAccountUpgrade(memberId)
+          || isValidMembershipIndexUpgrade(memberId));
       allow delete: if false;
+    }
+
+    // Collection-group listing powers «Мои комнаты». The query must constrain
+    // userId to the caller; room-scoped member listing remains governed above.
+    match /{path=**}/members/{memberId} {
+      allow list: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
     }
 
     match /rooms/{roomId}/bans/{memberId} {

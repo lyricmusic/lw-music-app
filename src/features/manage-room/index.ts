@@ -1,4 +1,5 @@
 export { RoomParticipantActions } from './ui/RoomParticipantActions'
 export { RoomInviteDialog } from './ui/RoomInviteDialog'
+export { LeaveRoomDialog } from './ui/LeaveRoomDialog'
 export { RoomRestrictionsDialog } from './ui/RoomRestrictionsDialog'
 export { RoomSettingsDialog } from './ui/RoomSettingsDialog'

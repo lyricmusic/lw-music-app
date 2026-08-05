@@ -208,7 +208,8 @@ for (const roomSnapshot of roomsSnapshot.docs) {
     ownerMember?.isGuest !== false ||
     !(ownerMember?.joinedAt instanceof Timestamp) ||
     ownerMember?.role !== 'owner' ||
-    ownerMember?.status !== 'active'
+    ownerMember?.status !== 'active' ||
+    ownerMember?.userId !== room.ownerId
   ) {
     plannedWrites.push({
       data: {
@@ -222,6 +223,7 @@ for (const roomSnapshot of roomsSnapshot.docs) {
               : FieldValue.serverTimestamp(),
         role: 'owner',
         status: 'active',
+        userId: room.ownerId,
       },
       kind: 'set',
       ref: ownerMemberRef,
@@ -232,7 +234,9 @@ for (const roomSnapshot of roomsSnapshot.docs) {
 console.log(
   `${apply ? 'APPLY' : 'DRY RUN'}: комнат ${roomsSnapshot.size}, запланировано записей ${plannedWrites.length}`,
 )
-plannedWrites.forEach(write => console.log(`PLAN ${write.kind}: ${write.ref.path}`))
+plannedWrites.forEach(write =>
+  console.log(`PLAN ${write.kind}: ${write.ref.path}`),
+)
 warnings.forEach(warning => console.warn(`WARN: ${warning}`))
 
 if (!apply) {

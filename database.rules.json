@@ -8,7 +8,7 @@
     },
     "roomPresence": {
       "$roomId": {
-        ".read": "auth != null && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
+        ".read": "auth != null && root.child('roomAccess').child($roomId).child('status').val() === 'active' && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
         "$uid": {
           "$connectionId": {
             ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && root.child('roomAccess').child($roomId).child('status').val() === 'active' && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))))",
@@ -19,7 +19,7 @@
     },
     "roomReactions": {
       "$roomId": {
-        ".read": "auth != null && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
+        ".read": "auth != null && root.child('roomAccess').child($roomId).child('status').val() === 'active' && root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))",
         "$uid": {
           ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (root.child('roomAccess').child($roomId).child('members').child(auth.uid).val() > now && root.child('roomAccess').child($roomId).child('status').val() === 'active' && (!root.child('roomAccess').child($roomId).child('bans').child(auth.uid).exists() || (root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() !== 0 && root.child('roomAccess').child($roomId).child('bans').child(auth.uid).val() <= now))))",
           ".validate": "!newData.exists() || newData.hasChildren(['emoji', 'expiresAt'])",

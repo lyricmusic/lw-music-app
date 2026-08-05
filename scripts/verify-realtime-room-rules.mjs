@@ -58,6 +58,11 @@ const banned = await createAuthUser('banned')
 const now = Date.now()
 await adminDb.ref().set({
   roomAccess: {
+    archivedRoom: {
+      members: { [member.uid]: now + 120_000 },
+      status: 'archived',
+      visibility: 'private',
+    },
     privateRoom: {
       members: { [member.uid]: now + 120_000 },
       status: 'active',
@@ -91,6 +96,11 @@ assert.equal(
   (await request('roomPresence/publicRoom', member.idToken)).ok,
   true,
   'A leased member must read public-room presence.',
+)
+assert.equal(
+  (await request('roomPresence/archivedRoom', member.idToken)).ok,
+  false,
+  'An archived room must reject presence reads even with an unexpired lease.',
 )
 assert.equal(
   (await request('roomPresence/publicRoom', banned.idToken)).ok,
@@ -178,6 +188,18 @@ assert.equal(
   true,
   'A leased member must write a valid reaction.',
 )
+await adminDb.ref('roomAccess/publicRoom/status').set('archived')
+assert.equal(
+  (await request('roomReactions/publicRoom', member.idToken)).ok,
+  false,
+  'Archiving a room must revoke reaction reads immediately.',
+)
+assert.equal(
+  (await request(reactionPath, member.idToken, { method: 'DELETE' })).ok,
+  true,
+  'A member must still be able to remove an own reaction after archival.',
+)
+await adminDb.ref('roomAccess/publicRoom/status').set('active')
 assert.equal(
   (
     await request(reactionPath, member.idToken, {

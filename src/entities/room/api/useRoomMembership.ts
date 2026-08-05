@@ -53,8 +53,16 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
     const memberSnapshot = await transaction.get(memberRef)
     if (memberSnapshot.exists()) {
       if (memberSnapshot.data().status === 'active') {
-        if (memberSnapshot.data().isGuest === true && !user.isAnonymous) {
-          transaction.update(memberRef, { isGuest: false })
+        const member = memberSnapshot.data()
+        const membershipPatch: Record<string, boolean | string> = {}
+        if (member.isGuest === true && !user.isAnonymous) {
+          membershipPatch.isGuest = false
+        }
+        if (member.userId !== user.uid) {
+          membershipPatch.userId = user.uid
+        }
+        if (Object.keys(membershipPatch).length > 0) {
+          transaction.update(memberRef, membershipPatch)
         }
         return
       }
@@ -74,6 +82,7 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
       joinedAt: serverTimestamp(),
       role,
       status: 'active',
+      userId: user.uid,
     })
   })
 }

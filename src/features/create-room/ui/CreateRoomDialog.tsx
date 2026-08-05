@@ -45,6 +45,7 @@ const style = {
 interface CreateRoomDialogProps {
   existingRoomNames: string[]
   onClose: () => void
+  onCreated?: (roomId: string) => void
   open: boolean
 }
 
@@ -58,6 +59,7 @@ interface CreateRoomFormValues {
 export function CreateRoomDialog({
   existingRoomNames,
   onClose,
+  onCreated,
   open,
 }: CreateRoomDialogProps) {
   const {
@@ -98,7 +100,7 @@ export function CreateRoomDialog({
   const handleCreateRoom = async (values: CreateRoomFormValues) => {
     if (!values.image) return
     try {
-      await createRoom({
+      const roomId = await createRoom({
         categories: values.categories,
         image: values.image,
         name: values.roomName.trim(),
@@ -106,6 +108,7 @@ export function CreateRoomDialog({
       })
       reset()
       onClose()
+      onCreated?.(roomId)
     } catch (error) {
       if (error instanceof RoomNameAlreadyExistsError) {
         setError('roomName', {

@@ -83,6 +83,16 @@ async function readDocument(path) {
   return body.fields
 }
 
+async function documentExists(path) {
+  const response = await fetch(`${firestoreUrl}/${path}`, {
+    headers: { authorization: 'Bearer owner' },
+  })
+  if (response.status === 404) return false
+  const body = await response.json()
+  assert.equal(response.ok, true, JSON.stringify(body))
+  return true
+}
+
 async function callFunction(name, data, token) {
   const response = await handler({
     body: JSON.stringify({ ...data, operation: name }),
@@ -111,12 +121,13 @@ const secondItemId = '000000000002'
 const firstVideoId = 'dQw4w9WgXcQ'
 const secondVideoId = 'M7lc1UVf-VE'
 
-const membership = (role, isGuest = false) => ({
+const membership = (role, userId, isGuest = false) => ({
   invitedBy: nullValue(),
   isGuest: booleanValue(isGuest),
   joinedAt: timestampValue('2026-01-01T00:00:00Z'),
   role: stringValue(role),
   status: stringValue('active'),
+  ...(userId ? { userId: stringValue(userId) } : {}),
 })
 
 await commit([
@@ -155,10 +166,19 @@ await commit([
     displayName: stringValue('Banned target'),
     photoURL: nullValue(),
   }),
-  update(`rooms/${roomId}/members/${owner.uid}`, membership('owner')),
-  update(`rooms/${roomId}/members/${futureOwner.uid}`, membership('member')),
+  update(
+    `rooms/${roomId}/members/${owner.uid}`,
+    membership('owner', owner.uid),
+  ),
+  update(
+    `rooms/${roomId}/members/${futureOwner.uid}`,
+    membership('member', futureOwner.uid),
+  ),
   update(`rooms/${roomId}/members/${member.uid}`, membership('member')),
-  update(`rooms/${roomId}/members/${bannedTarget.uid}`, membership('member')),
+  update(
+    `rooms/${roomId}/members/${bannedTarget.uid}`,
+    membership('member', bannedTarget.uid),
+  ),
   update(`rooms/${roomId}/queueState/current`, {
     activePosition: integerValue(1),
     itemIds: arrayValue([firstItemId, secondItemId]),
@@ -226,6 +246,10 @@ assert.equal(
   true,
   JSON.stringify(realtimeMemberLease),
 )
+const indexedMember = await readDocument(
+  `rooms/${roomId}/members/${member.uid}`,
+)
+assert.equal(indexedMember.userId.stringValue, member.uid)
 
 const targetRealtimeAuthorization = await callFunction(
   'authorizeRealtimeRoom',
@@ -237,6 +261,13 @@ assert.equal(
   true,
   JSON.stringify(targetRealtimeAuthorization),
 )
+await realtimeDb
+  .ref(`roomPresence/${roomId}/${bannedTarget.uid}/connection`)
+  .set(Date.now())
+await realtimeDb.ref(`roomReactions/${roomId}/${bannedTarget.uid}`).set({
+  emoji: '🔥',
+  expiresAt: Date.now() + 6_000,
+})
 const targetBan = await callFunction(
   'moderateRoomMember',
   {
@@ -254,6 +285,18 @@ const bannedRealtimeAccess = (
 ).val()
 assert.equal(bannedRealtimeAccess.bans[bannedTarget.uid], 0)
 assert.equal(bannedRealtimeAccess.members?.[bannedTarget.uid] ?? null, null)
+assert.equal(
+  (
+    await realtimeDb.ref(`roomPresence/${roomId}/${bannedTarget.uid}`).get()
+  ).val(),
+  null,
+)
+assert.equal(
+  (
+    await realtimeDb.ref(`roomReactions/${roomId}/${bannedTarget.uid}`).get()
+  ).val(),
+  null,
+)
 
 for (let index = 1; index < 10; index += 1) {
   const limitedRoomId = `server-room-${Date.now()}-${index}`
@@ -427,6 +470,82 @@ assert.equal(
   'Message under moderation',
 )
 
+await realtimeDb
+  .ref(`roomPresence/${roomId}/${member.uid}/connection`)
+  .set(Date.now())
+await realtimeDb.ref(`roomReactions/${roomId}/${member.uid}`).set({
+  emoji: '💜',
+  expiresAt: Date.now() + 6_000,
+})
+const memberLeave = await callFunction('leaveRoom', { roomId }, member.idToken)
+assert.equal(memberLeave.ok, true, JSON.stringify(memberLeave))
+assert.equal(memberLeave.body.membershipChanged, true)
+const leftMember = await readDocument(`rooms/${roomId}/members/${member.uid}`)
+assert.equal(leftMember.status.stringValue, 'left')
+assert.equal(
+  await documentExists(`rooms/${roomId}/queueMembers/${member.uid}`),
+  false,
+)
+assert.equal(
+  await documentExists(`rooms/${roomId}/queue/${secondItemId}`),
+  false,
+)
+assert.equal(await documentExists(`rooms/${roomId}/playback/current`), false)
+assert.equal(
+  (
+    await realtimeDb.ref(`roomAccess/${roomId}/members/${member.uid}`).get()
+  ).val(),
+  null,
+)
+assert.equal(
+  (await realtimeDb.ref(`roomPresence/${roomId}/${member.uid}`).get()).val(),
+  null,
+)
+assert.equal(
+  (await realtimeDb.ref(`roomReactions/${roomId}/${member.uid}`).get()).val(),
+  null,
+)
+const repeatedLeave = await callFunction(
+  'leaveRoom',
+  { roomId },
+  member.idToken,
+)
+assert.equal(repeatedLeave.ok, true, JSON.stringify(repeatedLeave))
+assert.equal(repeatedLeave.body.membershipChanged, false)
+const leftRealtimeAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  member.idToken,
+)
+assert.equal(
+  leftRealtimeAuthorization.ok,
+  false,
+  JSON.stringify(leftRealtimeAuthorization),
+)
+
+await commit([
+  update(
+    `rooms/${roomId}/members/${member.uid}`,
+    membership('member', member.uid),
+  ),
+])
+const rejoinedRealtimeAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  member.idToken,
+)
+assert.equal(
+  rejoinedRealtimeAuthorization.ok,
+  true,
+  JSON.stringify(rejoinedRealtimeAuthorization),
+)
+const rejoinedLeave = await callFunction(
+  'leaveRoom',
+  { roomId },
+  member.idToken,
+)
+assert.equal(rejoinedLeave.ok, true, JSON.stringify(rejoinedLeave))
+
 const transfer = await callFunction(
   'transferRoomOwnership',
   { memberId: futureOwner.uid, roomId },
@@ -441,6 +560,31 @@ const nextOwner = await readDocument(
   `rooms/${roomId}/members/${futureOwner.uid}`,
 )
 assert.equal(nextOwner.role.stringValue, 'owner')
+
+const ownerLeave = await callFunction(
+  'leaveRoom',
+  { roomId },
+  futureOwner.idToken,
+)
+assert.equal(ownerLeave.ok, false, JSON.stringify(ownerLeave))
+
+const ownerRealtimeAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  futureOwner.idToken,
+)
+assert.equal(
+  ownerRealtimeAuthorization.ok,
+  true,
+  JSON.stringify(ownerRealtimeAuthorization),
+)
+await realtimeDb
+  .ref(`roomPresence/${roomId}/${futureOwner.uid}/connection`)
+  .set(Date.now())
+await realtimeDb.ref(`roomReactions/${roomId}/${futureOwner.uid}`).set({
+  emoji: '✨',
+  expiresAt: Date.now() + 6_000,
+})
 
 const roomAccessUpdate = await callFunction(
   'updateRoomAccess',
@@ -462,7 +606,39 @@ const realtimeRoomAccess = (
 ).val()
 assert.equal(realtimeRoomAccess.status, 'archived')
 assert.equal(realtimeRoomAccess.visibility, 'unlisted')
+assert.equal(realtimeRoomAccess.members ?? null, null)
+assert.equal((await realtimeDb.ref(`roomPresence/${roomId}`).get()).val(), null)
+assert.equal(
+  (await realtimeDb.ref(`roomReactions/${roomId}`).get()).val(),
+  null,
+)
+
+const roomReactivation = await callFunction(
+  'updateRoomAccess',
+  {
+    roomId,
+    settings: {
+      allowGuestChat: false,
+      allowGuestQueue: false,
+      slowModeSeconds: 30,
+    },
+    status: 'active',
+    visibility: 'unlisted',
+  },
+  futureOwner.idToken,
+)
+assert.equal(roomReactivation.ok, true, JSON.stringify(roomReactivation))
+const reactivatedAuthorization = await callFunction(
+  'authorizeRealtimeRoom',
+  { roomId },
+  futureOwner.idToken,
+)
+assert.equal(
+  reactivatedAuthorization.ok,
+  true,
+  JSON.stringify(reactivatedAuthorization),
+)
 
 console.log(
-  'Room management verification passed: room/invite limits, realtime leases, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, ownership transfer, and mirrored room access updates.',
+  'Room management verification passed: room/invite limits, realtime leases, leave cleanup and rejoin, bans, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, ownership transfer, archival cleanup, reactivation, and mirrored room access updates.',
 )

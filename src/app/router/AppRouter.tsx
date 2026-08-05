@@ -3,10 +3,12 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 
 import { routes } from '@/shared/config/routes'
 import { CharacterEditorDialog } from '@/features/edit-character'
+import { LeaveRoomDialog } from '@/features/manage-room'
 import { ProfileOnboardingDialog } from '@/features/profile-onboarding'
 import { AppHeader } from '@/widgets/app-header'
 import { SyncedRutubePlayer } from '@/widgets/synced-rutube-player'
 import { CircularProgress } from '@mui/material'
+import { Timestamp } from 'firebase/firestore'
 
 import { DirectRoomRoute, GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
 
@@ -88,6 +90,76 @@ function ProfileOnboardingSmokeTestPage() {
   )
 }
 
+function RoomsSmokeTestPage() {
+  const timestamp = Timestamp.fromMillis(Date.UTC(2026, 7, 5))
+  return (
+    <div className="flex min-h-dvh flex-col bg-[#12071F]">
+      <AppHeader />
+      <div className="min-h-0 flex-1 p-1 sm:p-2">
+        <RoomsPage
+          previewRooms={[
+            {
+              categories: [{ id: 1, title: 'Поп' }],
+              createdAt: timestamp,
+              id: 'preview-owned-room',
+              imagePath: '',
+              imageUrl: '/avatars/pulse.svg',
+              membershipRole: 'owner',
+              name: 'Моя музыкальная комната',
+              ownerId: 'preview-user',
+              participantCount: null,
+              settings: {
+                allowGuestChat: true,
+                allowGuestQueue: true,
+                slowModeSeconds: 0,
+              },
+              status: 'active',
+              updatedAt: timestamp,
+              visibility: 'public',
+            },
+            {
+              categories: [
+                { id: 4, title: 'Электронная музыка' },
+                { id: 13, title: 'Лоу-фай и чилл' },
+              ],
+              createdAt: timestamp,
+              id: 'preview-archived-room',
+              imagePath: '',
+              imageUrl: '/avatars/night.svg',
+              membershipRole: 'moderator',
+              name: 'Ночной архив',
+              ownerId: 'another-user',
+              participantCount: null,
+              settings: {
+                allowGuestChat: false,
+                allowGuestQueue: false,
+                slowModeSeconds: 30,
+              },
+              status: 'archived',
+              updatedAt: timestamp,
+              visibility: 'private',
+            },
+          ]}
+        />
+      </div>
+    </div>
+  )
+}
+
+function LeaveRoomSmokeTestPage() {
+  return (
+    <main className="min-h-dvh bg-[#12071F]">
+      <LeaveRoomDialog
+        onClose={() => undefined}
+        onConfirm={() => undefined}
+        open
+        pending={false}
+        role="member"
+      />
+    </main>
+  )
+}
+
 export function AppRouter() {
   return (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -105,6 +177,14 @@ export function AppRouter() {
             <Route
               element={<ProfileOnboardingSmokeTestPage />}
               path={routes.profileOnboardingSmokeTest}
+            />
+            <Route
+              element={<RoomsSmokeTestPage />}
+              path={routes.roomsSmokeTest}
+            />
+            <Route
+              element={<LeaveRoomSmokeTestPage />}
+              path={routes.leaveRoomSmokeTest}
             />
           </>
         )}

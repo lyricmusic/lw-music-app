@@ -155,6 +155,74 @@ async function queryRooms(token, constrained) {
   return { body, ok: response.ok, status: response.status }
 }
 
+async function queryOwnedRooms(ownerId, token) {
+  const response = await fetch(
+    `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+    {
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'rooms' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'ownerId' },
+              op: 'EQUAL',
+              value: stringValue(ownerId),
+            },
+          },
+        },
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+  const body = await response.json()
+  return { body, ok: response.ok, status: response.status }
+}
+
+async function queryActiveMemberships(userId, token) {
+  const response = await fetch(
+    `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents:runQuery`,
+    {
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ allDescendants: true, collectionId: 'members' }],
+          where: {
+            compositeFilter: {
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: 'userId' },
+                    op: 'EQUAL',
+                    value: stringValue(userId),
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: 'status' },
+                    op: 'EQUAL',
+                    value: stringValue('active'),
+                  },
+                },
+              ],
+              op: 'AND',
+            },
+          },
+        },
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+  const body = await response.json()
+  return { body, ok: response.ok, status: response.status }
+}
+
 async function queryCollectionByField(collectionId, fieldPath, value, token) {
   const headers = { 'content-type': 'application/json' }
   if (token) headers.authorization = `Bearer ${token}`
@@ -217,12 +285,19 @@ function roomFields({
   }
 }
 
-function memberFields({ invitedBy = null, isGuest, role, status = 'active' }) {
+function memberFields({
+  invitedBy = null,
+  isGuest,
+  role,
+  status = 'active',
+  userId,
+}) {
   return {
     invitedBy: invitedBy == null ? nullValue() : stringValue(invitedBy),
     isGuest: booleanValue(isGuest),
     role: stringValue(role),
     status: stringValue(status),
+    ...(userId ? { userId: stringValue(userId) } : {}),
   }
 }
 
@@ -301,6 +376,15 @@ assert.equal(
 
 const publicRoomList = await queryRooms(otherUser.idToken, true)
 assert.equal(publicRoomList.ok, true, JSON.stringify(publicRoomList))
+
+const ownerRoomList = await queryOwnedRooms(owner.uid, owner.idToken)
+assert.equal(ownerRoomList.ok, true, JSON.stringify(ownerRoomList))
+const foreignOwnerRoomList = await queryOwnedRooms(owner.uid, otherUser.idToken)
+assert.equal(
+  foreignOwnerRoomList.ok,
+  false,
+  JSON.stringify(foreignOwnerRoomList),
+)
 
 const clientRoomAccessUpdate = await commit(
   [
@@ -485,7 +569,11 @@ const registeredMembership = await commit(
   [
     update(
       `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
-      memberFields({ isGuest: false, role: 'member' }),
+      memberFields({
+        isGuest: false,
+        role: 'member',
+        userId: otherUser.uid,
+      }),
       [requestTime('joinedAt')],
     ),
   ],
@@ -495,6 +583,50 @@ assert.equal(
   registeredMembership.ok,
   true,
   JSON.stringify(registeredMembership),
+)
+
+const activeMembershipList = await queryActiveMemberships(
+  otherUser.uid,
+  otherUser.idToken,
+)
+assert.equal(
+  activeMembershipList.ok,
+  true,
+  JSON.stringify(activeMembershipList),
+)
+assert.equal(
+  JSON.stringify(activeMembershipList.body).includes(validRoom.roomId),
+  true,
+  JSON.stringify(activeMembershipList),
+)
+const foreignMembershipList = await queryActiveMemberships(
+  otherUser.uid,
+  owner.idToken,
+)
+assert.equal(
+  foreignMembershipList.ok,
+  false,
+  JSON.stringify(foreignMembershipList),
+)
+
+const spoofedMembershipIndex = await commit(
+  [
+    update(
+      `rooms/${validRoom.roomId}/members/${invitee.uid}`,
+      memberFields({
+        isGuest: false,
+        role: 'member',
+        userId: owner.uid,
+      }),
+      [requestTime('joinedAt')],
+    ),
+  ],
+  invitee.idToken,
+)
+assert.equal(
+  spoofedMembershipIndex.ok,
+  false,
+  JSON.stringify(spoofedMembershipIndex),
 )
 
 const roleChange = await commit(
@@ -531,7 +663,19 @@ const selfLeave = await commit(
   ],
   otherUser.idToken,
 )
-assert.equal(selfLeave.ok, true, JSON.stringify(selfLeave))
+assert.equal(selfLeave.ok, false, JSON.stringify(selfLeave))
+
+const serverSelfLeave = await commit(
+  [
+    patch(
+      `rooms/${validRoom.roomId}/members/${otherUser.uid}`,
+      { status: stringValue('left') },
+      ['status'],
+    ),
+  ],
+  'owner',
+)
+assert.equal(serverSelfLeave.ok, true, JSON.stringify(serverSelfLeave))
 
 const publicRejoin = await commit(
   [
@@ -1589,5 +1733,5 @@ assert.equal(
 )
 
 console.log(
-  'Room model rules verification passed: paginated public listing, unlisted direct access, private content membership, hashed invite creation and manager listing, client redemption denial, revocation, guest onboarding and upgrade, roles, bans, mutes, blocks, and slow mode.',
+  'Room model rules verification passed: paginated public listing, owner and active-membership room listing, membership index isolation, unlisted direct access, private content membership, hashed invite creation and manager listing, client redemption denial, revocation, guest onboarding and upgrade, roles, bans, mutes, blocks, and slow mode.',
 )

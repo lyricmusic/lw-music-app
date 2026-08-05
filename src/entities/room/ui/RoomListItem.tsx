@@ -3,9 +3,11 @@ import { MembersIcon } from '@/shared/ui/icons'
 import type { Room } from '../model/types'
 
 export function RoomListItem({
+  badges = [],
   onClick,
   room,
 }: {
+  badges?: string[]
   onClick: () => void
   room: Room
 }) {
@@ -28,6 +30,18 @@ export function RoomListItem({
           <p className="truncate text-lg font-bold sm:text-xl lg:text-2xl">
             {room.name}
           </p>
+          {badges.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {badges.map(badge => (
+                <span
+                  className="rounded-full border border-[#6D4A8F] bg-[#32204B] px-2 py-0.5 text-[11px] font-medium text-[#E7DDF4] sm:text-xs"
+                  key={badge}
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             {room.categories.map((category, index) => (
               <div className="flex items-center" key={category.id}>

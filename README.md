@@ -291,7 +291,13 @@ pnpm migrate:room-model -- --project lwmusic-ffe83 --firebase-cli-auth --apply -
 `userProfiles/{uid}`. Доступ к `roomPresence` и `roomReactions` проверяется по
 закрытому RTDB-индексу `roomAccess`: сервер выдаёт активному участнику
 двухминутный lease, синхронизирует видимость/статус комнаты и немедленно
-отзывает lease при кике или бане.
+отзывает lease при выходе, кике или бане. Membership остаётся постоянным
+Firestore-документом со статусом `active`/`left`, а соединения presence и реакции
+не используются как признак участия. Архивация комнаты очищает все временные
+RTDB-данные и запрещает чтение даже по ещё не истёкшему lease.
+Явный выход выполняет только `room-management`: одной Firestore-транзакцией он
+переводит membership в `left`, удаляет запись пользователя из очереди и затем
+идемпотентно очищает его lease, presence и реакцию.
 
 Перед публикацией новых rules нужно сначала развернуть обновлённую
 `room-management` function, затем выполнить dry run миграции:
@@ -311,6 +317,30 @@ pnpm migrate:security-boundaries -- --project lwmusic-ffe83 --database-url https
 вместе, а frontend выкладывается сразу после них. До завершения всех этих шагов
 новый клиент и опубликованные правила могут быть несовместимы; выпуск следует
 считать единым изменением.
+
+### Индекс «Моих комнат»
+
+Раздел «Мои комнаты» объединяет комнаты с `ownerId == uid` и документы активного
+membership из collection group `members`. Для безопасного collection-group
+запроса новые membership-документы содержат совпадающий с id документа `userId`.
+Старые документы остаются допустимыми для обратной совместимости и обновляются
+при следующем входе пользователя; полный backfill выполняется отдельной
+миграцией. Сначала запустите dry run:
+
+```powershell
+pnpm migrate:room-membership-index -- --project lwmusic-ffe83 --firebase-cli-auth
+```
+
+Применение требует backup и не запускается автоматически:
+
+```powershell
+pnpm migrate:room-membership-index -- --project lwmusic-ffe83 --firebase-cli-auth --apply --backup .migration-backups/room-membership-index-before.json
+```
+
+Для выпуска как единого изменения нужны обновлённые `room-management` и
+`room-invites`, успешный backfill, Firestore/RTDB rules и Firestore indexes, затем
+frontend. Архивные комнаты показываются только в «Моих комнатах», а общий каталог
+запрашивает лишь активные публичные комнаты.
 
 ## Следующие этапы
 

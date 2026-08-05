@@ -179,8 +179,16 @@ async function redeemRoomInvite(event) {
     }
 
     if (memberSnapshot.exists && memberSnapshot.data().status === 'active') {
-      if (memberSnapshot.data().isGuest === true && !isAnonymous) {
-        transaction.update(memberRef, { isGuest: false })
+      const member = memberSnapshot.data()
+      const membershipPatch = {}
+      if (member.isGuest === true && !isAnonymous) {
+        membershipPatch.isGuest = false
+      }
+      if (member.userId !== decodedToken.uid) {
+        membershipPatch.userId = decodedToken.uid
+      }
+      if (Object.keys(membershipPatch).length > 0) {
+        transaction.update(memberRef, membershipPatch)
       }
       return invite.roomId
     }
@@ -205,6 +213,7 @@ async function redeemRoomInvite(event) {
       joinedAt: FieldValue.serverTimestamp(),
       role: 'member',
       status: 'active',
+      userId: decodedToken.uid,
     })
 
     return invite.roomId

@@ -30,7 +30,7 @@ export function useRealtimeRoomAccess(roomId: string, enabled: boolean) {
           'Не удалось подтвердить доступ к realtime-данным комнаты:',
           reason,
         )
-        if (initial) setStatus('error')
+        setStatus('error')
       } finally {
         if (!disposed) {
           refreshTimer = setTimeout(

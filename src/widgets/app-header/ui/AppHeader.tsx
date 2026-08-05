@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMatch, useNavigate } from 'react-router-dom'
+import { toast } from 'react-toastify'
 
 import logo from '@assets/lw.svg'
 
-import { useRoomName } from '@/entities/room'
+import { leaveRoom, useCurrentRoomMember, useRoomName } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import { LeaveRoomDialog } from '@/features/manage-room'
 import { routes } from '@/shared/config/routes'
 import { MemberIcon } from '@/shared/ui/icons'
 import {
@@ -19,14 +21,55 @@ import {
 
 import { UserMenu } from './UserMenu'
 export function AppHeader() {
-  const { profile } = useSession()
+  const { profile, user } = useSession()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
+  const [leavePending, setLeavePending] = useState(false)
   const userMenuContainerRef = useRef<HTMLDivElement>(null)
   const userMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const navigate = useNavigate()
   const roomMatch = useMatch(routes.roomPattern)
-  const roomName = useRoomName(roomMatch?.params.roomId)
+  const roomId = roomMatch?.params.roomId ?? ''
+  const roomName = useRoomName(roomId)
+  const currentMember = useCurrentRoomMember(roomId)
   const isInRoom = Boolean(roomMatch)
+
+  const navigateFromRoom = () => {
+    navigate(user?.isAnonymous ? routes.signIn : routes.rooms, {
+      replace: true,
+    })
+  }
+
+  const handleRoomExitClick = () => {
+    if (currentMember?.status === 'active') {
+      setLeaveDialogOpen(true)
+      return
+    }
+    navigateFromRoom()
+  }
+
+  const handleConfirmRoomExit = async () => {
+    if (!roomId || currentMember?.role === 'owner') {
+      setLeaveDialogOpen(false)
+      navigateFromRoom()
+      return
+    }
+
+    setLeavePending(true)
+    try {
+      await leaveRoom(roomId)
+      setLeaveDialogOpen(false)
+      navigateFromRoom()
+    } catch (reason) {
+      toast.error(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось покинуть комнату.',
+      )
+    } finally {
+      setLeavePending(false)
+    }
+  }
 
   useEffect(() => {
     if (!isUserMenuOpen) return
@@ -135,7 +178,7 @@ export function AppHeader() {
           {isInRoom && (
             <Button
               color="inherit"
-              onClick={() => navigate(routes.rooms)}
+              onClick={handleRoomExitClick}
               sx={{
                 '&:hover': {
                   backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -158,7 +201,9 @@ export function AppHeader() {
                 component="span"
                 sx={{ display: { xs: 'none', sm: 'inline' } }}
               >
-                Покинуть комнату
+                {currentMember?.status === 'active'
+                  ? 'Покинуть комнату'
+                  : 'К комнатам'}
               </Box>
               <Box
                 component="span"
@@ -218,6 +263,13 @@ export function AppHeader() {
           </Box>
         </Box>
       </Toolbar>
+      <LeaveRoomDialog
+        onClose={() => setLeaveDialogOpen(false)}
+        onConfirm={() => void handleConfirmRoomExit()}
+        open={leaveDialogOpen}
+        pending={leavePending}
+        role={currentMember?.role}
+      />
     </AppBar>
   )
 }
