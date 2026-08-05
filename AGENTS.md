@@ -26,6 +26,12 @@
 - Run TypeScript, ESLint, and the production build after application changes.
 - For Firestore-related work, include the rules compilation/deployment result in the final handoff.
 
+## Deployment runbook
+
+- Before any dev or production deployment, read and follow `DEPLOYMENT.md`.
+- Treat its environment mapping, verification order, explicit production flags,
+  secret-handling rules, smoke tests, and post-deployment checks as mandatory.
+
 ## Git publishing
 
 - When the user asks to upload or push the current changes without explicitly requesting a pull request, include all current working-tree changes, commit them, and push directly to `develop`.
