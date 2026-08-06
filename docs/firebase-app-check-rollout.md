@@ -1,7 +1,10 @@
 # Firebase App Check: coverage and rollout
 
-This change prepares App Check without enabling production enforcement. App Check
-complements Firebase Auth and Security Rules; it does not replace either one.
+App Check complements Firebase Auth and Security Rules; it does not replace either
+one. The staged rollout completed on 2026-08-06: the three public application
+functions plus Firestore and Realtime Database are enforced in development and
+production. Firebase Authentication and Firebase Storage remain intentionally
+excluded for the reasons below.
 
 ## Coverage audit
 
