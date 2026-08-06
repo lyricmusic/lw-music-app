@@ -1,0 +1,64 @@
+name: Verify application and Firebase boundaries
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: TypeScript, lint, build and emulators
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+
+      - name: Set up Java for Firebase emulators
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install protected serverless dependencies
+        run: |
+          pnpm --dir serverless/room-management install --frozen-lockfile
+          pnpm --dir serverless/room-invites install --frozen-lockfile
+          npm --prefix serverless/room-cover-upload ci --ignore-scripts
+
+      - name: TypeScript
+        run: pnpm typecheck
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: Node and JSON syntax
+        run: pnpm verify:static
+
+      - name: Serverless deployment bundles
+        run: pnpm verify:serverless-bundles
+
+      - name: Optimized production build with isolated CI config
+        run: pnpm build:ci
+
+      - name: Firebase Emulator Suite
+        run: pnpm verify:emulators

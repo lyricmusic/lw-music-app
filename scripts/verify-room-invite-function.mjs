@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { createRequire } from 'node:module'
-import { getApps, initializeApp } from 'firebase-admin/app'
+import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
@@ -12,6 +12,7 @@ const allowedOrigin = 'http://localhost:5173'
 
 process.env.FIREBASE_PROJECT_ID = projectId
 process.env.ALLOWED_ORIGINS = allowedOrigin
+process.env.APP_CHECK_MODE = 'off'
 
 const app = getApps()[0] ?? initializeApp({ projectId })
 const firestore = getFirestore(app)
@@ -241,7 +242,13 @@ assert.equal(
   optionsResponse.headers['Access-Control-Allow-Origin'],
   allowedOrigin,
 )
+assert.match(
+  optionsResponse.headers['Access-Control-Allow-Headers'],
+  /X-Firebase-AppCheck/i,
+)
 
 console.log(
   'Room invite function verification passed: authentication, hashed tokens, guest membership, limits, bans, idempotency, and atomic concurrent redemption.',
 )
+
+await Promise.all(getApps().map(deleteApp))

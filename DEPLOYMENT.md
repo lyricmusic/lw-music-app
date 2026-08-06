@@ -34,6 +34,8 @@ Storage должны оставаться только в Yandex Lockbox. Сек
    pnpm install --frozen-lockfile
    pnpm lint
    pnpm exec tsc -- --noEmit --pretty false
+   pnpm verify:static
+   pnpm verify:emulators:windows
    pnpm exec vite -- build --mode development
    pnpm build
    ```
@@ -84,14 +86,22 @@ release. Не считать Firestore-функциональность рабо
 
 ```powershell
 ./scripts/deploy-yandex-auth.ps1 -Environment dev
-./scripts/deploy-room-invites.ps1 -Environment dev
-./scripts/deploy-room-management.ps1 -Environment dev
-./scripts/deploy-yandex-storage.ps1 -Environment dev
+./scripts/deploy-room-invites.ps1 -Environment dev -AppCheckMode monitor
+./scripts/deploy-room-management.ps1 -Environment dev -AppCheckMode monitor
+./scripts/deploy-yandex-storage.ps1 -Environment dev -AppCheckMode monitor
 ```
 
 После деплоя сверить выведенные URL с `.env.development`. Для функции загрузки
 обложек значение `functionUrl` записывается в `VITE_MEDIA_UPLOAD_URL`. Если URL
 изменился, обновить env-файл и повторить обе сборки.
+
+`monitor` проверяет App Check token и пишет структурированные метрики, но не
+отклоняет старые вкладки и клиент без токена. `enforce` разрешено включать отдельно
+для каждой функции только после регистрации provider, выпуска клиента с
+`VITE_FIREBASE_APPCHECK_SITE_KEY` и проверки доли valid-запросов. Firestore и
+Realtime Database enforcement включаются отдельно в Firebase Console и также
+требуют явного подтверждения. Полный порядок и debug-token настройка описаны в
+`docs/firebase-app-check-rollout.md`.
 
 ### Smoke test dev
 
@@ -117,9 +127,9 @@ Production-деплой выполнять только после успешн�
 
    ```powershell
    ./scripts/deploy-yandex-auth.ps1 -Environment prod
-   ./scripts/deploy-room-invites.ps1 -Environment prod
-   ./scripts/deploy-room-management.ps1 -Environment prod
-   ./scripts/deploy-yandex-storage.ps1 -Environment prod
+   ./scripts/deploy-room-invites.ps1 -Environment prod -AppCheckMode monitor
+   ./scripts/deploy-room-management.ps1 -Environment prod -AppCheckMode monitor
+   ./scripts/deploy-yandex-storage.ps1 -Environment prod -AppCheckMode monitor
    ```
 
 4. Если менялись Firebase rules или indexes, опубликовать их только с явным

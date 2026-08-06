@@ -1,13 +1,15 @@
-import { initializeApp } from 'firebase/app'
+import { getApps, initializeApp } from 'firebase/app'
 import {
   ReCaptchaEnterpriseProvider,
   initializeAppCheck,
 } from 'firebase/app-check'
+import type { AppCheck } from 'firebase/app-check'
 import { getAuth } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
 import { getFirestore } from 'firebase/firestore'
 
 const PRODUCTION_PROJECT_ID = 'lwmusic-ffe83'
+const FIREBASE_APP_NAME = 'syncly-web'
 
 function requiredEnvironment(name: string, value: string | undefined) {
   const normalizedValue = value?.trim()
@@ -66,15 +68,56 @@ const firebaseConfig = {
   ),
 }
 
-const app = initializeApp(firebaseConfig)
-const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY
+const existingApp = getApps().find(({ name }) => name === FIREBASE_APP_NAME)
+if (
+  existingApp &&
+  (existingApp.options.appId !== firebaseConfig.appId ||
+    existingApp.options.projectId !== firebaseConfig.projectId)
+) {
+  throw new Error('Firebase was already initialized with another project.')
+}
+const app = existingApp ?? initializeApp(firebaseConfig, FIREBASE_APP_NAME)
+const appCheckSiteKey =
+  import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY?.trim() || null
 
-export const appCheck = appCheckSiteKey
-  ? initializeAppCheck(app, {
-      isTokenAutoRefreshEnabled: true,
-      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-    })
-  : null
+type FirebaseAppCheckCache = typeof globalThis & {
+  FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string
+  __synclyFirebaseAppCheck?: {
+    appId: string
+    instance: AppCheck
+  }
+}
+
+const appCheckCache = globalThis as FirebaseAppCheckCache
+const cachedAppCheck = appCheckCache.__synclyFirebaseAppCheck
+const debugAppCheckRequested =
+  import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG === 'true'
+
+if (debugAppCheckRequested) {
+  if (!import.meta.env.DEV || appEnvironment !== 'development') {
+    throw new Error(
+      'Firebase App Check debug mode is allowed only by the Vite development server.',
+    )
+  }
+  appCheckCache.FIREBASE_APPCHECK_DEBUG_TOKEN = true
+}
+
+export const appCheck = (() => {
+  if (!appCheckSiteKey) return null
+  if (cachedAppCheck?.appId === firebaseConfig.appId) {
+    return cachedAppCheck.instance
+  }
+
+  const instance = initializeAppCheck(app, {
+    isTokenAutoRefreshEnabled: true,
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+  })
+  appCheckCache.__synclyFirebaseAppCheck = {
+    appId: firebaseConfig.appId,
+    instance,
+  }
+  return instance
+})()
 export const db = getFirestore(app)
 export const auth = getAuth(app)
 export const realtimeDb = getDatabase(app)

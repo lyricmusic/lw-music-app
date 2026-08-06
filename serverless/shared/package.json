@@ -1,0 +1,5 @@
+{
+  "name": "@syncly/serverless-shared",
+  "private": true,
+  "type": "commonjs"
+}

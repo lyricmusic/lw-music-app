@@ -2,6 +2,8 @@ param(
   [string]$YcPath = 'yc',
   [ValidateSet('prod', 'dev')]
   [string]$Environment = 'dev',
+  [ValidateSet('monitor', 'enforce')]
+  [string]$AppCheckMode = 'monitor',
   [string[]]$AllowedOrigins = @()
 )
 
@@ -87,6 +89,9 @@ $functionName = "lw-music-room-invites$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-invites')
 ).Path
+$sharedSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')
+).Path
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -121,12 +126,20 @@ if (-not $function) {
 $deploymentSource = Join-Path (
   [System.IO.Path]::GetTempPath()
 ) "lw-music-room-invites-$([guid]::NewGuid().ToString('N'))"
-$sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
+$functionDeploymentSource = Join-Path $deploymentSource 'room-invites'
+$sharedDeploymentSource = Join-Path $deploymentSource 'shared'
+$packageFiles = @('package.json', 'pnpm-lock.yaml')
 $allowedOriginsValue = $AllowedOrigins -join ';'
 
 New-Item -ItemType Directory -Path $deploymentSource | Out-Null
 try {
-  foreach ($sourceFile in $sourceFiles) {
+  New-Item -ItemType Directory -Path $functionDeploymentSource | Out-Null
+  New-Item -ItemType Directory -Path $sharedDeploymentSource | Out-Null
+  Copy-Item -LiteralPath (Join-Path $functionSource 'index.js') `
+    -Destination $functionDeploymentSource
+  Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+
+  foreach ($sourceFile in $packageFiles) {
     $sourcePath = Join-Path $functionSource $sourceFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
       throw "Function source file not found: $sourcePath"
@@ -138,12 +151,12 @@ try {
     'serverless', 'function', 'version', 'create',
     '--function-id', $function.id,
     '--runtime', 'nodejs22',
-    '--entrypoint', 'index.handler',
+    '--entrypoint', 'room-invites/index.handler',
     '--memory', '256MB',
     '--execution-timeout', '15s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

@@ -1,5 +1,7 @@
 import type { User } from 'firebase/auth'
 
+import { fetchWithAppCheck } from '@/shared/api/firebase'
+
 export interface SignedMediaUpload {
   fields: Record<string, string>
   objectKey: string
@@ -23,7 +25,7 @@ export async function callMediaUploadApi<T>(
     throw new Error('Сервис загрузки изображений ещё не настроен.')
   }
 
-  const response = await fetch(mediaApiUrl, {
+  const response = await fetchWithAppCheck(mediaApiUrl, {
     body: JSON.stringify(body),
     headers: {
       'Content-Type': 'application/json',

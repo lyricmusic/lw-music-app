@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 
-import { getApps, initializeApp } from 'firebase-admin/app'
+import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getDatabase } from 'firebase-admin/database'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
@@ -225,3 +225,6 @@ assert.equal(
 console.log(
   'Realtime room rules verification passed: private/public reads, bans, leases, self-only writes, validation, and cleanup.',
 )
+
+adminDb.goOffline()
+await Promise.all(getApps().map(deleteApp))

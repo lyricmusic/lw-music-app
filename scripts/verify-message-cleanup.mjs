@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { getApps, initializeApp } from 'firebase-admin/app'
+import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { Timestamp, getFirestore } from 'firebase-admin/firestore'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
@@ -37,3 +37,5 @@ assert.equal((await messages.doc('legacy').get()).exists, true)
 console.log(
   'Message cleanup verification passed: expired deleted, active and legacy retained.',
 )
+
+await Promise.all(getApps().map(deleteApp))

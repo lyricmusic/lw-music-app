@@ -301,7 +301,7 @@ pnpm exec firebase deploy --only firestore:rules,firestore:indexes,hosting --pro
 новая версия серверной функции, миграция текущих документов, публикация
 collection-group индекса `expiresAt`, часовой таймер очистки и обновлённый клиент.
 
-Жалобы на пользователя, сообщение, комнату, обложку и никнейм создаёт только сервер. Он сам читает объект и сохраняет неизменяемый снимок в закрытом `reports`; клиент не может подменить снимок или прочитать жалобы. Серверное удаление сообщения сначала копирует оригинал в закрытый `moderationLogs`, затем удаляет публичный документ. Клиент умеет получать Firebase App Check token через reCAPTCHA Enterprise, а room-management function — проверять его при `ENFORCE_APP_CHECK=true`; до включения enforcement нужно зарегистрировать site key и задать `VITE_FIREBASE_APPCHECK_SITE_KEY` в production-сборке.
+Жалобы на пользователя, сообщение, комнату, обложку и никнейм создаёт только сервер. Он сам читает объект и сохраняет неизменяемый снимок в закрытом `reports`; клиент не может подменить снимок или прочитать жалобы. Серверное удаление сообщения сначала копирует оригинал в закрытый `moderationLogs`, затем удаляет публичный документ.
 
 При «Сохранить профиль» email/password связываются через Firebase `linkWithCredential`. Для Яндекс ID функция сначала проверяет ID token текущего anonymous-пользователя, подписывает OAuth state и сохраняет серверное соответствие Яндекс ID → прежний Firebase UID в `authProviderLinks`. Обновление frontend без повторного развёртывания `serverless/yandex-auth` не включит этот сценарий для Яндекс ID.
 
@@ -375,8 +375,21 @@ pnpm migrate:room-membership-index -- --project lwmusic-ffe83 --firebase-cli-aut
 frontend. Архивные комнаты показываются только в «Моих комнатах», а общий каталог
 запрашивает лишь активные публичные комнаты.
 
+### Firebase App Check
+
+Web-клиент инициализирует App Check через reCAPTCHA Enterprise с автоматическим
+обновлением токена. Firestore и Realtime Database получают токен через Firebase
+SDK; запросы к `room-management`, `room-invites` и media upload передают тот же
+токен в `X-Firebase-AppCheck`. Общая серверная проверка поддерживает безопасный
+rollout через `monitor` и `enforce`, а отключение разрешено только для локального
+`demo-*` Emulator Suite.
+
+Production enforcement в репозитории не включается. Полная матрица endpoint'ов,
+настройка локального debug token, порядок observability → enforcement, тесты и
+откат описаны в [docs/firebase-app-check-rollout.md](docs/firebase-app-check-rollout.md).
+
 ## Следующие этапы
 
 1. Добавить закрытую панель рассмотрения жалоб со сменой статусов и поиском по нарушителю.
-2. Зарегистрировать production reCAPTCHA Enterprise key, пересобрать frontend с `VITE_FIREBASE_APPCHECK_SITE_KEY` и перевыпустить room-management с `-EnforceAppCheck $true`.
+2. После отдельного подтверждения пройти поэтапный App Check rollout из документации и только затем включать enforcement.
 3. При необходимости добавить словарь запрещённых слов как дополнительный сигнал, не заменяя rate limit и модерацию.

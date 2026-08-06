@@ -3,13 +3,20 @@ param(
   [ValidateSet('prod', 'dev')]
   [string]$Environment = 'dev',
   [string]$FirebaseDatabaseUrl = '',
-  [bool]$EnforceAppCheck = $false,
+  [ValidateSet('monitor', 'enforce')]
+  [string]$AppCheckMode = 'monitor',
+  [Nullable[bool]]$EnforceAppCheck = $null,
   [string[]]$AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $isDevelopment = $Environment -eq 'dev'
 $environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+
+if ($null -ne $EnforceAppCheck) {
+  Write-Warning '-EnforceAppCheck is deprecated; use -AppCheckMode.'
+  $AppCheckMode = if ($EnforceAppCheck) { 'enforce' } else { 'monitor' }
+}
 
 if (-not $FirebaseDatabaseUrl) {
   $FirebaseDatabaseUrl = if ($isDevelopment) {
@@ -96,6 +103,9 @@ $functionName = "lw-music-room-management$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-management')
 ).Path
+$sharedSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')
+).Path
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -130,13 +140,20 @@ if (-not $function) {
 $deploymentSource = Join-Path (
   [System.IO.Path]::GetTempPath()
 ) "lw-music-room-management-$([guid]::NewGuid().ToString('N'))"
-$sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
+$functionDeploymentSource = Join-Path $deploymentSource 'room-management'
+$sharedDeploymentSource = Join-Path $deploymentSource 'shared'
+$packageFiles = @('package.json', 'pnpm-lock.yaml')
 $allowedOriginsValue = $AllowedOrigins -join ';'
-$enforceAppCheckValue = $EnforceAppCheck.ToString().ToLowerInvariant()
 
 New-Item -ItemType Directory -Path $deploymentSource | Out-Null
 try {
-  foreach ($sourceFile in $sourceFiles) {
+  New-Item -ItemType Directory -Path $functionDeploymentSource | Out-Null
+  New-Item -ItemType Directory -Path $sharedDeploymentSource | Out-Null
+  Copy-Item -LiteralPath (Join-Path $functionSource 'index.js') `
+    -Destination $functionDeploymentSource
+  Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+
+  foreach ($sourceFile in $packageFiles) {
     $sourcePath = Join-Path $functionSource $sourceFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
       throw "Function source file not found: $sourcePath"
@@ -148,12 +165,12 @@ try {
     'serverless', 'function', 'version', 'create',
     '--function-id', $function.id,
     '--runtime', 'nodejs22',
-    '--entrypoint', 'index.handler',
+    '--entrypoint', 'room-management/index.handler',
     '--memory', '256MB',
     '--execution-timeout', '20s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,ENFORCE_APP_CHECK=$enforceAppCheckValue,FIREBASE_DATABASE_URL=$FirebaseDatabaseUrl",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode,FIREBASE_DATABASE_URL=$FirebaseDatabaseUrl",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

@@ -17,6 +17,7 @@
     }
   },
   "scripts": {
+    "build:ci": "tsc -b && vite build --mode ci",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
@@ -25,12 +26,18 @@
     "migrate:room-membership-index": "node scripts/migrate-room-membership-index.mjs",
     "migrate:security-boundaries": "node scripts/migrate-security-boundaries.mjs",
     "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false",
+    "verify:app-check": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-app-check.mjs\"",
+    "verify:emulators": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/run-emulator-verifications.mjs\"",
+    "verify:emulators:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-firebase-emulators.ps1",
     "verify:room-model-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-model-rules.mjs\"",
     "verify:room-invite-function": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-invite-function.mjs\"",
     "verify:message-cleanup": "firebase emulators:exec --only firestore --project demo-lwmusic \"node scripts/verify-message-cleanup.mjs\"",
     "verify:room-functions": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-room-functions.mjs\"",
     "verify:realtime-rules": "firebase emulators:exec --only auth,database --project demo-lwmusic \"node scripts/verify-realtime-room-rules.mjs\"",
-    "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\""
+    "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\"",
+    "verify:serverless-bundles": "node scripts/verify-serverless-bundles.mjs",
+    "verify:static": "node scripts/verify-static-files.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

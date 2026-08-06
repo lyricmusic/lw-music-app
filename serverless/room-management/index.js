@@ -2,7 +2,6 @@
 
 const { createHash, randomBytes } = require('node:crypto')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
-const { getAppCheck } = require('firebase-admin/app-check')
 const { getAuth } = require('firebase-admin/auth')
 const { getDatabase } = require('firebase-admin/database')
 const {
@@ -10,6 +9,10 @@ const {
   Timestamp,
   getFirestore,
 } = require('firebase-admin/firestore')
+const {
+  AppCheckRequestError,
+  verifyRequestAppCheck,
+} = require('../shared/firebase-app-check')
 const HTTP_STATUS_BY_CODE = {
   aborted: 409,
   'already-exists': 409,
@@ -1983,6 +1986,12 @@ function parseJsonBody(event) {
 }
 
 async function authenticate(event) {
+  await verifyRequestAppCheck({
+    event,
+    firebaseApp: getFirebaseApp(),
+    service: 'room-management',
+  })
+
   const authorization =
     getHeader(event, 'x-firebase-authorization') ??
     getHeader(event, 'authorization')
@@ -1996,27 +2005,11 @@ async function authenticate(event) {
       match[1],
       true,
     )
-    const appCheckToken = getHeader(event, 'x-firebase-appcheck')
-    const enforceAppCheck = process.env.ENFORCE_APP_CHECK === 'true'
-    if (enforceAppCheck && !process.env.FIRESTORE_EMULATOR_HOST) {
-      if (!appCheckToken) {
-        throw new HttpsError(
-          'unauthenticated',
-          'Проверка подлинности приложения обязательна.',
-        )
-      }
-      try {
-        await getAppCheck(getFirebaseApp()).verifyToken(appCheckToken)
-      } catch {
-        throw new HttpsError(
-          'unauthenticated',
-          'Проверка подлинности приложения не пройдена.',
-        )
-      }
-    }
     return decodedToken
   } catch (error) {
-    if (error instanceof HttpsError) throw error
+    if (error instanceof HttpsError || error instanceof AppCheckRequestError) {
+      throw error
+    }
     throw new HttpsError('unauthenticated', 'Сессия недействительна.')
   }
 }
@@ -2052,7 +2045,8 @@ exports.handler = async function handler(event) {
     })
     return jsonResponse(200, result, corsHeaders)
   } catch (error) {
-    const knownError = error instanceof HttpsError
+    const knownError =
+      error instanceof HttpsError || error instanceof AppCheckRequestError
     if (!knownError) console.error('Room management request failed:', error)
     const headers = corsHeaders ?? {
       'Cache-Control': 'no-store, max-age=0',

@@ -2,7 +2,8 @@
 
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { getApps, initializeApp } from 'firebase-admin/app'
+import { setTimeout as delay } from 'node:timers/promises'
+import { deleteApp, getApps, initializeApp } from 'firebase-admin/app'
 import { getDatabase } from 'firebase-admin/database'
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-lwmusic'
@@ -15,6 +16,7 @@ const firestoreUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases
 process.env.FIREBASE_PROJECT_ID = projectId
 process.env.FIREBASE_DATABASE_URL = `https://${projectId}-default-rtdb.firebaseio.com`
 process.env.ALLOWED_ORIGINS = allowedOrigin
+process.env.APP_CHECK_MODE = 'off'
 
 const app =
   getApps()[0] ??
@@ -642,3 +644,10 @@ assert.equal(
 console.log(
   'Room management verification passed: room/invite limits, realtime leases, leave cleanup and rejoin, bans, roles, anti-spam, host mute, queue advance, immutable report snapshot, private message deletion log, ownership transfer, archival cleanup, reactivation, and mirrored room access updates.',
 )
+
+realtimeDb.goOffline()
+await Promise.race([Promise.all(getApps().map(deleteApp)), delay(2_000)])
+
+// Admin emulator sockets can outlive deleteApp() on Windows. All assertions
+// have completed at this point, so force a bounded test-process teardown.
+process.exit(0)

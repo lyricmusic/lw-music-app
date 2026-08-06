@@ -3,6 +3,8 @@ param(
   [ValidateSet('prod', 'dev')]
   [string]$Environment = 'dev',
   [string]$FirebaseProjectId = '',
+  [ValidateSet('monitor', 'enforce')]
+  [string]$AppCheckMode = 'monitor',
   [string[]]$AllowedOrigins = @()
 )
 
@@ -47,9 +49,9 @@ function Find-YcJson {
   return $output | ConvertFrom-Json
 }
 
-if (-not (Test-Path -LiteralPath $YcPath)) {
-  throw "Yandex Cloud CLI not found at $YcPath"
-}
+$ycCommand = Get-Command $YcPath -ErrorAction SilentlyContinue
+if (-not $ycCommand) { throw "Yandex Cloud CLI not found: $YcPath" }
+$YcPath = $ycCommand.Source
 
 $folderId = (& $YcPath config get folder-id 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $folderId) {
@@ -60,7 +62,12 @@ $serviceAccountName = "lw-music-storage$environmentSuffix"
 $secretName = "lw-music-storage-key$environmentSuffix"
 $functionName = "lw-music-room-cover-upload$environmentSuffix"
 $bucketName = "lw-music-room-covers$environmentSuffix-$folderId"
-$functionSource = Join-Path $PSScriptRoot '..\serverless\room-cover-upload'
+$functionSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-cover-upload')
+).Path
+$sharedSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')
+).Path
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -148,19 +155,42 @@ if (-not $function) {
 }
 
 $allowedOriginsValue = $AllowedOrigins -join ';'
-Invoke-YcJson @(
-  'serverless', 'function', 'version', 'create',
-  '--function-id', $function.id,
-  '--runtime', 'nodejs22',
-  '--entrypoint', 'index.handler',
-  '--memory', '256MB',
-  '--execution-timeout', '10s',
-  '--service-account-id', $serviceAccount.id,
-  '--source-path', $functionSource,
-  '--environment', "STORAGE_BUCKET=$bucketName,FIREBASE_PROJECT_ID=$FirebaseProjectId,ALLOWED_ORIGINS=$allowedOriginsValue",
-  '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_ACCESS_KEY_ID,environment-variable=AWS_ACCESS_KEY_ID",
-  '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_SECRET_ACCESS_KEY,environment-variable=AWS_SECRET_ACCESS_KEY"
-) | Out-Null
+$deploymentSource = Join-Path (
+  [System.IO.Path]::GetTempPath()
+) "lw-music-media-upload-$([guid]::NewGuid().ToString('N'))"
+$functionDeploymentSource = Join-Path $deploymentSource 'room-cover-upload'
+$sharedDeploymentSource = Join-Path $deploymentSource 'shared'
+
+New-Item -ItemType Directory -Path $deploymentSource | Out-Null
+try {
+  New-Item -ItemType Directory -Path $functionDeploymentSource | Out-Null
+  New-Item -ItemType Directory -Path $sharedDeploymentSource | Out-Null
+  Copy-Item -LiteralPath (Join-Path $functionSource 'index.js') `
+    -Destination $functionDeploymentSource
+  Copy-Item -LiteralPath (Join-Path $functionSource 'package.json') `
+    -Destination $deploymentSource
+  Copy-Item -LiteralPath (Join-Path $functionSource 'package-lock.json') `
+    -Destination $deploymentSource
+  Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+
+  Invoke-YcJson @(
+    'serverless', 'function', 'version', 'create',
+    '--function-id', $function.id,
+    '--runtime', 'nodejs22',
+    '--entrypoint', 'room-cover-upload/index.handler',
+    '--memory', '256MB',
+    '--execution-timeout', '10s',
+    '--service-account-id', $serviceAccount.id,
+    '--source-path', $deploymentSource,
+    '--environment', "STORAGE_BUCKET=$bucketName,FIREBASE_PROJECT_ID=$FirebaseProjectId,ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode",
+    '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_ACCESS_KEY_ID,environment-variable=AWS_ACCESS_KEY_ID",
+    '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_SECRET_ACCESS_KEY,environment-variable=AWS_SECRET_ACCESS_KEY"
+  ) | Out-Null
+} finally {
+  if (Test-Path -LiteralPath $deploymentSource) {
+    Remove-Item -LiteralPath $deploymentSource -Recurse -Force
+  }
+}
 
 & $YcPath serverless function allow-unauthenticated-invoke $function.id | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Failed to allow HTTPS invocation.' }

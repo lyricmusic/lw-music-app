@@ -4,6 +4,10 @@ const crypto = require('node:crypto')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, getFirestore } = require('firebase-admin/firestore')
+const {
+  AppCheckRequestError,
+  verifyRequestAppCheck,
+} = require('../shared/firebase-app-check')
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,128}$/
 
@@ -44,7 +48,8 @@ function getCorsHeaders(event) {
   }
 
   return {
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers':
+      'Authorization, Content-Type, X-Firebase-AppCheck',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
     'Cache-Control': 'no-store, max-age=0',
@@ -104,6 +109,12 @@ function isActiveBan(ban, nowMillis) {
 }
 
 async function authenticate(event) {
+  await verifyRequestAppCheck({
+    event,
+    firebaseApp: getFirebaseApp(),
+    service: 'room-invites',
+  })
+
   const authorization = getHeader(event, 'authorization')
   const match = /^Bearer\s+(.+)$/i.exec(authorization ?? '')
   if (!match) throw new InviteError('unauthenticated', 401)
@@ -234,7 +245,8 @@ exports.handler = async function handler(event) {
     const roomId = await redeemRoomInvite(event)
     return jsonResponse(200, { roomId }, corsHeaders)
   } catch (error) {
-    const knownError = error instanceof InviteError
+    const knownError =
+      error instanceof InviteError || error instanceof AppCheckRequestError
     if (!knownError) console.error('Room invite redemption failed:', error)
 
     const headers = corsHeaders ?? {
@@ -243,7 +255,12 @@ exports.handler = async function handler(event) {
     }
     return jsonResponse(
       knownError ? error.statusCode : 500,
-      { error: knownError ? error.code : 'server-error' },
+      {
+        error: knownError ? error.code : 'server-error',
+        ...(error instanceof AppCheckRequestError
+          ? { message: error.message }
+          : {}),
+      },
       headers,
     )
   }

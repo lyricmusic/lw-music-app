@@ -1,13 +1,11 @@
 /* global Buffer, console, exports, fetch, process, require */
 
 const { randomUUID, createPublicKey, verify } = require('node:crypto')
-
+const { getApps, initializeApp } = require('firebase-admin/app')
 const {
-  DeleteObjectCommand,
-  HeadObjectCommand,
-  S3Client,
-} = require('@aws-sdk/client-s3')
-const { createPresignedPost } = require('@aws-sdk/s3-presigned-post')
+  AppCheckRequestError,
+  verifyRequestAppCheck,
+} = require('../shared/firebase-app-check')
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const FIREBASE_JWKS_URL =
@@ -25,11 +23,35 @@ const EXTENSIONS_BY_CONTENT_TYPE = {
 }
 
 let jwksCache = { expiresAt: 0, keys: [] }
+let storageSdk
+
+function getStorageSdk() {
+  if (!storageSdk) {
+    const {
+      DeleteObjectCommand,
+      HeadObjectCommand,
+      S3Client,
+    } = require('@aws-sdk/client-s3')
+    const { createPresignedPost } = require('@aws-sdk/s3-presigned-post')
+    storageSdk = {
+      createPresignedPost,
+      DeleteObjectCommand,
+      HeadObjectCommand,
+      S3Client,
+    }
+  }
+  return storageSdk
+}
 
 function requiredEnvironment(name) {
   const value = process.env[name]
   if (!value) throw new Error(`Missing environment variable: ${name}`)
   return value
+}
+
+function getFirebaseApp() {
+  if (getApps().length > 0) return getApps()[0]
+  return initializeApp({ projectId: requiredEnvironment('FIREBASE_PROJECT_ID') })
 }
 
 function getHeader(event, requestedName) {
@@ -56,7 +78,8 @@ function getAllowedOrigin(event) {
 
 function createResponse(statusCode, body, origin) {
   const headers = {
-    'Access-Control-Allow-Headers': 'Content-Type,X-Firebase-Token',
+    'Access-Control-Allow-Headers':
+      'Content-Type,X-Firebase-AppCheck,X-Firebase-Token',
     'Access-Control-Allow-Methods': 'POST,OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     Vary: 'Origin',
@@ -147,6 +170,7 @@ async function verifyFirebaseIdToken(token) {
 }
 
 function createStorageClient() {
+  const { S3Client } = getStorageSdk()
   return new S3Client({
     credentials: {
       accessKeyId: requiredEnvironment('AWS_ACCESS_KEY_ID'),
@@ -163,6 +187,7 @@ function encodeObjectUrl(bucket, objectKey) {
 }
 
 async function createUpload(storageClient, uid, request) {
+  const { createPresignedPost } = getStorageSdk()
   const { contentType, fileSize, roomId } = request
   const extension = EXTENSIONS_BY_CONTENT_TYPE[contentType]
 
@@ -204,6 +229,7 @@ async function createUpload(storageClient, uid, request) {
 }
 
 async function createAvatarUpload(storageClient, uid, request) {
+  const { createPresignedPost } = getStorageSdk()
   const { contentType, fileSize } = request
   const extension = EXTENSIONS_BY_CONTENT_TYPE[contentType]
 
@@ -250,6 +276,7 @@ async function deleteUpload(
   request,
   objectKeyPattern = OBJECT_KEY_PATTERN,
 ) {
+  const { DeleteObjectCommand, HeadObjectCommand } = getStorageSdk()
   const { objectKey } = request
   if (!objectKeyPattern.test(objectKey ?? '')) {
     throw new Error('Некорректный путь изображения.')
@@ -299,6 +326,11 @@ exports.handler = async function handler(event) {
   }
 
   try {
+    await verifyRequestAppCheck({
+      event,
+      firebaseApp: getFirebaseApp(),
+      service: 'media-upload',
+    })
     const token = getHeader(event, 'x-firebase-token')
     if (!token) {
       return createResponse(
@@ -348,6 +380,13 @@ exports.handler = async function handler(event) {
       allowedOrigin,
     )
   } catch (error) {
+    if (error instanceof AppCheckRequestError) {
+      return createResponse(
+        error.statusCode,
+        { error: error.code, message: error.message },
+        allowedOrigin,
+      )
+    }
     console.error('Media upload request failed:', error)
     const isClientError =
       error instanceof SyntaxError ||

@@ -1,4 +1,9 @@
-import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
+import {
+  auth,
+  callRoomManagementApi,
+  db,
+  fetchWithAppCheck,
+} from '@/shared/api/firebase'
 import { FirebaseError } from 'firebase/app'
 import {
   collection,
@@ -281,6 +286,10 @@ export function getRoomInviteUrl(inviteToken: string) {
 }
 
 const redeemErrorMessages: Record<string, string> = {
+  'app-check-invalid':
+    'Проверка подлинности приложения не пройдена. Обновите страницу и повторите попытку.',
+  'app-check-required':
+    'Не удалось подтвердить подлинность приложения. Обновите страницу и повторите попытку.',
   banned: 'Владелец комнаты запретил вам вход.',
   'invite-not-found': 'Приглашение не найдено.',
   'invite-unavailable':
@@ -308,7 +317,7 @@ export async function redeemRoomInvite(
 
   let response: Response
   try {
-    response = await fetch(roomInviteApiUrl, {
+    response = await fetchWithAppCheck(roomInviteApiUrl, {
       body: JSON.stringify({
         expectedRoomId: expectedRoomId?.trim() || undefined,
         token: normalizedToken,
