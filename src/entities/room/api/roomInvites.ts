@@ -323,8 +323,8 @@ export async function redeemRoomInvite(
         token: normalizedToken,
       }),
       headers: {
-        Authorization: `Bearer ${await user.getIdToken()}`,
         'Content-Type': 'application/json',
+        'X-Firebase-Authorization': `Bearer ${await user.getIdToken()}`,
       },
       method: 'POST',
     })

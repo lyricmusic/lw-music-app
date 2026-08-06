@@ -74,8 +74,8 @@ function invoke(idToken, body, origin = allowedOrigin) {
   return handler({
     body: JSON.stringify(body),
     headers: {
-      authorization: idToken ? `Bearer ${idToken}` : '',
       origin,
+      'x-firebase-authorization': idToken ? `Bearer ${idToken}` : '',
     },
     httpMethod: 'POST',
     isBase64Encoded: false,

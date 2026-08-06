@@ -138,7 +138,9 @@ const protectedHandlers = [
     name: 'room-management',
   },
   {
-    authorizationHeaders: { authorization: 'Bearer emulator-token' },
+    authorizationHeaders: {
+      'X-Firebase-Authorization': 'Bearer emulator-token',
+    },
     handler: roomInvites.handler,
     name: 'room-invites',
   },

@@ -49,7 +49,7 @@ function getCorsHeaders(event) {
 
   return {
     'Access-Control-Allow-Headers':
-      'Authorization, Content-Type, X-Firebase-AppCheck',
+      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
     'Cache-Control': 'no-store, max-age=0',
@@ -115,7 +115,9 @@ async function authenticate(event) {
     service: 'room-invites',
   })
 
-  const authorization = getHeader(event, 'authorization')
+  const authorization =
+    getHeader(event, 'x-firebase-authorization') ??
+    getHeader(event, 'authorization')
   const match = /^Bearer\s+(.+)$/i.exec(authorization ?? '')
   if (!match) throw new InviteError('unauthenticated', 401)
 
