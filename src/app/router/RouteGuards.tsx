@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link as RouterLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { useSession } from '@/entities/session'
-import { signInAsGuest } from '@/features/auth'
+import { signInAsGuest } from '@/features/auth/api/signInAsGuest'
 import { routes } from '@/shared/config/routes'
 import { reportOperationalError } from '@/shared/lib/telemetry'
 import { Button, CircularProgress, Typography } from '@mui/material'

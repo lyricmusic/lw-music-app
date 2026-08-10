@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { auth, realtimeDb } from '@/shared/api/firebase'
+import { auth } from '@/shared/api/firebase'
+import { realtimeDb } from '@/shared/api/firebase/firebaseRealtime'
 import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   onDisconnect,

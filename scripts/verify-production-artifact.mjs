@@ -18,10 +18,19 @@ function listFiles(directory) {
 }
 
 const files = listFiles(distDirectory)
+assert.ok(
+  files.includes(path.join(distDirectory, '.vite', 'manifest.json')),
+  'The production manifest is required for performance verification.',
+)
 assert.deepEqual(
   files.filter(file => file.endsWith('.map')),
   [],
   'Production artifacts must never contain source-map files.',
+)
+assert.deepEqual(
+  files.filter(file => /(?:service-worker|sw)\.[cm]?js$/i.test(file)),
+  [],
+  'No service worker should retain legacy application assets.',
 )
 
 for (const file of files.filter(file => /\.(?:css|html|js)$/.test(file))) {

@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { handleVitePreloadError } from './chunkRecovery'
 import { isRouteChunkLoadError } from './lazyRoute'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('stale route chunk detection', () => {
   it.each([
@@ -17,5 +22,33 @@ describe('stale route chunk detection', () => {
       false,
     )
     expect(isRouteChunkLoadError('network error')).toBe(false)
+  })
+
+  it('prevents a Vite preload error and reloads the current URL only once', () => {
+    const storage = new Map<string, string>()
+    const reload = vi.fn()
+    vi.stubGlobal('window', {
+      location: {
+        href: 'https://syncly.lyricweb.ru/room/example',
+        reload,
+      },
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => storage.delete(key),
+        setItem: (key: string, value: string) => storage.set(key, value),
+      },
+    })
+
+    const firstEvent = new Event('vite:preloadError', { cancelable: true })
+    expect(handleVitePreloadError(firstEvent)).toBe(true)
+    expect(firstEvent.defaultPrevented).toBe(true)
+    expect(reload).toHaveBeenCalledOnce()
+
+    const repeatedEvent = new Event('vite:preloadError', {
+      cancelable: true,
+    })
+    expect(handleVitePreloadError(repeatedEvent)).toBe(false)
+    expect(repeatedEvent.defaultPrevented).toBe(false)
+    expect(reload).toHaveBeenCalledOnce()
   })
 })

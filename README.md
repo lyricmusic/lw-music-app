@@ -406,6 +406,34 @@ pnpm build
 pnpm verify:production-artifact
 ```
 
+## Производительность загрузки
+
+Production build всегда создаёт Vite manifest, а локальная проверка считает
+воспроизводимые raw, gzip и Brotli-размеры стартового графа, каждой холодной
+маршрутной загрузки, общего JavaScript и крупных assets:
+
+```bash
+pnpm build
+pnpm verify:performance
+```
+
+Лимиты хранятся в `performance-budgets.json` и проверяются в обоих CI workflow
+без production secrets и внешней телеметрии. Маршруты, authenticated layout,
+профильный onboarding, Sentry и Firebase Analytics загружаются только при
+фактической необходимости. Sentry остаётся tree-shakeable через узкий adapter,
+а Analytics не запрашивается до явного согласия пользователя.
+
+Nginx отдаёт хешированные `/assets/` с годовым immutable cache, `index.html` и
+SPA fallback — с `no-cache`, версионируемые публичные аватары — с недельным
+cache. Gzip включён для JS, CSS, JSON и SVG. Release scripts продолжают
+сохранять один предыдущий набор хешированных assets, а клиент один раз
+перезагружает текущий URL при `vite:preloadError`, поэтому открытая старая
+вкладка не зацикливается при смене релиза. Service worker намеренно не
+используется и не удерживает legacy application shell.
+
+Подробные baseline, итоговые измерения и принятые компромиссы описаны в
+[docs/performance-bundle.md](docs/performance-bundle.md).
+
 ## Следующие этапы
 
 1. Добавить закрытую панель рассмотрения жалоб со сменой статусов и поиском по нарушителю.

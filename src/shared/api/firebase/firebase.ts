@@ -4,9 +4,6 @@ import {
   initializeAppCheck,
 } from 'firebase/app-check'
 import type { AppCheck } from 'firebase/app-check'
-import { getAuth } from 'firebase/auth'
-import { getDatabase } from 'firebase/database'
-import { getFirestore } from 'firebase/firestore'
 
 const PRODUCTION_PROJECT_ID = 'lwmusic-ffe83'
 const FIREBASE_APP_NAME = 'syncly-web'
@@ -119,6 +116,3 @@ export const appCheck = (() => {
   }
   return instance
 })()
-export const db = getFirestore(app)
-export const auth = getAuth(app)
-export const realtimeDb = getDatabase(app)

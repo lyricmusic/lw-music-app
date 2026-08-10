@@ -7,7 +7,6 @@ import {
   signInWithEmailAndPassword,
   signInWithCustomToken,
   signOut,
-  signInAnonymously,
   updateProfile,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
@@ -317,15 +316,6 @@ export async function signInWithYandex({
     window.addEventListener('message', handleMessage)
     popup.focus()
   })
-}
-
-export async function signInAsGuest(source: 'direct_link' | 'invite') {
-  const credential = await signInAnonymously(auth)
-  trackProductEvent({
-    name: 'guest_sign_in',
-    properties: { source },
-  })
-  return credential.user
 }
 
 export function signOutCurrentUser() {

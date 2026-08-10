@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "initialJavaScriptGzip": 325000,
+  "initialStylesheetGzip": 12000,
+  "largestJavaScriptRaw": 485000,
+  "totalJavaScriptGzip": 550000,
+  "authBackgroundRaw": 275000,
+  "totalArtifactRaw": 11300000,
+  "routeJavaScriptGzip": {
+    "join": 112000,
+    "notFound": 1000,
+    "room": 145000,
+    "rooms": 118000,
+    "signIn": 55000,
+    "signUp": 55000
+  },
+  "routeColdJavaScriptGzip": {
+    "join": 435000,
+    "notFound": 325000,
+    "room": 470000,
+    "rooms": 445000,
+    "signIn": 380000,
+    "signUp": 380000
+  }
+}

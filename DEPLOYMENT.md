@@ -42,6 +42,7 @@ Storage должны оставаться только в Yandex Lockbox. Сек
    pnpm exec vite -- build --mode development
    pnpm build
    pnpm verify:production-artifact
+   pnpm verify:performance
    ```
 
 3. Для изменений Firestore или Realtime Database запускать относящиеся к ним
@@ -150,6 +151,38 @@ hidden maps, затем удаляет их; release scripts дополните�
 Analytics начинает загружаться и отправлять allowlisted события после явного
 нажатия пользователя «Разрешить»; отсутствие выбора не является согласием.
 Session replay, запись ввода и рекламные consent types не включать.
+
+### Frontend performance, cache и старые вкладки
+
+`pnpm build` создаёт `dist/.vite/manifest.json`, а `pnpm verify:performance`
+проверяет стартовый и маршрутные JS-графы, CSS, общий artifact и auth-фон по
+`performance-budgets.json`. Проверка локальная: ей не нужны production secrets,
+она не инициализирует Sentry/Firebase Analytics и ничего не отправляет наружу.
+
+Конфигурация `deploy/nginx/syncly.lyricweb.ru.conf` обязана сохранять:
+
+- `Cache-Control: public, max-age=31536000, immutable` для `/assets/`;
+- `Cache-Control: no-cache` для `index.html` и SPA fallback;
+- недельный cache для стабильных `/avatars/`, но без `immutable`;
+- gzip для JavaScript, CSS, JSON, SVG и текстовых ответов.
+
+Не добавлять service worker или ручной prefetch всех маршрутов без отдельного
+измерения на медленной мобильной сети. Release scripts сохраняют только assets
+непосредственно предыдущего релиза. Клиент обрабатывает `vite:preloadError` и
+может перезагрузить текущий URL не больше одного раза; это дополняет, но не
+заменяет HTML `no-cache` и one-release compatibility window.
+
+После разрешённого deployment проверить реальные заголовки и content encoding:
+
+```bash
+curl -I https://syncly.lyricweb.ru/
+curl -I https://syncly.lyricweb.ru/assets/<current-hashed-chunk>.js
+curl -I -H 'Accept-Encoding: gzip' https://syncly.lyricweb.ru/assets/<current-hashed-chunk>.js
+```
+
+У корневого HTML ожидается `Cache-Control: no-cache`, у хешированного asset —
+годовой immutable cache, а при поддержке gzip — `Content-Encoding: gzip` и
+`Vary: Accept-Encoding`.
 
 При serverless deployment скрипты автоматически ставят `RELEASE` из текущего
 Git commit. После smoke test найти одинаковый `X-Request-ID` в response и

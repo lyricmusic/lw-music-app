@@ -23,9 +23,11 @@ describe('error monitoring initialization gates', () => {
     resetErrorMonitoringForTests()
   })
 
-  it('enables only a complete production configuration', () => {
+  it('enables only a complete production configuration', async () => {
     expect(resolveErrorMonitoringConfig(productionConfig).active).toBe(true)
-    expect(initializeErrorMonitoring(productionConfig)).toBe(true)
+    await expect(initializeErrorMonitoring(productionConfig)).resolves.toBe(
+      true,
+    )
     expect(sentryInit).toHaveBeenCalledOnce()
     expect(sentryInit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -36,7 +38,7 @@ describe('error monitoring initialization gates', () => {
     )
   })
 
-  it('stays disabled in tests, development and without provider settings', () => {
+  it('stays disabled in tests, development and without provider settings', async () => {
     expect(
       resolveErrorMonitoringConfig({ ...productionConfig, test: true }).active,
     ).toBe(false)
@@ -50,9 +52,9 @@ describe('error monitoring initialization gates', () => {
     expect(
       resolveErrorMonitoringConfig({ ...productionConfig, dsn: '' }).active,
     ).toBe(false)
-    expect(initializeErrorMonitoring({ ...productionConfig, test: true })).toBe(
-      false,
-    )
+    await expect(
+      initializeErrorMonitoring({ ...productionConfig, test: true }),
+    ).resolves.toBe(false)
     expect(sentryInit).not.toHaveBeenCalled()
   })
 })

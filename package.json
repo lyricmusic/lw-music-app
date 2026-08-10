@@ -40,6 +40,7 @@
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\"",
     "verify:routing-config": "node scripts/verify-routing-config.mjs",
     "verify:observability": "node scripts/verify-observability.mjs",
+    "verify:performance": "node scripts/verify-performance-budgets.mjs",
     "verify:production-artifact": "node scripts/verify-production-artifact.mjs",
     "verify:serverless-bundles": "node scripts/verify-serverless-bundles.mjs",
     "verify:static": "node scripts/verify-static-files.mjs"

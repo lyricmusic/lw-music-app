@@ -1,5 +1,3 @@
-import * as Sentry from '@sentry/react'
-
 import {
   getSafeErrorCode,
   getSafeErrorName,
@@ -44,6 +42,8 @@ const DEDUPLICATION_WINDOW_MS = 60_000
 const capturedErrors = new Map<string, number>()
 let captureCount = 0
 let initialized = false
+let initializationPromise: Promise<boolean> | null = null
+let sentry: typeof import('./sentryAdapter') | null = null
 
 export function resolveErrorMonitoringConfig({
   appEnvironment,
@@ -82,7 +82,9 @@ function currentConfig() {
   })
 }
 
-export function initializeErrorMonitoring(environment?: MonitoringEnvironment) {
+export async function initializeErrorMonitoring(
+  environment?: MonitoringEnvironment,
+) {
   if (initialized) return true
 
   const config = environment
@@ -90,21 +92,31 @@ export function initializeErrorMonitoring(environment?: MonitoringEnvironment) {
     : currentConfig()
   if (!config.active) return false
 
-  Sentry.init({
-    beforeSend: event => scrubErrorEvent(event),
-    dsn: config.dsn,
-    enabled: true,
-    environment: config.environment,
-    integrations: defaultIntegrations =>
-      defaultIntegrations.filter(
-        integration => integration.name !== 'Breadcrumbs',
-      ),
-    release: config.release,
-    sendDefaultPii: false,
-    tracesSampleRate: 0,
-  })
-  initialized = true
-  return true
+  initializationPromise ??= import('./sentryAdapter')
+    .then(sentryModule => {
+      sentryModule.init({
+        beforeSend: event => scrubErrorEvent(event),
+        dsn: config.dsn,
+        enabled: true,
+        environment: config.environment,
+        integrations: defaultIntegrations =>
+          defaultIntegrations.filter(
+            integration => integration.name !== 'Breadcrumbs',
+          ),
+        release: config.release,
+        sendDefaultPii: false,
+        tracesSampleRate: 0,
+      })
+      sentry = sentryModule
+      initialized = true
+      return true
+    })
+    .catch(() => {
+      initializationPromise = null
+      return false
+    })
+
+  return initializationPromise
 }
 
 function isDuplicate(category: ErrorCategory, error: unknown) {
@@ -129,8 +141,10 @@ export function reportOperationalError(
   error: unknown,
   options: { requestId?: string } = {},
 ) {
+  const sentryClient = sentry
   if (
     !initialized ||
+    !sentryClient ||
     captureCount >= CAPTURE_LIMIT ||
     isDuplicate(category, error)
   ) {
@@ -138,7 +152,7 @@ export function reportOperationalError(
   }
 
   captureCount += 1
-  return Sentry.withScope(scope => {
+  return sentryClient.withScope(scope => {
     scope.setLevel('error')
     scope.setTag('error_category', category)
     scope.setTag('runtime', 'browser')
@@ -150,7 +164,7 @@ export function reportOperationalError(
     if (/^[a-z0-9][a-z0-9-]{7,63}$/i.test(correlatedRequestId)) {
       scope.setTag('request_id', correlatedRequestId)
     }
-    return Sentry.captureException(
+    return sentryClient.captureException(
       error instanceof Error ? error : new Error('Non-error rejection'),
     )
   })
@@ -162,6 +176,8 @@ export function isErrorMonitoringInitialized() {
 
 export function resetErrorMonitoringForTests() {
   initialized = false
+  initializationPromise = null
+  sentry = null
   captureCount = 0
   capturedErrors.clear()
 }

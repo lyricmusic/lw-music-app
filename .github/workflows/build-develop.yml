@@ -76,6 +76,9 @@ jobs:
       - name: Production artifact privacy
         run: pnpm verify:production-artifact
 
+      - name: Performance and bundle budgets
+        run: pnpm verify:performance
+
       - name: Upload production build
         uses: actions/upload-artifact@v7
         with:

@@ -3,7 +3,7 @@ import {
   fetchWithAppCheck,
   getResponseRequestId,
 } from './fetchWithAppCheck'
-import { auth } from './firebase'
+import { auth } from './firebaseAuth'
 
 const roomManagementApiUrl = import.meta.env.VITE_ROOM_MANAGEMENT_API_URL
 

@@ -16,6 +16,7 @@ COPY . .
 # Билдим приложение
 RUN pnpm build
 RUN pnpm verify:production-artifact
+RUN pnpm verify:performance
 
 # Этап продакшена (на легком nginx-образе)
 FROM nginx:alpine

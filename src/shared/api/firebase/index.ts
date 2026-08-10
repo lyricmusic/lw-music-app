@@ -1,4 +1,6 @@
-export { appCheck, auth, db, realtimeDb } from './firebase'
+export { appCheck } from './firebase'
+export { auth } from './firebaseAuth'
+export { db } from './firebaseFirestore'
 export { callRoomManagementApi } from './callRoomManagementApi'
 export {
   CorrelatedRequestError,

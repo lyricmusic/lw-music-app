@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
 import { resolveUserCharacter, type UserCharacter } from '@/entities/session'
-import { db, realtimeDb } from '@/shared/api/firebase'
+import { db } from '@/shared/api/firebase'
+import { realtimeDb } from '@/shared/api/firebase/firebaseRealtime'
 import { reportOperationalError } from '@/shared/lib/telemetry'
 import { onValue, ref } from 'firebase/database'
 import { collection, doc, onSnapshot } from 'firebase/firestore'

@@ -7,11 +7,12 @@ import {
 } from '@/shared/lib/telemetry'
 
 import { AppErrorBoundary, AppErrorFallback } from './ErrorBoundary'
+import { handleVitePreloadError } from './router/chunkRecovery'
 
 import './styles/index.css'
 
 const rootElement: HTMLElement = document.getElementById('root')!
-initializeErrorMonitoring()
+window.addEventListener('vite:preloadError', handleVitePreloadError)
 
 const root = ReactDOM.createRoot(rootElement, {
   // componentDidCatch reports through the scrubbed boundary. Defining this
@@ -25,8 +26,11 @@ const root = ReactDOM.createRoot(rootElement, {
   },
 })
 
-void import('./App')
-  .then(({ App }) => {
+async function bootstrap() {
+  await initializeErrorMonitoring()
+
+  try {
+    const { App } = await import('./App')
     root.render(
       <StrictMode>
         <AppErrorBoundary>
@@ -34,8 +38,10 @@ void import('./App')
         </AppErrorBoundary>
       </StrictMode>,
     )
-  })
-  .catch(error => {
+  } catch (error) {
     reportOperationalError('app_bootstrap', error)
     root.render(<AppErrorFallback />)
-  })
+  }
+}
+
+void bootstrap()

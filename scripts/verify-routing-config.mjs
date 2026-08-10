@@ -47,10 +47,15 @@ assert.deepEqual(firebaseJson.hosting.rewrites, [
   { destination: '/index.html', source: '**' },
 ])
 
+const nginxConfig = read('deploy/nginx/syncly.lyricweb.ru.conf')
+assert.match(nginxConfig, /try_files \$uri \$uri\/ \/index\.html;/)
+assert.match(nginxConfig, /gzip on;/)
+assert.match(nginxConfig, /gzip_vary on;/)
 assert.match(
-  read('deploy/nginx/syncly.lyricweb.ru.conf'),
-  /try_files \$uri \$uri\/ \/index\.html;/,
+  nginxConfig,
+  /Cache-Control "public, max-age=31536000, immutable" always;/,
 )
+assert.match(nginxConfig, /Cache-Control "no-cache" always;/)
 
 for (const deploymentScript of [
   'deploy/install-syncly.sh',

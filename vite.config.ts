@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     build: {
+      manifest: true,
       sourcemap: monitoringEnabled ? 'hidden' : false,
     },
     define: {
