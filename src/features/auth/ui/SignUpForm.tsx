@@ -1,4 +1,4 @@
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import { toast } from 'react-toastify'
 import { useForm } from 'react-hook-form'
 
@@ -8,10 +8,12 @@ import { Box, Button, CircularProgress, Typography } from '@mui/material'
 
 import { getAuthErrorMessage, signUpWithEmail } from '../api/auth'
 import { emailFieldValidation } from '../model/emailFieldValidation'
+import { getAuthDestination } from '../model/getAuthDestination'
 import { authSubmitButtonSx } from './authFormStyles'
 import { PasswordField } from './PasswordField'
 
 export function SignUpForm() {
+  const location = useLocation()
   const navigate = useNavigate()
   const {
     formState: { errors, isSubmitting },
@@ -33,7 +35,7 @@ export function SignUpForm() {
     try {
       await signUpWithEmail({ email, password })
       toast.success('Аккаунт создан. Добро пожаловать!')
-      navigate(routes.rooms, { replace: true })
+      navigate(getAuthDestination(location.state), { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))
     }
@@ -98,7 +100,11 @@ export function SignUpForm() {
           <span style={{ color: 'var(--color-auth-muted)' }}>
             Уже есть аккаунт?
           </span>
-          <RouterLink className="text-white underline" to={routes.signIn}>
+          <RouterLink
+            className="text-white underline"
+            state={location.state}
+            to={routes.signIn}
+          >
             Войти
           </RouterLink>
         </div>

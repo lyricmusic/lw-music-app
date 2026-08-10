@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  Link as RouterLink,
-  Navigate,
-  Outlet,
-  useLocation,
-} from 'react-router-dom'
+import { Link as RouterLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { useSession } from '@/entities/session'
 import { auth } from '@/shared/api/firebase'
 import { routes } from '@/shared/config/routes'
 import { Button, CircularProgress, Typography } from '@mui/material'
 import { signInAnonymously } from 'firebase/auth'
+
+import {
+  getDirectRoomRouteDecision,
+  getGuestOnlyRouteDecision,
+  getProtectedRouteDecision,
+} from './guardDecisions'
 
 function SessionLoadingScreen() {
   return (
@@ -23,10 +24,11 @@ function SessionLoadingScreen() {
 export function ProtectedRoute() {
   const location = useLocation()
   const { loading, user } = useSession()
+  const decision = getProtectedRouteDecision({ loading, user })
 
-  if (loading) return <SessionLoadingScreen />
+  if (decision === 'loading') return <SessionLoadingScreen />
 
-  return user && !user.isAnonymous ? (
+  return decision === 'allow' ? (
     <Outlet />
   ) : (
     <Navigate replace state={{ from: location }} to={routes.signIn} />
@@ -51,9 +53,11 @@ export function DirectRoomRoute() {
     })
   }, [loading, user])
 
-  if (loading || (!user && !error)) return <SessionLoadingScreen />
+  const decision = getDirectRoomRouteDecision({ loading, user }, error)
 
-  if (error) {
+  if (decision === 'loading') return <SessionLoadingScreen />
+
+  if (decision === 'error') {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-brand-color px-6 text-center">
         <Typography sx={{ color: '#FFFFFF', maxWidth: 520 }} variant="h5">
@@ -76,10 +80,11 @@ export function DirectRoomRoute() {
 
 export function GuestOnlyRoute() {
   const { loading, user } = useSession()
+  const decision = getGuestOnlyRouteDecision({ loading, user })
 
-  if (loading) return <SessionLoadingScreen />
+  if (decision === 'loading') return <SessionLoadingScreen />
 
-  return user && !user.isAnonymous ? (
+  return decision === 'redirect-rooms' ? (
     <Navigate replace to={routes.rooms} />
   ) : (
     <Outlet />

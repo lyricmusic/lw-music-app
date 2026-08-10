@@ -30,7 +30,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 22.22.0
           cache: pnpm
 
       - name: Set up Java for Firebase emulators
@@ -56,6 +56,11 @@ jobs:
 
       - name: Node and JSON syntax
         run: pnpm verify:static
+
+      - name: Routing and navigation contracts
+        run: |
+          pnpm test:routing
+          pnpm verify:routing-config
 
       - name: Serverless deployment bundles
         run: pnpm verify:serverless-bundles

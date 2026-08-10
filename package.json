@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.13.1",
   "engines": {
-    "node": ">=20.19.0",
+    "node": ">=22.22.0",
     "pnpm": ">=10.0.0"
   },
   "pnpm": {
@@ -26,6 +26,7 @@
     "migrate:room-membership-index": "node scripts/migrate-room-membership-index.mjs",
     "migrate:security-boundaries": "node scripts/migrate-security-boundaries.mjs",
     "preview": "vite preview",
+    "test:routing": "vitest run src/app/router src/features/auth/model/getAuthDestination.test.ts",
     "typecheck": "tsc -b --pretty false",
     "verify:app-check": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-app-check.mjs\"",
     "verify:emulators": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/run-emulator-verifications.mjs\"",
@@ -36,6 +37,7 @@
     "verify:room-functions": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-room-functions.mjs\"",
     "verify:realtime-rules": "firebase emulators:exec --only auth,database --project demo-lwmusic \"node scripts/verify-realtime-room-rules.mjs\"",
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\"",
+    "verify:routing-config": "node scripts/verify-routing-config.mjs",
     "verify:serverless-bundles": "node scripts/verify-serverless-bundles.mjs",
     "verify:static": "node scripts/verify-static-files.mjs"
   },
@@ -48,7 +50,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.81.0",
-    "react-router-dom": "^6.30.2",
+    "react-router": "8.3.0",
     "react-toastify": "^11.0.5"
   },
   "devDependencies": {
@@ -71,6 +73,7 @@
     "sass": "^1.93.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^4.1.10"
   }
 }

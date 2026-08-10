@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMatch, useNavigate } from 'react-router-dom'
+import { useMatch, useNavigate } from 'react-router'
 import { toast } from 'react-toastify'
 
 import logo from '@assets/lw.svg'

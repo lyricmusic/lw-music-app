@@ -1,4 +1,4 @@
-import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import { toast } from 'react-toastify'
 import { useForm } from 'react-hook-form'
 
@@ -81,7 +81,11 @@ export function SignInForm() {
           <span style={{ color: 'var(--color-auth-muted)' }}>
             Нет аккаунта?
           </span>
-          <RouterLink className="text-white underline" to={routes.signUp}>
+          <RouterLink
+            className="text-white underline"
+            state={location.state}
+            to={routes.signUp}
+          >
             Зарегистрироваться
           </RouterLink>
         </div>

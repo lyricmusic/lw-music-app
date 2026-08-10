@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router'
 import { ToastContainer, Zoom } from 'react-toastify'
 
 import { SessionProvider } from '@/entities/session'
@@ -25,11 +25,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         transition={Zoom}
       />
       <SessionProvider>
-        <BrowserRouter
-          future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-        >
-          {children}
-        </BrowserRouter>
+        <BrowserRouter>{children}</BrowserRouter>
       </SessionProvider>
     </ThemeProvider>
   )

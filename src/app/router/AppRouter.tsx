@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react'
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Suspense } from 'react'
+import { Outlet, Routes } from 'react-router'
 
 import { routes } from '@/shared/config/routes'
 import { CharacterEditorDialog } from '@/features/edit-character'
@@ -11,25 +11,27 @@ import { CircularProgress } from '@mui/material'
 import { Timestamp } from 'firebase/firestore'
 
 import { DirectRoomRoute, GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
+import { lazyRoute } from './lazyRoute'
+import { createAppRouteElements } from './routeDefinitions'
 
-const NotFoundPage = lazy(() =>
+const NotFoundPage = lazyRoute(() =>
   import('@/pages/not-found').then(module => ({
     default: module.NotFoundPage,
   })),
 )
-const JoinPage = lazy(() =>
+const JoinPage = lazyRoute(() =>
   import('@/pages/join').then(module => ({ default: module.JoinPage })),
 )
-const RoomPage = lazy(() =>
+const RoomPage = lazyRoute(() =>
   import('@/pages/room').then(module => ({ default: module.RoomPage })),
 )
-const RoomsPage = lazy(() =>
+const RoomsPage = lazyRoute(() =>
   import('@/pages/rooms').then(module => ({ default: module.RoomsPage })),
 )
-const SignInPage = lazy(() =>
+const SignInPage = lazyRoute(() =>
   import('@/pages/sign-in').then(module => ({ default: module.SignInPage })),
 )
-const SignUpPage = lazy(() =>
+const SignUpPage = lazyRoute(() =>
   import('@/pages/sign-up').then(module => ({ default: module.SignUpPage })),
 )
 
@@ -164,59 +166,44 @@ export function AppRouter() {
   return (
     <Suspense fallback={<PageLoadingFallback />}>
       <Routes>
-        {import.meta.env.DEV && (
-          <>
-            <Route
-              element={<CharacterEditorSmokeTestPage />}
-              path={routes.characterEditorSmokeTest}
-            />
-            <Route
-              element={<PlayerSmokeTestPage />}
-              path={routes.playerSmokeTest}
-            />
-            <Route
-              element={<ProfileOnboardingSmokeTestPage />}
-              path={routes.profileOnboardingSmokeTest}
-            />
-            <Route
-              element={<RoomsSmokeTestPage />}
-              path={routes.roomsSmokeTest}
-            />
-            <Route
-              element={<LeaveRoomSmokeTestPage />}
-              path={routes.leaveRoomSmokeTest}
-            />
-          </>
+        {createAppRouteElements(
+          {
+            authenticatedLayout: <AuthenticatedLayout />,
+            directRoomRoute: <DirectRoomRoute />,
+            guestOnlyRoute: <GuestOnlyRoute />,
+            joinPage: <JoinPage />,
+            notFoundPage: <NotFoundPage />,
+            protectedRoute: <ProtectedRoute />,
+            roomPage: <RoomPage />,
+            roomsPage: <RoomsPage />,
+            signInPage: <SignInPage />,
+            signUpPage: <SignUpPage />,
+          },
+          import.meta.env.DEV
+            ? [
+                {
+                  element: <CharacterEditorSmokeTestPage />,
+                  path: routes.characterEditorSmokeTest,
+                },
+                {
+                  element: <PlayerSmokeTestPage />,
+                  path: routes.playerSmokeTest,
+                },
+                {
+                  element: <ProfileOnboardingSmokeTestPage />,
+                  path: routes.profileOnboardingSmokeTest,
+                },
+                {
+                  element: <RoomsSmokeTestPage />,
+                  path: routes.roomsSmokeTest,
+                },
+                {
+                  element: <LeaveRoomSmokeTestPage />,
+                  path: routes.leaveRoomSmokeTest,
+                },
+              ]
+            : [],
         )}
-
-        <Route element={<JoinPage />} path={routes.joinPattern} />
-
-        <Route element={<GuestOnlyRoute />}>
-          <Route element={<SignInPage />} path={routes.signIn} />
-          <Route element={<SignUpPage />} path={routes.signUp} />
-          <Route
-            element={<Navigate replace to={routes.signUp} />}
-            path={routes.legacySignUp}
-          />
-        </Route>
-
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AuthenticatedLayout />}>
-            <Route element={<RoomsPage />} path={routes.rooms} />
-          </Route>
-        </Route>
-
-        <Route element={<DirectRoomRoute />}>
-          <Route element={<AuthenticatedLayout />}>
-            <Route element={<RoomPage />} path={routes.roomPattern} />
-          </Route>
-        </Route>
-
-        <Route
-          element={<Navigate replace to={routes.signIn} />}
-          path={routes.home}
-        />
-        <Route element={<NotFoundPage />} path="*" />
       </Routes>
     </Suspense>
   )

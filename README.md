@@ -37,7 +37,8 @@ src/
 
 ## Локальный запуск
 
-Нужен Node.js 20.19 или новее.
+Нужен Node.js 22.22 или новее. Версия для локальных менеджеров Node закреплена
+в `.node-version` и `.nvmrc`, а CI и Docker используют Node.js 22.22.0.
 
 ```bash
 pnpm install

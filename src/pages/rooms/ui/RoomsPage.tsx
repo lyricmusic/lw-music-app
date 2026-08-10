@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 
 import { RoomListItem, useMyRooms, useRooms } from '@/entities/room'
 import type { MyRoom, Room, RoomMemberRole } from '@/entities/room'

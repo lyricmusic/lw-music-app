@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { routes } from '@/shared/config/routes'
 import { Button } from '@mui/material'
