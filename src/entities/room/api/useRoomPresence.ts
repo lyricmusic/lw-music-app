@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { auth, realtimeDb } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   onDisconnect,
   onValue,
@@ -40,7 +41,7 @@ export function useRoomPresence(roomId: string) {
         })
         .catch(reason => {
           if (connectionRef === nextConnectionRef) connectionRef = null
-          console.error('Не удалось отметить присутствие в комнате:', reason)
+          reportOperationalError('room_presence', reason)
         })
     })
 

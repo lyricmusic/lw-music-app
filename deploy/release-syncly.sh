@@ -28,6 +28,12 @@ if [[ ! -f "${release_dir}/index.html" ]]; then
     exit 1
 fi
 
+source_map="$(find "${release_dir}" -type f -name '*.map' -print -quit)"
+if [[ -n "${source_map}" ]]; then
+    echo "Refusing to publish a source map: ${source_map}" >&2
+    exit 1
+fi
+
 # Keep the immediately previous release's hashed Vite assets reachable for
 # already-open tabs. Symlinks are not carried forward again, so this remains a
 # one-release compatibility window instead of growing every release forever.

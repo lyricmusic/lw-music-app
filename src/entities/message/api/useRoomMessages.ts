@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   Timestamp,
   collection,
@@ -76,7 +77,7 @@ export function useRoomMessages(roomId: string) {
         setLoading(false)
       },
       reason => {
-        console.error('Не удалось загрузить сообщения комнаты:', reason)
+        reportOperationalError('messages_subscription', reason)
         setError(
           'Не удалось загрузить сообщения. Проверьте правила доступа Firestore.',
         )

@@ -1,5 +1,7 @@
 import { getToken } from 'firebase/app-check'
 
+import { reportOperationalError } from '@/shared/lib/telemetry'
+
 import { appCheck } from './firebase'
 
 const APP_CHECK_ERROR_CODES = new Set([
@@ -8,6 +10,53 @@ const APP_CHECK_ERROR_CODES = new Set([
 ])
 
 let tokenWarningWasLogged = false
+const responseRequestIds = new WeakMap<Response, string>()
+
+export class CorrelatedRequestError extends Error {
+  constructor(
+    message: string,
+    readonly requestId?: string,
+  ) {
+    super(message)
+    this.name = 'CorrelatedRequestError'
+  }
+}
+
+function createRequestId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function withRequestId(init: RequestInit) {
+  const headers = new Headers(init.headers)
+  const requestId = headers.get('X-Request-ID') || createRequestId()
+  headers.set('X-Request-ID', requestId)
+  return { init: { ...init, headers }, requestId }
+}
+
+function rememberRequestId(response: Response, requestId: string) {
+  responseRequestIds.set(response, requestId)
+  return response
+}
+
+async function fetchForRequest(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  requestId: string,
+) {
+  try {
+    return rememberRequestId(await fetch(input, init), requestId)
+  } catch {
+    throw new CorrelatedRequestError('Network request failed.', requestId)
+  }
+}
+
+export function getResponseRequestId(response: Response) {
+  const responseRequestId = response.headers.get('X-Request-ID')?.trim()
+  return responseRequestId || responseRequestIds.get(response)
+}
 
 async function getAppCheckToken(forceRefresh: boolean) {
   if (!appCheck) return null
@@ -17,7 +66,7 @@ async function getAppCheckToken(forceRefresh: boolean) {
   } catch (error) {
     if (!tokenWarningWasLogged) {
       tokenWarningWasLogged = true
-      console.warn('Firebase App Check token is unavailable.', error)
+      reportOperationalError('app_check', error)
     }
     return null
   }
@@ -43,13 +92,19 @@ export async function fetchWithAppCheck(
   input: RequestInfo | URL,
   init: RequestInit,
 ) {
-  const response = await fetch(
+  const request = withRequestId(init)
+  const response = await fetchForRequest(
     input,
-    withAppCheckHeader(init, await getAppCheckToken(false)),
+    withAppCheckHeader(request.init, await getAppCheckToken(false)),
+    request.requestId,
   )
   if (!appCheck || !(await isAppCheckRejection(response))) return response
 
   const refreshedToken = await getAppCheckToken(true)
   if (!refreshedToken) return response
-  return fetch(input, withAppCheckHeader(init, refreshedToken))
+  return fetchForRequest(
+    input,
+    withAppCheckHeader(request.init, refreshedToken),
+    request.requestId,
+  )
 }

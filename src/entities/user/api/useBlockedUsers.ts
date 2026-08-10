@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { useSession } from '@/entities/session'
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { collection, onSnapshot } from 'firebase/firestore'
 
 export function useBlockedUsers() {
@@ -20,10 +21,7 @@ export function useBlockedUsers() {
         setBlockedUserIds(new Set(snapshot.docs.map(document => document.id)))
       },
       reason => {
-        console.error(
-          'Не удалось загрузить список заблокированных пользователей:',
-          reason,
-        )
+        reportOperationalError('blocked_users_subscription', reason)
         setBlockedUserIds(new Set())
       },
     )

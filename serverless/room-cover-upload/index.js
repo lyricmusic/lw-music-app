@@ -6,6 +6,7 @@ const {
   AppCheckRequestError,
   verifyRequestAppCheck,
 } = require('../shared/firebase-app-check')
+const { createRequestDiagnostics } = require('../shared/diagnostics')
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const FIREBASE_JWKS_URL =
@@ -51,7 +52,9 @@ function requiredEnvironment(name) {
 
 function getFirebaseApp() {
   if (getApps().length > 0) return getApps()[0]
-  return initializeApp({ projectId: requiredEnvironment('FIREBASE_PROJECT_ID') })
+  return initializeApp({
+    projectId: requiredEnvironment('FIREBASE_PROJECT_ID'),
+  })
 }
 
 function getHeader(event, requestedName) {
@@ -79,8 +82,9 @@ function getAllowedOrigin(event) {
 function createResponse(statusCode, body, origin) {
   const headers = {
     'Access-Control-Allow-Headers':
-      'Content-Type,X-Firebase-AppCheck,X-Firebase-Token',
+      'Content-Type,X-Firebase-AppCheck,X-Firebase-Token,X-Request-ID',
     'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Access-Control-Expose-Headers': 'X-Request-ID',
     'Content-Type': 'application/json; charset=utf-8',
     Vary: 'Origin',
   }
@@ -304,24 +308,34 @@ async function deleteUpload(
 }
 
 exports.handler = async function handler(event) {
+  const diagnostics = createRequestDiagnostics({
+    event,
+    service: 'media-upload',
+  })
   const requestOrigin = getHeader(event, 'origin')
   const allowedOrigin = getAllowedOrigin(event)
+  let operation = 'request'
+  const respond = (statusCode, body, origin, details = {}) =>
+    diagnostics.complete(createResponse(statusCode, body, origin), {
+      operation,
+      ...details,
+    })
 
   if (requestOrigin && !allowedOrigin) {
-    return createResponse(
-      403,
-      { message: 'Источник запроса не разрешён.' },
-      null,
-    )
+    return respond(403, { message: 'Источник запроса не разрешён.' }, null, {
+      errorCode: 'origin-not-allowed',
+    })
   }
   if (event.httpMethod === 'OPTIONS') {
-    return createResponse(204, '', allowedOrigin)
+    operation = 'cors_preflight'
+    return respond(204, '', allowedOrigin)
   }
   if (event.httpMethod !== 'POST') {
-    return createResponse(
+    return respond(
       405,
       { message: 'Метод не поддерживается.' },
       allowedOrigin,
+      { errorCode: 'method-not-allowed' },
     )
   }
 
@@ -333,15 +347,17 @@ exports.handler = async function handler(event) {
     })
     const token = getHeader(event, 'x-firebase-token')
     if (!token) {
-      return createResponse(
+      return respond(
         401,
         { message: 'Требуется авторизация.' },
         allowedOrigin,
+        { errorCode: 'unauthenticated' },
       )
     }
 
     const firebaseUser = await verifyFirebaseIdToken(token)
     const request = parseJsonBody(event)
+    operation = typeof request.action === 'string' ? request.action : 'unknown'
     const storageClient = createStorageClient()
 
     if (request.action === 'signUpload') {
@@ -350,7 +366,7 @@ exports.handler = async function handler(event) {
         firebaseUser.sub,
         request,
       )
-      return createResponse(200, upload, allowedOrigin)
+      return respond(200, upload, allowedOrigin)
     }
     if (request.action === 'signAvatarUpload') {
       const upload = await createAvatarUpload(
@@ -358,11 +374,11 @@ exports.handler = async function handler(event) {
         firebaseUser.sub,
         request,
       )
-      return createResponse(200, upload, allowedOrigin)
+      return respond(200, upload, allowedOrigin)
     }
     if (request.action === 'deleteUpload') {
       await deleteUpload(storageClient, firebaseUser.sub, request)
-      return createResponse(204, '', allowedOrigin)
+      return respond(204, '', allowedOrigin)
     }
     if (request.action === 'deleteAvatarUpload') {
       await deleteUpload(
@@ -371,29 +387,29 @@ exports.handler = async function handler(event) {
         request,
         AVATAR_OBJECT_KEY_PATTERN,
       )
-      return createResponse(204, '', allowedOrigin)
+      return respond(204, '', allowedOrigin)
     }
 
-    return createResponse(
-      400,
-      { message: 'Неизвестное действие.' },
-      allowedOrigin,
-    )
+    return respond(400, { message: 'Неизвестное действие.' }, allowedOrigin, {
+      errorCode: 'invalid-action',
+    })
   } catch (error) {
     if (error instanceof AppCheckRequestError) {
-      return createResponse(
+      return respond(
         error.statusCode,
         { error: error.code, message: error.message },
         allowedOrigin,
+        { errorCode: error.code },
       )
     }
-    console.error('Media upload request failed:', error)
     const isClientError =
       error instanceof SyntaxError ||
       (error instanceof Error &&
         /^(Некоррект|Разрешены|Размер|Нельзя|Пустое)/.test(error.message))
 
-    return createResponse(
+    if (!isClientError) diagnostics.recordError(error, { operation })
+
+    return respond(
       isClientError ? 400 : 500,
       {
         message: isClientError
@@ -401,6 +417,7 @@ exports.handler = async function handler(event) {
           : 'Не удалось подготовить загрузку изображения.',
       },
       allowedOrigin,
+      { errorCode: isClientError ? 'invalid-request' : 'internal' },
     )
   }
 }

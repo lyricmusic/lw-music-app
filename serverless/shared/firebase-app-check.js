@@ -1,8 +1,10 @@
 /* global console, module, process, require */
 
 const { getAppCheck } = require('firebase-admin/app-check')
+const { getRequestId } = require('./diagnostics')
 
 const APP_CHECK_MODES = new Set(['enforce', 'monitor', 'off'])
+const SAFE_ERROR_CODE = /^[a-z0-9][a-z0-9/_:-]{0,63}$/i
 const loggedEmulatorBypassServices = new Set()
 
 class AppCheckRequestError extends Error {
@@ -24,9 +26,7 @@ function getAppCheckMode(environment = process.env) {
   const configuredMode = environment.APP_CHECK_MODE?.trim().toLowerCase()
   const mode = configuredMode || 'enforce'
   if (!APP_CHECK_MODES.has(mode)) {
-    throw new Error(
-      'APP_CHECK_MODE must be one of: enforce, monitor, off.',
-    )
+    throw new Error('APP_CHECK_MODE must be one of: enforce, monitor, off.')
   }
   return mode
 }
@@ -39,8 +39,8 @@ function isFirebaseEmulatorEnvironment(environment = process.env) {
     ''
   const hasEmulatorHost = Boolean(
     environment.FIREBASE_AUTH_EMULATOR_HOST ||
-      environment.FIREBASE_DATABASE_EMULATOR_HOST ||
-      environment.FIRESTORE_EMULATOR_HOST,
+    environment.FIREBASE_DATABASE_EMULATOR_HOST ||
+    environment.FIRESTORE_EMULATOR_HOST,
   )
   return hasEmulatorHost && projectId.startsWith('demo-')
 }
@@ -53,6 +53,12 @@ function appCheckLog(logger, level, details) {
   })
 }
 
+function getSafeErrorCode(error) {
+  return typeof error?.code === 'string' && SAFE_ERROR_CODE.test(error.code)
+    ? error.code.toLowerCase()
+    : undefined
+}
+
 async function verifyRequestAppCheck({
   event,
   firebaseApp,
@@ -61,7 +67,7 @@ async function verifyRequestAppCheck({
   verifyToken,
 }) {
   const mode = getAppCheckMode()
-  const requestId = event?.requestContext?.requestId
+  const requestId = getRequestId(event)
 
   if (mode === 'off') {
     if (!isFirebaseEmulatorEnvironment()) {
@@ -103,7 +109,6 @@ async function verifyRequestAppCheck({
       ? await verifyToken(token)
       : await getAppCheck(firebaseApp).verifyToken(token)
     appCheckLog(logger, 'info', {
-      appId: result?.appId,
       mode,
       outcome: 'valid',
       requestId,
@@ -112,7 +117,7 @@ async function verifyRequestAppCheck({
     return { appId: result?.appId, mode, outcome: 'valid' }
   } catch (error) {
     appCheckLog(logger, 'warn', {
-      errorCode: error?.code,
+      errorCode: getSafeErrorCode(error),
       mode,
       outcome: 'invalid',
       requestId,

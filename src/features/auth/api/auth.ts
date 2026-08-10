@@ -7,12 +7,14 @@ import {
   signInWithEmailAndPassword,
   signInWithCustomToken,
   signOut,
+  signInAnonymously,
   updateProfile,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 
 import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
+import { trackProductEvent } from '@/shared/lib/telemetry'
 
 const YANDEX_AUTH_MESSAGE_TYPE = 'syncly:yandex-auth'
 const yandexAuthUrl = import.meta.env.VITE_YANDEX_AUTH_URL
@@ -143,6 +145,15 @@ export async function signUpWithEmail({
     requireOnboarding: true,
   })
 
+  trackProductEvent({
+    name: 'auth_completed',
+    properties: {
+      account_state: 'new',
+      action: 'sign_up',
+      method: 'email',
+    },
+  })
+
   return credential.user
 }
 
@@ -161,6 +172,14 @@ export async function saveAnonymousUserWithEmail({
   const credential = EmailAuthProvider.credential(email.trim(), password)
   const linkedCredential = await linkWithCredential(anonymousUser, credential)
   await saveUserProfile(linkedCredential.user)
+  trackProductEvent({
+    name: 'auth_completed',
+    properties: {
+      account_state: 'guest_upgraded',
+      action: 'sign_up',
+      method: 'email',
+    },
+  })
   return linkedCredential.user
 }
 
@@ -172,12 +191,24 @@ export async function signInWithEmail(email: string, password: string) {
   )
 
   await saveUserProfile(credential.user)
+  trackProductEvent({
+    name: 'auth_completed',
+    properties: {
+      account_state: 'existing',
+      action: 'sign_in',
+      method: 'email',
+    },
+  })
   return credential.user
 }
 
 export async function signInWithYandex({
+  intent = 'sign_in',
   linkAnonymousUser,
-}: { linkAnonymousUser?: boolean } = {}) {
+}: {
+  intent?: 'sign_in' | 'sign_up'
+  linkAnonymousUser?: boolean
+} = {}) {
   if (!yandexAuthUrl) {
     throw new AuthFlowError('yandex/not-configured')
   }
@@ -257,6 +288,18 @@ export async function signInWithYandex({
           throw new AuthFlowError('yandex/link-uid-mismatch')
         }
         await saveUserProfile(credential.user, { skipOnboarding: true })
+        trackProductEvent({
+          name: 'auth_completed',
+          properties: {
+            account_state: anonymousUser
+              ? 'guest_upgraded'
+              : intent === 'sign_up'
+                ? 'new'
+                : 'existing',
+            action: intent,
+            method: 'yandex',
+          },
+        })
         resolve(credential.user)
       } catch (error) {
         reject(error)
@@ -274,6 +317,15 @@ export async function signInWithYandex({
     window.addEventListener('message', handleMessage)
     popup.focus()
   })
+}
+
+export async function signInAsGuest(source: 'direct_link' | 'invite') {
+  const credential = await signInAnonymously(auth)
+  trackProductEvent({
+    name: 'guest_sign_in',
+    properties: { source },
+  })
+  return credential.user
 }
 
 export function signOutCurrentUser() {

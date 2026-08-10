@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { auth, realtimeDb } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   onDisconnect,
   onValue,
@@ -88,7 +89,7 @@ export function useRoomReactions(roomId: string) {
         publishReactions()
       },
       reason => {
-        console.error('Не удалось загрузить реакции комнаты:', reason)
+        reportOperationalError('room_reactions', reason)
         snapshotValue = null
         publishReactions()
       },
@@ -132,7 +133,7 @@ export async function sendRoomReaction(
           currentValue?.expiresAt === expiresAt ? null : currentValue,
         { applyLocally: false },
       ).catch(reason => {
-        console.error('Не удалось удалить завершившуюся реакцию:', reason)
+        reportOperationalError('room_reactions', reason)
       })
     }, REACTION_DURATION_MILLISECONDS + 100),
   )

@@ -12,6 +12,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $isDevelopment = $Environment -eq 'dev'
 $environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+$releaseRevision = (& git rev-parse --short=12 HEAD 2>$null).Trim()
+if (-not $releaseRevision) { throw 'Unable to determine the Git release revision.' }
+$release = "syncly-$Environment-$releaseRevision"
 
 if ($null -ne $EnforceAppCheck) {
   Write-Warning '-EnforceAppCheck is deprecated; use -AppCheckMode.'
@@ -103,9 +106,10 @@ $functionName = "lw-music-room-management$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-management')
 ).Path
-$sharedSource = (
-  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')
-).Path
+$sharedSources = @(
+  (Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\diagnostics.js')).Path
+  (Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')).Path
+)
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -151,7 +155,9 @@ try {
   New-Item -ItemType Directory -Path $sharedDeploymentSource | Out-Null
   Copy-Item -LiteralPath (Join-Path $functionSource 'index.js') `
     -Destination $functionDeploymentSource
-  Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+  foreach ($sharedSource in $sharedSources) {
+    Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+  }
 
   foreach ($sourceFile in $packageFiles) {
     $sourcePath = Join-Path $functionSource $sourceFile
@@ -170,7 +176,7 @@ try {
     '--execution-timeout', '20s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode,FIREBASE_DATABASE_URL=$FirebaseDatabaseUrl",
+    '--environment', "ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode,FIREBASE_DATABASE_URL=$FirebaseDatabaseUrl,RELEASE=$release",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"
   ) | Out-Null
 } finally {

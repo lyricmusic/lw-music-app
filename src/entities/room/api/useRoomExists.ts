@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { doc, onSnapshot } from 'firebase/firestore'
 
 import {
@@ -54,7 +55,7 @@ export function useRoomExists(roomId: string, retryKey: unknown = null) {
         })
       },
       reason => {
-        console.error('Не удалось проверить существование комнаты:', reason)
+        reportOperationalError('room_metadata_subscription', reason)
         setState({
           access: null,
           error: reason.code === 'permission-denied' ? 'forbidden' : 'unknown',

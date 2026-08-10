@@ -1,0 +1,33 @@
+/* global console */
+
+import assert from 'node:assert/strict'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import path from 'node:path'
+
+const distDirectory = path.resolve('dist')
+assert.ok(
+  existsSync(distDirectory),
+  'dist must exist before artifact verification',
+)
+
+function listFiles(directory) {
+  return readdirSync(directory).flatMap(name => {
+    const filePath = path.join(directory, name)
+    return statSync(filePath).isDirectory() ? listFiles(filePath) : [filePath]
+  })
+}
+
+const files = listFiles(distDirectory)
+assert.deepEqual(
+  files.filter(file => file.endsWith('.map')),
+  [],
+  'Production artifacts must never contain source-map files.',
+)
+
+for (const file of files.filter(file => /\.(?:css|html|js)$/.test(file))) {
+  const source = readFileSync(file, 'utf8')
+  assert.doesNotMatch(source, /SENTRY_AUTH_TOKEN/)
+  assert.doesNotMatch(source, /sourceMappingURL=.*\.map/)
+}
+
+console.log('Production artifact contains no source maps or upload secrets.')

@@ -102,6 +102,7 @@ const registeredResponse = await invoke(registered.idToken, {
 })
 assert.equal(registeredResponse.statusCode, 200, registeredResponse.body)
 assert.deepEqual(JSON.parse(registeredResponse.body), {
+  joinedNow: true,
   roomId: standardRoomId,
 })
 
@@ -157,6 +158,7 @@ const repeatedResponse = await invoke(registered.idToken, {
   token: standardToken,
 })
 assert.equal(repeatedResponse.statusCode, 200, repeatedResponse.body)
+assert.equal(JSON.parse(repeatedResponse.body).joinedNow, false)
 assert.equal(
   (await firestore.collection('roomInvites').doc(standardHash).get()).data()
     .uses,

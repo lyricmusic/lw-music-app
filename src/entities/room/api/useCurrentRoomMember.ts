@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { useSession } from '@/entities/session'
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { doc, onSnapshot } from 'firebase/firestore'
 
 import type { RoomMemberRole, RoomMemberStatus } from '../model/types'
@@ -43,7 +44,7 @@ export function useCurrentRoomMember(roomId: string) {
         )
       },
       reason => {
-        console.error('Не удалось загрузить роль участника комнаты:', reason)
+        reportOperationalError('room_metadata_subscription', reason)
         setMember(null)
       },
     )

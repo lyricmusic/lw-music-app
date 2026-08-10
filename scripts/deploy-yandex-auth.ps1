@@ -8,6 +8,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $isDevelopment = $Environment -eq 'dev'
 $environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+$releaseRevision = (& git rev-parse --short=12 HEAD 2>$null).Trim()
+if (-not $releaseRevision) { throw 'Unable to determine the Git release revision.' }
+$release = "syncly-$Environment-$releaseRevision"
 
 if ($AllowedOrigins.Count -eq 0) {
   $AllowedOrigins = if ($isDevelopment) {
@@ -139,6 +142,9 @@ $functionName = "lw-music-yandex-auth$environmentSuffix"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\yandex-auth')
 ).Path
+$diagnosticsSource = (
+  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\diagnostics.js')
+).Path
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -210,11 +216,19 @@ $allowedOriginsValue = $AllowedOrigins -join ';'
 $deploymentSource = Join-Path (
   [System.IO.Path]::GetTempPath()
 ) "lw-music-yandex-auth-$([guid]::NewGuid().ToString('N'))"
-$sourceFiles = @('index.js', 'package.json', 'pnpm-lock.yaml')
+$functionDeploymentSource = Join-Path $deploymentSource 'yandex-auth'
+$sharedDeploymentSource = Join-Path $deploymentSource 'shared'
+$packageFiles = @('package.json', 'pnpm-lock.yaml')
 
 New-Item -ItemType Directory -Path $deploymentSource | Out-Null
 try {
-  foreach ($sourceFile in $sourceFiles) {
+  New-Item -ItemType Directory -Path $functionDeploymentSource | Out-Null
+  New-Item -ItemType Directory -Path $sharedDeploymentSource | Out-Null
+  Copy-Item -LiteralPath (Join-Path $functionSource 'index.js') `
+    -Destination $functionDeploymentSource
+  Copy-Item -LiteralPath $diagnosticsSource -Destination $sharedDeploymentSource
+
+  foreach ($sourceFile in $packageFiles) {
     $sourcePath = Join-Path $functionSource $sourceFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
       throw "Function source file not found: $sourcePath"
@@ -226,12 +240,12 @@ try {
     'serverless', 'function', 'version', 'create',
     '--function-id', $function.id,
     '--runtime', 'nodejs22',
-    '--entrypoint', 'index.handler',
+    '--entrypoint', 'yandex-auth/index.handler',
     '--memory', '256MB',
     '--execution-timeout', '15s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "YANDEX_REDIRECT_URI=$redirectUri,ALLOWED_ORIGINS=$allowedOriginsValue",
+    '--environment', "YANDEX_REDIRECT_URI=$redirectUri,ALLOWED_ORIGINS=$allowedOriginsValue,RELEASE=$release",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_ID,environment-variable=YANDEX_CLIENT_ID",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=YANDEX_CLIENT_SECRET,environment-variable=YANDEX_CLIENT_SECRET",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=FIREBASE_SERVICE_ACCOUNT_JSON,environment-variable=FIREBASE_SERVICE_ACCOUNT_JSON"

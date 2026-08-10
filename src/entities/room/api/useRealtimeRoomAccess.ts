@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { callRoomManagementApi } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 
 const LEASE_REFRESH_MILLISECONDS = 60_000
 
@@ -26,10 +27,7 @@ export function useRealtimeRoomAccess(roomId: string, enabled: boolean) {
         setStatus('ready')
       } catch (reason) {
         if (disposed) return
-        console.error(
-          'Не удалось подтвердить доступ к realtime-данным комнаты:',
-          reason,
-        )
+        reportOperationalError('realtime_access', reason)
         setStatus('error')
       } finally {
         if (!disposed) {

@@ -25,7 +25,9 @@ export function AuthCard({ mode }: AuthCardProps) {
   const handleYandexLogin = async () => {
     setYandexLoading(true)
     try {
-      await signInWithYandex()
+      await signInWithYandex({
+        intent: mode === 'sign-up' ? 'sign_up' : 'sign_in',
+      })
       navigate(getAuthDestination(location.state), { replace: true })
     } catch (error) {
       toast.error(getAuthErrorMessage(error))

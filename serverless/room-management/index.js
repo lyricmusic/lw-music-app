@@ -13,6 +13,7 @@ const {
   AppCheckRequestError,
   verifyRequestAppCheck,
 } = require('../shared/firebase-app-check')
+const { createRequestDiagnostics } = require('../shared/diagnostics')
 const HTTP_STATUS_BY_CODE = {
   aborted: 409,
   'already-exists': 409,
@@ -25,10 +26,11 @@ const HTTP_STATUS_BY_CODE = {
 }
 
 class HttpsError extends Error {
-  constructor(code, message) {
+  constructor(code, message, cause) {
     super(message)
     this.code = code
     this.statusCode = HTTP_STATUS_BY_CODE[code] ?? 400
+    if (cause) this.cause = cause
   }
 }
 
@@ -534,7 +536,6 @@ async function requestRutubeSearch(query, musicOnly) {
         'Поиск RUTUBE временно ограничен. Повторите позже или вставьте ссылку.',
       )
     }
-    console.error('RUTUBE search failed:', response.status)
     throw new HttpsError('internal', 'Не удалось выполнить поиск на RUTUBE.')
   }
 
@@ -568,7 +569,6 @@ async function requestRutubeVideo(videoId) {
     throw new HttpsError('not-found', 'Видео RUTUBE не найдено.')
   }
   if (!response.ok) {
-    console.error('RUTUBE video lookup failed:', response.status)
     throw new HttpsError('internal', 'Не удалось проверить видео RUTUBE.')
   }
 
@@ -742,10 +742,10 @@ function callable(handler) {
       return await handler(request)
     } catch (error) {
       if (error instanceof HttpsError) throw error
-      console.error('Room management operation failed:', error)
       throw new HttpsError(
         'internal',
         'Сервер не смог выполнить действие. Повторите попытку.',
+        error,
       )
     }
   }
@@ -1950,9 +1950,10 @@ function getCorsHeaders(event) {
 
   return {
     'Access-Control-Allow-Headers':
-      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization',
+      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization, X-Request-ID',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
+    'Access-Control-Expose-Headers': 'X-Request-ID',
     'Cache-Control': 'no-store, max-age=0',
     'Content-Type': 'application/json; charset=utf-8',
     Vary: 'Origin',
@@ -2015,11 +2016,19 @@ async function authenticate(event) {
 }
 
 exports.handler = async function handler(event) {
+  const diagnostics = createRequestDiagnostics({
+    event,
+    service: 'room-management',
+  })
   let corsHeaders
+  let operation = 'request'
   try {
     corsHeaders = getCorsHeaders(event)
     if (event.httpMethod === 'OPTIONS') {
-      return { body: '', headers: corsHeaders, statusCode: 204 }
+      return diagnostics.complete(
+        { body: '', headers: corsHeaders, statusCode: 204 },
+        { operation: 'cors_preflight' },
+      )
     }
     if (event.httpMethod !== 'POST') {
       throw new HttpsError(
@@ -2030,8 +2039,7 @@ exports.handler = async function handler(event) {
 
     const decodedToken = await authenticate(event)
     const body = parseJsonBody(event)
-    const operation =
-      typeof body.operation === 'string' ? body.operation.trim() : ''
+    operation = typeof body.operation === 'string' ? body.operation.trim() : ''
     const operationHandler = OPERATIONS[operation]
     if (!operationHandler) {
       throw new HttpsError('invalid-argument', 'Неизвестная операция.')
@@ -2043,24 +2051,32 @@ exports.handler = async function handler(event) {
       auth: { token: decodedToken, uid: decodedToken.uid },
       data,
     })
-    return jsonResponse(200, result, corsHeaders)
+    return diagnostics.complete(jsonResponse(200, result, corsHeaders), {
+      operation,
+    })
   } catch (error) {
     const knownError =
       error instanceof HttpsError || error instanceof AppCheckRequestError
-    if (!knownError) console.error('Room management request failed:', error)
+    if (!knownError || error.cause) {
+      diagnostics.recordError(error.cause ?? error, { operation })
+    }
     const headers = corsHeaders ?? {
       'Cache-Control': 'no-store, max-age=0',
       'Content-Type': 'application/json; charset=utf-8',
     }
-    return jsonResponse(
-      knownError ? error.statusCode : 500,
-      {
-        error: knownError ? error.code : 'internal',
-        message: knownError
-          ? error.message
-          : 'Сервер не смог выполнить действие. Повторите попытку.',
-      },
-      headers,
+    const errorCode = knownError ? error.code : 'internal'
+    return diagnostics.complete(
+      jsonResponse(
+        knownError ? error.statusCode : 500,
+        {
+          error: errorCode,
+          message: knownError
+            ? error.message
+            : 'Сервер не смог выполнить действие. Повторите попытку.',
+        },
+        headers,
+      ),
+      { errorCode, operation },
     )
   }
 }

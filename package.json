@@ -27,6 +27,7 @@
     "migrate:security-boundaries": "node scripts/migrate-security-boundaries.mjs",
     "preview": "vite preview",
     "test:routing": "vitest run src/app/router src/features/auth/model/getAuthDestination.test.ts",
+    "test:observability": "vitest run src/shared/lib/telemetry src/app/ErrorBoundary.test.tsx",
     "typecheck": "tsc -b --pretty false",
     "verify:app-check": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-app-check.mjs\"",
     "verify:emulators": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/run-emulator-verifications.mjs\"",
@@ -38,6 +39,8 @@
     "verify:realtime-rules": "firebase emulators:exec --only auth,database --project demo-lwmusic \"node scripts/verify-realtime-room-rules.mjs\"",
     "verify:queue-rules": "firebase emulators:exec --only auth,firestore --project demo-lwmusic \"node scripts/verify-room-queue-rules.mjs\"",
     "verify:routing-config": "node scripts/verify-routing-config.mjs",
+    "verify:observability": "node scripts/verify-observability.mjs",
+    "verify:production-artifact": "node scripts/verify-production-artifact.mjs",
     "verify:serverless-bundles": "node scripts/verify-serverless-bundles.mjs",
     "verify:static": "node scripts/verify-static-files.mjs"
   },
@@ -45,6 +48,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^7.3.4",
+    "@sentry/react": "10.68.0",
     "firebase": "^12.15.0",
     "qrcode.react": "4.2.0",
     "react": "^19.2.7",
@@ -56,6 +60,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@eslint/js": "^9.39.1",
+    "@sentry/vite-plugin": "^5.4.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

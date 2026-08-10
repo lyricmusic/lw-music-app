@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   collection,
   type DocumentData,
@@ -76,7 +77,7 @@ export function useRooms(enabled = true) {
       .catch(reason => {
         if (disposed) return
 
-        console.error('Не удалось загрузить список комнат:', reason)
+        reportOperationalError('rooms_catalog', reason)
         setError('Не удалось загрузить список комнат.')
         setLoading(false)
       })
@@ -108,7 +109,7 @@ export function useRooms(enabled = true) {
       setHasMore(snapshot.size === ROOMS_PAGE_SIZE)
       setError(null)
     } catch (reason) {
-      console.error('Не удалось загрузить следующую страницу комнат:', reason)
+      reportOperationalError('rooms_catalog', reason)
       setError('Не удалось загрузить следующую страницу комнат.')
     } finally {
       loadingMoreRef.current = false

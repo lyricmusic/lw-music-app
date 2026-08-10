@@ -1,4 +1,8 @@
-import { fetchWithAppCheck } from './fetchWithAppCheck'
+import {
+  CorrelatedRequestError,
+  fetchWithAppCheck,
+  getResponseRequestId,
+} from './fetchWithAppCheck'
 import { auth } from './firebase'
 
 const roomManagementApiUrl = import.meta.env.VITE_ROOM_MANAGEMENT_API_URL
@@ -23,8 +27,11 @@ export async function callRoomManagementApi<
       },
       method: 'POST',
     })
-  } catch {
-    throw new Error('Не удалось связаться с сервером управления комнатой.')
+  } catch (error) {
+    throw new CorrelatedRequestError(
+      'Не удалось связаться с сервером управления комнатой.',
+      error instanceof CorrelatedRequestError ? error.requestId : undefined,
+    )
   }
 
   const result = (await response.json().catch(() => null)) as
@@ -35,10 +42,16 @@ export async function callRoomManagementApi<
       })
     | null
   if (!response.ok) {
-    throw new Error(
+    throw new CorrelatedRequestError(
       result?.message || result?.errorMessage || 'Сервер отклонил действие.',
+      getResponseRequestId(response),
     )
   }
-  if (!result) throw new Error('Сервер вернул некорректный ответ.')
+  if (!result) {
+    throw new CorrelatedRequestError(
+      'Сервер вернул некорректный ответ.',
+      getResponseRequestId(response),
+    )
+  }
   return result
 }

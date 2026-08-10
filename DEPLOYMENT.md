@@ -35,9 +35,13 @@ Storage должны оставаться только в Yandex Lockbox. Сек
    pnpm lint
    pnpm exec tsc -- --noEmit --pretty false
    pnpm verify:static
+   pnpm test:observability
+   pnpm verify:observability
+   pnpm verify:serverless-bundles
    pnpm verify:emulators:windows
    pnpm exec vite -- build --mode development
    pnpm build
+   pnpm verify:production-artifact
    ```
 
 3. Для изменений Firestore или Realtime Database запускать относящиеся к ним
@@ -118,6 +122,39 @@ Realtime Database enforcement включаются отдельно в Firebase 
 
 Production-деплой выполнять только после успешного dev smoke test и отдельного
 явного подтверждения пользователя на внешнее production-изменение.
+
+### Observability и analytics rollout
+
+Оба канала по умолчанию выключены. Их включение не является частью обычного
+деплоя и требует отдельного решения после проверки
+[`docs/observability.md`](docs/observability.md).
+
+Для Sentry в GitHub Repository Variables задаются публичный `SENTRY_DSN`,
+`SENTRY_ORG`, `SENTRY_PROJECT` и `ERROR_MONITORING_ENABLED=true`.
+`SENTRY_AUTH_TOKEN` хранится только в GitHub Actions Secrets и получает
+минимальные права release/source-map upload. Токен нельзя передавать через
+`VITE_*`, Lockbox output, логи или Markdown. CI verify не требует этих значений.
+
+Production workflow сам задаёт `VITE_RELEASE=syncly@<git-sha>`. При включённом
+monitoring отсутствие release/upload credentials должно остановить build.
+После build обязательно выполнить `pnpm verify:production-artifact`: в `dist`
+не должно быть `*.map` и `sourceMappingURL`. Sentry Vite plugin сначала загружает
+hidden maps, затем удаляет их; release scripts дополнительно отказываются
+публиковать архив с map-файлами.
+
+Для продуктовой аналитики используются две Repository Variables:
+`PRODUCT_ANALYTICS_ENABLED=true` и `PRODUCT_ANALYTICS_PRIVACY_CONFIRMED=true`.
+Вторую ставить только после отключения Enhanced Measurement в GA4 web stream и
+проверки отсутствия route/query/hash/referrer по `docs/observability.md`. Одна
+переменная не включает канал. Эти флаги только включают consent UI. Firebase
+Analytics начинает загружаться и отправлять allowlisted события после явного
+нажатия пользователя «Разрешить»; отсутствие выбора не является согласием.
+Session replay, запись ввода и рекламные consent types не включать.
+
+При serverless deployment скрипты автоматически ставят `RELEASE` из текущего
+Git commit. После smoke test найти одинаковый `X-Request-ID` в response и
+структурированном function log; body, URL, UID, invite/token и raw error message
+в записи отсутствуют.
 
 1. Повторить lint, TypeScript и production build.
 2. Проверить `.env.production`: он должен указывать только на

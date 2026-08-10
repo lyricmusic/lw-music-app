@@ -72,7 +72,7 @@ export function SaveAccountDialog({ onClose, open }: SaveAccountDialogProps) {
   const handleYandexSave = async () => {
     setYandexLoading(true)
     try {
-      await signInWithYandex({ linkAnonymousUser: true })
+      await signInWithYandex({ intent: 'sign_up', linkAnonymousUser: true })
       toast.success('Яндекс ID подключён без смены профиля.')
       reset()
       onClose()

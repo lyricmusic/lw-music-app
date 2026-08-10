@@ -8,6 +8,7 @@ import {
   type RoomVisibility,
 } from '@/entities/room'
 import { auth, callRoomManagementApi, db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   callMediaUploadApi,
   uploadMediaFile,
@@ -82,10 +83,7 @@ export async function createRoom({
           objectKey: uploadedObjectKey,
         })
       } catch (cleanupError) {
-        console.error(
-          'Не удалось удалить незакреплённую обложку:',
-          cleanupError,
-        )
+        reportOperationalError('media_cleanup', cleanupError)
       }
     }
     if (

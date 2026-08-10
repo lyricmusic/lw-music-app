@@ -31,6 +31,10 @@ const functions = [
     directory: 'room-cover-upload',
     lockFile: 'package-lock.json',
   },
+  {
+    directory: 'yandex-auth',
+    lockFile: 'pnpm-lock.yaml',
+  },
 ]
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'syncly-serverless-'))
 
@@ -44,7 +48,7 @@ function createDependencyStubs(bundleRoot) {
   writeModule(
     bundleRoot,
     'firebase-admin/app.js',
-    "module.exports = { cert: value => value, deleteApp: async () => {}, getApps: () => [], initializeApp: value => value }\n",
+    'module.exports = { cert: value => value, deleteApp: async () => {}, getApps: () => [], initializeApp: value => value }\n',
   )
   writeModule(
     bundleRoot,
@@ -64,7 +68,7 @@ function createDependencyStubs(bundleRoot) {
   writeModule(
     bundleRoot,
     'firebase-admin/firestore.js',
-    "module.exports = { FieldValue: { serverTimestamp: () => null }, Timestamp: {}, getFirestore: () => ({}) }\n",
+    'module.exports = { FieldValue: { serverTimestamp: () => null }, Timestamp: {}, getFirestore: () => ({}) }\n',
   )
   writeModule(
     bundleRoot,
@@ -100,13 +104,12 @@ try {
       path.join(bundleRoot, lockFile),
     )
     copyFileSync(
-      path.join(
-        projectRoot,
-        'serverless',
-        'shared',
-        'firebase-app-check.js',
-      ),
+      path.join(projectRoot, 'serverless', 'shared', 'firebase-app-check.js'),
       path.join(sharedRoot, 'firebase-app-check.js'),
+    )
+    copyFileSync(
+      path.join(projectRoot, 'serverless', 'shared', 'diagnostics.js'),
+      path.join(sharedRoot, 'diagnostics.js'),
     )
     createDependencyStubs(bundleRoot)
 
@@ -141,12 +144,7 @@ try {
 
   const mediaPackage = JSON.parse(
     readFileSync(
-      path.join(
-        projectRoot,
-        'serverless',
-        'room-cover-upload',
-        'package.json',
-      ),
+      path.join(projectRoot, 'serverless', 'room-cover-upload', 'package.json'),
       'utf8',
     ),
   )

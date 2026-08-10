@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { useSession } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore'
 
 import { parseRoomStatus, parseRoomVisibility } from '../model/roomAccess'
@@ -13,6 +14,7 @@ export type RoomMembershipStatus =
 
 interface RoomMembershipState {
   error: null | string
+  joinedNow: boolean
   status: RoomMembershipStatus
 }
 
@@ -31,14 +33,13 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
   if (!user) throw new Error('Чтобы войти в комнату, авторизуйтесь.')
 
   if (inviteId) {
-    await redeemRoomInvite(inviteId, roomId)
-    return
+    return (await redeemRoomInvite(inviteId, roomId)).joinedNow
   }
 
   const roomRef = doc(db, 'rooms', roomId)
   const memberRef = doc(db, 'rooms', roomId, 'members', user.uid)
 
-  await runTransaction(db, async transaction => {
+  return runTransaction(db, async transaction => {
     const roomSnapshot = await transaction.get(roomRef)
     if (!roomSnapshot.exists()) {
       throw new RoomMembershipError('Комната не найдена.', 'not-found')
@@ -64,7 +65,7 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
         if (Object.keys(membershipPatch).length > 0) {
           transaction.update(memberRef, membershipPatch)
         }
-        return
+        return false
       }
     }
 
@@ -84,6 +85,7 @@ async function ensureRoomMembership(roomId: string, inviteId?: string) {
       status: 'active',
       userId: user.uid,
     })
+    return true
   })
 }
 
@@ -95,6 +97,7 @@ export function useRoomMembership(
   const { user } = useSession()
   const [state, setState] = useState<RoomMembershipState>({
     error: null,
+    joinedNow: false,
     status: 'idle',
   })
 
@@ -102,19 +105,19 @@ export function useRoomMembership(
     let disposed = false
 
     if (!roomId || !enabled) {
-      setState({ error: null, status: 'idle' })
+      setState({ error: null, joinedNow: false, status: 'idle' })
       return
     }
 
-    setState({ error: null, status: 'joining' })
+    setState({ error: null, joinedNow: false, status: 'joining' })
     void ensureRoomMembership(roomId, inviteId)
-      .then(() => {
-        if (!disposed) setState({ error: null, status: 'joined' })
+      .then(joinedNow => {
+        if (!disposed) setState({ error: null, joinedNow, status: 'joined' })
       })
       .catch(reason => {
         if (disposed) return
 
-        console.error('Не удалось присоединиться к комнате:', reason)
+        reportOperationalError('room_membership', reason)
         const forbidden =
           reason instanceof RoomMembershipError ||
           (reason &&
@@ -128,6 +131,7 @@ export function useRoomMembership(
 
         setState({
           error: message,
+          joinedNow: false,
           status: forbidden ? 'forbidden' : 'error',
         })
       })

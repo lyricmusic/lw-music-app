@@ -16,6 +16,7 @@ import {
   type RoomInvitePreview,
 } from '@/entities/room'
 import { useSession } from '@/entities/session'
+import { signInAsGuest } from '@/features/auth'
 import {
   completeProfile,
   presetAvatars,
@@ -24,6 +25,10 @@ import {
 import { auth } from '@/shared/api/firebase'
 import { routes } from '@/shared/config/routes'
 import {
+  reportOperationalError,
+  trackProductEvent,
+} from '@/shared/lib/telemetry'
+import {
   Box,
   Button,
   CircularProgress,
@@ -31,7 +36,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { signInAnonymously } from 'firebase/auth'
 
 interface GuestProfileValues {
   displayName: string
@@ -101,8 +105,23 @@ export function JoinPage() {
 
   const enterRoom = async () => {
     if (!invite) return
-    const roomId = await redeemRoomInvite(invite.inviteId, invite.roomId)
-    navigate(routes.room(roomId), { replace: true })
+    const { joinedNow, roomId } = await redeemRoomInvite(
+      invite.inviteId,
+      invite.roomId,
+    )
+    if (joinedNow) {
+      trackProductEvent({
+        name: 'room_joined',
+        properties: {
+          source: 'invite',
+          user_kind: auth.currentUser?.isAnonymous ? 'guest' : 'registered',
+        },
+      })
+    }
+    navigate(routes.room(roomId), {
+      replace: true,
+      state: { roomEntrySource: 'invite' },
+    })
   }
 
   const handleJoin = async () => {
@@ -111,8 +130,7 @@ export function JoinPage() {
     setError(null)
     setStep('joining')
     try {
-      const currentUser =
-        auth.currentUser ?? (await signInAnonymously(auth)).user
+      const currentUser = auth.currentUser ?? (await signInAsGuest('invite'))
 
       if (
         currentUser.isAnonymous &&
@@ -124,6 +142,7 @@ export function JoinPage() {
 
       await enterRoom()
     } catch (reason) {
+      reportOperationalError('room_membership', reason)
       setError(
         reason instanceof Error
           ? reason.message
@@ -144,6 +163,7 @@ export function JoinPage() {
       setStep('joining')
       await enterRoom()
     } catch (reason) {
+      reportOperationalError('room_membership', reason)
       setError(
         reason instanceof Error
           ? reason.message

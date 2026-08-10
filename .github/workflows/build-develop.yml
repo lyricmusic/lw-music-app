@@ -49,9 +49,22 @@ jobs:
           pnpm test:routing
           pnpm verify:routing-config
 
+      - name: Observability privacy contracts
+        run: |
+          pnpm test:observability
+          pnpm verify:observability
+
       - name: Build
         env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          VITE_ERROR_MONITORING_ENABLED: ${{ vars.ERROR_MONITORING_ENABLED || 'false' }}
+          VITE_PRODUCT_ANALYTICS_ENABLED: ${{ vars.PRODUCT_ANALYTICS_ENABLED || 'false' }}
+          VITE_PRODUCT_ANALYTICS_PRIVACY_CONFIRMED: ${{ vars.PRODUCT_ANALYTICS_PRIVACY_CONFIRMED || 'false' }}
+          VITE_RELEASE: syncly@${{ github.sha }}
           VITE_ROOM_COVER_UPLOAD_URL: ${{ secrets.VITE_ROOM_COVER_UPLOAD_URL }}
+          VITE_SENTRY_DSN: ${{ vars.SENTRY_DSN }}
         run: |
           if [ -z "$VITE_ROOM_COVER_UPLOAD_URL" ]; then
             echo "VITE_ROOM_COVER_UPLOAD_URL is not configured."
@@ -59,6 +72,9 @@ jobs:
           fi
 
           pnpm build
+
+      - name: Production artifact privacy
+        run: pnpm verify:production-artifact
 
       - name: Upload production build
         uses: actions/upload-artifact@v7

@@ -389,6 +389,23 @@ Production enforcement в репозитории не включается. По
 настройка локального debug token, порядок observability → enforcement, тесты и
 откат описаны в [docs/firebase-app-check-rollout.md](docs/firebase-app-check-rollout.md).
 
+## Наблюдаемость и аналитика
+
+Клиентский Error Boundary, privacy-safe Sentry adapter, request correlation,
+структурированные serverless logs и consent-gated Firebase Analytics описаны в
+[docs/observability.md](docs/observability.md). Оба внешних канала выключены по
+умолчанию; test/CI никогда не инициализирует SDK и не отправляет события.
+
+Быстрые проверки:
+
+```bash
+pnpm test:observability
+pnpm verify:observability
+pnpm verify:serverless-bundles
+pnpm build
+pnpm verify:production-artifact
+```
+
 ## Следующие этапы
 
 1. Добавить закрытую панель рассмотрения жалоб со сменой статусов и поиском по нарушителю.

@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router'
 import { ToastContainer, Zoom } from 'react-toastify'
 
 import { SessionProvider } from '@/entities/session'
+import { ProductAnalyticsConsentBanner } from '@/shared/ui/telemetry-consent'
 import { GlobalStyles, ThemeProvider } from '@mui/material'
 
 import { appTheme } from '../styles/theme'
@@ -21,9 +22,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
         pauseOnFocusLoss
         pauseOnHover
         position="top-right"
-        theme="light"
+        theme="dark"
         transition={Zoom}
       />
+      <ProductAnalyticsConsentBanner />
       <SessionProvider>
         <BrowserRouter>{children}</BrowserRouter>
       </SessionProvider>

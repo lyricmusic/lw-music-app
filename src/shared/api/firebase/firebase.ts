@@ -77,6 +77,7 @@ if (
   throw new Error('Firebase was already initialized with another project.')
 }
 const app = existingApp ?? initializeApp(firebaseConfig, FIREBASE_APP_NAME)
+export const firebaseApp = app
 const appCheckSiteKey =
   import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY?.trim() || null
 

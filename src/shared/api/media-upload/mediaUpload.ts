@@ -1,6 +1,10 @@
 import type { User } from 'firebase/auth'
 
-import { fetchWithAppCheck } from '@/shared/api/firebase'
+import {
+  CorrelatedRequestError,
+  fetchWithAppCheck,
+  getResponseRequestId,
+} from '@/shared/api/firebase'
 
 export interface SignedMediaUpload {
   fields: Record<string, string>
@@ -36,7 +40,10 @@ export async function callMediaUploadApi<T>(
 
   if (!response.ok) {
     const error = (await response.json().catch(() => ({}))) as ApiError
-    throw new Error(error.message || 'Не удалось подготовить загрузку файла.')
+    throw new CorrelatedRequestError(
+      error.message || 'Не удалось подготовить загрузку файла.',
+      getResponseRequestId(response),
+    )
   }
 
   if (response.status === 204) return undefined as T

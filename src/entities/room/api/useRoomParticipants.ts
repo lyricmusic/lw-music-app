@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { resolveUserCharacter, type UserCharacter } from '@/entities/session'
 import { db, realtimeDb } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { onValue, ref } from 'firebase/database'
 import { collection, doc, onSnapshot } from 'firebase/firestore'
 
@@ -157,10 +158,7 @@ export function useRoomParticipants(roomId: string): RoomParticipantsState {
             publishParticipants()
           },
           reason => {
-            console.error(
-              'Не удалось загрузить профиль участника комнаты:',
-              reason,
-            )
+            reportOperationalError('room_participants', reason)
             resolvedProfileIds.add(participantId)
             profilesById.delete(participantId)
             setError('Не удалось загрузить некоторых участников.')
@@ -195,7 +193,7 @@ export function useRoomParticipants(roomId: string): RoomParticipantsState {
         publishParticipants()
       },
       reason => {
-        console.error('Не удалось загрузить участников комнаты:', reason)
+        reportOperationalError('room_participants', reason)
         membersLoaded = true
         setError('Не удалось загрузить список участников.')
         setLoading(false)
@@ -222,7 +220,7 @@ export function useRoomParticipants(roomId: string): RoomParticipantsState {
         publishParticipants()
       },
       reason => {
-        console.error('Не удалось загрузить присутствие в комнате:', reason)
+        reportOperationalError('room_participants', reason)
         presenceLoaded = true
         setError('Не удалось определить, кто сейчас онлайн.')
         publishParticipants()

@@ -8,6 +8,7 @@ import { leaveRoom, useCurrentRoomMember, useRoomName } from '@/entities/room'
 import { useSession } from '@/entities/session'
 import { LeaveRoomDialog } from '@/features/manage-room'
 import { routes } from '@/shared/config/routes'
+import { trackProductEvent } from '@/shared/lib/telemetry'
 import { MemberIcon } from '@/shared/ui/icons'
 import {
   AppBar,
@@ -58,6 +59,13 @@ export function AppHeader() {
     setLeavePending(true)
     try {
       await leaveRoom(roomId)
+      trackProductEvent({
+        name: 'room_left',
+        properties: {
+          role: currentMember?.role ?? 'member',
+          user_kind: user?.isAnonymous ? 'guest' : 'registered',
+        },
+      })
       setLeaveDialogOpen(false)
       navigateFromRoom()
     } catch (reason) {

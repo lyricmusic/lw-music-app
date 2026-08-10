@@ -19,6 +19,7 @@ import type { RoomMessage } from '@/entities/message'
 import type { RoomMemberRole } from '@/entities/room'
 import { useSession } from '@/entities/session'
 import { blockUser, useBlockedUsers } from '@/entities/user'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { Button } from '@/shared/ui/button'
 import { TextField } from '@/shared/ui/text-field'
 import {
@@ -385,7 +386,7 @@ export function RoomChat({
       })
       resetField('message')
     } catch (reason) {
-      console.error('Не удалось отправить сообщение:', reason)
+      reportOperationalError('message_send', reason)
       setError('message', {
         message:
           reason instanceof Error

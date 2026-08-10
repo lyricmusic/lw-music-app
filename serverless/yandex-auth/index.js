@@ -4,6 +4,7 @@ const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, getFirestore } = require('firebase-admin/firestore')
 const crypto = require('node:crypto')
+const { createRequestDiagnostics } = require('../shared/diagnostics')
 
 const AUTH_MESSAGE_TYPE = 'syncly:yandex-auth'
 const NONCE_PATTERN = /^[0-9a-f]{48}$/
@@ -448,16 +449,31 @@ async function createFirebaseToken(profile, linkUid) {
 }
 
 exports.handler = async function handler(event) {
+  const diagnostics = createRequestDiagnostics({
+    event,
+    service: 'yandex-auth',
+  })
+  const finish = (response, details = {}) =>
+    diagnostics.complete(response, details)
+
   if (event.httpMethod === 'POST') {
     try {
-      return await createLinkAuthorization(event)
+      return finish(await createLinkAuthorization(event), {
+        operation: 'link_start',
+      })
     } catch (error) {
-      console.error('Yandex account link start failed:', error)
-      return createJsonResponse(400, { error: 'link-start-failed' })
+      diagnostics.recordError(error, { operation: 'link_start' })
+      return finish(createJsonResponse(400, { error: 'link-start-failed' }), {
+        errorCode: 'link-start-failed',
+        operation: 'link_start',
+      })
     }
   }
   if (event.httpMethod !== 'GET') {
-    return createTextResponse(405, 'Метод не поддерживается.')
+    return finish(createTextResponse(405, 'Метод не поддерживается.'), {
+      errorCode: 'method-not-allowed',
+      operation: 'oauth',
+    })
   }
 
   const query = event.queryStringParameters ?? {}
@@ -468,15 +484,25 @@ exports.handler = async function handler(event) {
 
     if (!query.code && !query.error) {
       if (query.mode === 'link') {
-        return createLinkBridgeResponse(parsedState.origin, query.state)
+        return finish(
+          createLinkBridgeResponse(parsedState.origin, query.state),
+          { operation: 'link_bridge' },
+        )
       }
-      return createAuthorizationRedirect(query.state)
+      return finish(createAuthorizationRedirect(query.state), {
+        operation: 'oauth_redirect',
+      })
     }
     if (query.error) {
-      return createPopupResponse(parsedState.origin, query.state, {
-        error:
-          query.error === 'access_denied' ? 'access_denied' : 'oauth-failed',
-      })
+      const errorCode =
+        query.error === 'access_denied' ? 'access-denied' : 'oauth-failed'
+      return finish(
+        createPopupResponse(parsedState.origin, query.state, {
+          error:
+            query.error === 'access_denied' ? 'access_denied' : 'oauth-failed',
+        }),
+        { errorCode, operation: 'oauth_callback', outcome: 'rejected' },
+      )
     }
 
     const accessToken = await exchangeAuthorizationCode(query.code)
@@ -486,28 +512,36 @@ exports.handler = async function handler(event) {
       parsedState.linkUid,
     )
 
-    return createPopupResponse(
-      parsedState.origin,
-      parsedState.returnState ?? query.state,
-      {
-        token: firebaseToken,
-      },
-    )
-  } catch (error) {
-    console.error('Yandex authentication failed:', error)
-
-    if (parsedState) {
-      return createPopupResponse(
+    return finish(
+      createPopupResponse(
         parsedState.origin,
         parsedState.returnState ?? query.state,
         {
-          error:
-            error?.code === 'credential-already-in-use'
-              ? 'credential-already-in-use'
-              : 'server-error',
+          token: firebaseToken,
         },
+      ),
+      { operation: 'oauth_callback' },
+    )
+  } catch (error) {
+    diagnostics.recordError(error, { operation: 'oauth_callback' })
+
+    if (parsedState) {
+      const errorCode =
+        error?.code === 'credential-already-in-use'
+          ? 'credential-already-in-use'
+          : 'server-error'
+      return finish(
+        createPopupResponse(
+          parsedState.origin,
+          parsedState.returnState ?? query.state,
+          { error: errorCode },
+        ),
+        { errorCode, operation: 'oauth_callback', outcome: 'failed' },
       )
     }
-    return createTextResponse(400, 'Некорректный запрос авторизации.')
+    return finish(createTextResponse(400, 'Некорректный запрос авторизации.'), {
+      errorCode: 'invalid-request',
+      operation: 'oauth_callback',
+    })
   }
 }

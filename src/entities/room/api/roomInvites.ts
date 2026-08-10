@@ -1,8 +1,10 @@
 import {
   auth,
   callRoomManagementApi,
+  CorrelatedRequestError,
   db,
   fetchWithAppCheck,
+  getResponseRequestId,
 } from '@/shared/api/firebase'
 import { FirebaseError } from 'firebase/app'
 import {
@@ -328,23 +330,36 @@ export async function redeemRoomInvite(
       },
       method: 'POST',
     })
-  } catch {
-    throw new Error('Не удалось связаться с сервером приглашений.')
+  } catch (error) {
+    throw new CorrelatedRequestError(
+      'Не удалось связаться с сервером приглашений.',
+      error instanceof CorrelatedRequestError ? error.requestId : undefined,
+    )
   }
 
   const result = (await response.json().catch(() => null)) as {
     error?: string
+    joinedNow?: boolean
     roomId?: string
   } | null
   if (!response.ok) {
-    throw new Error(
+    throw new CorrelatedRequestError(
       (result?.error && redeemErrorMessages[result.error]) ||
         'Не удалось активировать приглашение.',
+      getResponseRequestId(response),
     )
   }
   if (!result?.roomId || (expectedRoomId && result.roomId !== expectedRoomId)) {
-    throw new Error('Сервер приглашений вернул некорректный ответ.')
+    throw new CorrelatedRequestError(
+      'Сервер приглашений вернул некорректный ответ.',
+      getResponseRequestId(response),
+    )
   }
 
-  return result.roomId
+  return {
+    // Older deployed function versions do not return joinedNow yet. Treating
+    // their successful response as a join keeps rolling deploys compatible.
+    joinedNow: typeof result.joinedNow === 'boolean' ? result.joinedNow : true,
+    roomId: result.roomId,
+  }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   Timestamp,
   collection,
@@ -70,7 +71,7 @@ export function useRoomQueue(roomId: string) {
         setLoading(false)
       },
       reason => {
-        console.error('Не удалось загрузить очередь комнаты:', reason)
+        reportOperationalError('room_queue', reason)
         setError(
           'Не удалось загрузить очередь. Проверьте правила доступа Firestore.',
         )

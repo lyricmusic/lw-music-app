@@ -3,6 +3,7 @@ import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 
 import { resolveUserCharacter } from '@/entities/session'
 import { auth, db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   callMediaUploadApi,
   uploadMediaFile,
@@ -92,10 +93,7 @@ export async function completeProfile({
     } catch (authProfileError) {
       // Firestore is the profile source for the app. A later sign-in will
       // synchronize these fields back to Firebase Auth.
-      console.error(
-        'Не удалось синхронизировать профиль с Firebase Auth:',
-        authProfileError,
-      )
+      reportOperationalError('profile_subscription', authProfileError)
     }
   } catch (error) {
     if (uploadedObjectKey) {
@@ -105,7 +103,7 @@ export async function completeProfile({
           objectKey: uploadedObjectKey,
         })
       } catch (cleanupError) {
-        console.error('Не удалось удалить незакреплённый аватар:', cleanupError)
+        reportOperationalError('media_cleanup', cleanupError)
       }
     }
     throw error

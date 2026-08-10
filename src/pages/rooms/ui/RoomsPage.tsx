@@ -47,7 +47,7 @@ export function RoomsPage({ previewRooms }: RoomsPageProps = {}) {
       : publicRooms.loading
 
   const handleOpenRoom = (room: Room) => {
-    navigate(routes.room(room.id))
+    navigate(routes.room(room.id), { state: { roomEntrySource: 'catalog' } })
   }
 
   const selectView = (nextView: 'all' | 'mine') => {
@@ -153,7 +153,11 @@ export function RoomsPage({ previewRooms }: RoomsPageProps = {}) {
         <CreateRoomDialog
           existingRoomNames={rooms.map(room => room.name)}
           onClose={() => setIsOpen(false)}
-          onCreated={roomId => navigate(routes.room(roomId))}
+          onCreated={roomId =>
+            navigate(routes.room(roomId), {
+              state: { roomEntrySource: 'created' },
+            })
+          }
           open={isOpen}
         />
       )}

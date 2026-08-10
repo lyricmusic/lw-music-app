@@ -11,6 +11,9 @@ param(
 $ErrorActionPreference = 'Continue'
 $isDevelopment = $Environment -eq 'dev'
 $environmentSuffix = if ($isDevelopment) { '-dev' } else { '' }
+$releaseRevision = (& git rev-parse --short=12 HEAD 2>$null).Trim()
+if (-not $releaseRevision) { throw 'Unable to determine the Git release revision.' }
+$release = "syncly-$Environment-$releaseRevision"
 
 if (-not $FirebaseProjectId) {
   $FirebaseProjectId = if ($isDevelopment) {
@@ -65,9 +68,10 @@ $bucketName = "lw-music-room-covers$environmentSuffix-$folderId"
 $functionSource = (
   Resolve-Path (Join-Path $PSScriptRoot '..\serverless\room-cover-upload')
 ).Path
-$sharedSource = (
-  Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')
-).Path
+$sharedSources = @(
+  (Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\diagnostics.js')).Path
+  (Resolve-Path (Join-Path $PSScriptRoot '..\serverless\shared\firebase-app-check.js')).Path
+)
 
 $serviceAccount = Find-YcJson @(
   'iam', 'service-account', 'get', '--name', $serviceAccountName
@@ -171,7 +175,9 @@ try {
     -Destination $deploymentSource
   Copy-Item -LiteralPath (Join-Path $functionSource 'package-lock.json') `
     -Destination $deploymentSource
-  Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+  foreach ($sharedSource in $sharedSources) {
+    Copy-Item -LiteralPath $sharedSource -Destination $sharedDeploymentSource
+  }
 
   Invoke-YcJson @(
     'serverless', 'function', 'version', 'create',
@@ -182,7 +188,7 @@ try {
     '--execution-timeout', '10s',
     '--service-account-id', $serviceAccount.id,
     '--source-path', $deploymentSource,
-    '--environment', "STORAGE_BUCKET=$bucketName,FIREBASE_PROJECT_ID=$FirebaseProjectId,ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode",
+    '--environment', "STORAGE_BUCKET=$bucketName,FIREBASE_PROJECT_ID=$FirebaseProjectId,ALLOWED_ORIGINS=$allowedOriginsValue,APP_CHECK_MODE=$AppCheckMode,RELEASE=$release",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_ACCESS_KEY_ID,environment-variable=AWS_ACCESS_KEY_ID",
     '--secret', "id=$($secret.id),version-id=$secretVersionId,key=AWS_SECRET_ACCESS_KEY,environment-variable=AWS_SECRET_ACCESS_KEY"
   ) | Out-Null

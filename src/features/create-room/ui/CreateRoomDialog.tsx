@@ -10,6 +10,7 @@ import {
   type RoomVisibility,
 } from '@/entities/room'
 import { MembersIcon } from '@/shared/ui/icons'
+import { trackProductEvent } from '@/shared/lib/telemetry'
 import {
   Autocomplete,
   Box,
@@ -105,6 +106,13 @@ export function CreateRoomDialog({
         image: values.image,
         name: values.roomName.trim(),
         visibility: values.visibility,
+      })
+      trackProductEvent({
+        name: 'room_created',
+        properties: {
+          category_count: values.categories.length as 1 | 2 | 3,
+          visibility: values.visibility,
+        },
       })
       reset()
       onClose()

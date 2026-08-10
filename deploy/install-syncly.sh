@@ -32,6 +32,12 @@ done
 install -d -m 0755 "${release_dir}" /var/www/letsencrypt
 tar -xzf "${archive}" -C "${release_dir}"
 
+source_map="$(find "${release_dir}" -type f -name '*.map' -print -quit)"
+if [[ -n "${source_map}" ]]; then
+    echo "Refusing to publish a source map: ${source_map}" >&2
+    exit 1
+fi
+
 # Keep the immediately previous release's hashed Vite assets reachable for
 # already-open tabs without accumulating assets from older releases.
 if [[ -n "${previous_release}" && -d "${previous_release}/assets" && -d "${release_dir}/assets" ]]; then

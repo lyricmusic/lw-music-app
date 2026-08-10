@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link as RouterLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { useSession } from '@/entities/session'
-import { auth } from '@/shared/api/firebase'
+import { signInAsGuest } from '@/features/auth'
 import { routes } from '@/shared/config/routes'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { Button, CircularProgress, Typography } from '@mui/material'
-import { signInAnonymously } from 'firebase/auth'
 
 import {
   getDirectRoomRouteDecision,
@@ -45,8 +45,8 @@ export function DirectRoomRoute() {
     if (loading || user || attemptedSignIn.current) return
 
     attemptedSignIn.current = true
-    void signInAnonymously(auth).catch(reason => {
-      console.error('Не удалось войти в комнату как гость:', reason)
+    void signInAsGuest('direct_link').catch(reason => {
+      reportOperationalError('guest_auth', reason)
       setError(
         'Гостевой вход сейчас недоступен. Войдите в аккаунт и попробуйте снова.',
       )

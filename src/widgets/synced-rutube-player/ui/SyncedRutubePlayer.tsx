@@ -23,6 +23,7 @@ import { useSession } from '@/entities/session'
 import { useBlockedUsers } from '@/entities/user'
 import { RoomParticipantActions } from '@/features/manage-room'
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { formatPlaybackTime, isRutubeVideoId } from '@/shared/lib/rutube'
 import { Button } from '@/shared/ui/button'
 import { RoomDanceFloor } from '@/widgets/room-avatar'
@@ -423,7 +424,7 @@ export function SyncedRutubePlayer({
           setSyncStatus('connected')
         })
         .catch(reason => {
-          console.error('Не удалось перейти к следующему видео:', reason)
+          reportOperationalError('rutube_player', reason)
           setError(
             reason instanceof Error
               ? reason.message
@@ -729,7 +730,7 @@ export function SyncedRutubePlayer({
         applyRemoteState(parsed)
       },
       reason => {
-        console.error('Не удалось подписаться на состояние плеера:', reason)
+        reportOperationalError('rutube_player', reason)
         setError(
           reason.code === 'permission-denied'
             ? 'Нет доступа к состоянию плеера. Проверьте, что вы вошли в комнату как активный участник.'
@@ -799,7 +800,7 @@ export function SyncedRutubePlayer({
         setLocalQueuedVideoId(videoId)
       }
     } catch (reason) {
-      console.error('Не удалось добавить видео в очередь:', reason)
+      reportOperationalError('room_queue', reason)
       throw reason
     }
   }
@@ -864,7 +865,7 @@ export function SyncedRutubePlayer({
       }
       setError(null)
     } catch (reason) {
-      console.error('Не удалось покинуть очередь:', reason)
+      reportOperationalError('room_queue', reason)
       setError(
         reason instanceof Error
           ? reason.message

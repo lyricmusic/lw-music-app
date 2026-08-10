@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import { collection, doc, onSnapshot, Timestamp } from 'firebase/firestore'
 
 export type RoomRestrictionKind = 'ban' | 'mute'
@@ -117,10 +118,7 @@ export function useRoomRestrictions(roomId: string, enabled: boolean) {
               publishRestrictions()
             },
             reason => {
-              console.error(
-                'Не удалось загрузить профиль ограниченного пользователя:',
-                reason,
-              )
+              reportOperationalError('room_restrictions', reason)
               resolvedProfiles.add(userId)
               publishRestrictions()
             },
@@ -154,7 +152,7 @@ export function useRoomRestrictions(roomId: string, enabled: boolean) {
           publishRestrictions()
         },
         reason => {
-          console.error('Не удалось загрузить ограничения комнаты:', reason)
+          reportOperationalError('room_restrictions', reason)
           if (kind === 'ban') bansLoaded = true
           else mutesLoaded = true
           setError('Не удалось загрузить ограничения комнаты.')

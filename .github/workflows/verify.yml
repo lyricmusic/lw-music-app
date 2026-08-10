@@ -46,6 +46,7 @@ jobs:
         run: |
           pnpm --dir serverless/room-management install --frozen-lockfile
           pnpm --dir serverless/room-invites install --frozen-lockfile
+          pnpm --dir serverless/yandex-auth install --frozen-lockfile
           npm --prefix serverless/room-cover-upload ci --ignore-scripts
 
       - name: TypeScript
@@ -62,11 +63,19 @@ jobs:
           pnpm test:routing
           pnpm verify:routing-config
 
+      - name: Observability privacy and disabled-mode contracts
+        run: |
+          pnpm test:observability
+          pnpm verify:observability
+
       - name: Serverless deployment bundles
         run: pnpm verify:serverless-bundles
 
       - name: Optimized production build with isolated CI config
         run: pnpm build:ci
+
+      - name: Production artifact privacy
+        run: pnpm verify:production-artifact
 
       - name: Firebase Emulator Suite
         run: pnpm verify:emulators

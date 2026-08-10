@@ -8,6 +8,7 @@ const {
   AppCheckRequestError,
   verifyRequestAppCheck,
 } = require('../shared/firebase-app-check')
+const { createRequestDiagnostics } = require('../shared/diagnostics')
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,128}$/
 
@@ -49,9 +50,10 @@ function getCorsHeaders(event) {
 
   return {
     'Access-Control-Allow-Headers':
-      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization',
+      'Content-Type, X-Firebase-AppCheck, X-Firebase-Authorization, X-Request-ID',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Origin': origin,
+    'Access-Control-Expose-Headers': 'X-Request-ID',
     'Cache-Control': 'no-store, max-age=0',
     'Content-Type': 'application/json; charset=utf-8',
     Vary: 'Origin',
@@ -203,7 +205,7 @@ async function redeemRoomInvite(event) {
       if (Object.keys(membershipPatch).length > 0) {
         transaction.update(memberRef, membershipPatch)
       }
-      return invite.roomId
+      return { joinedNow: false, roomId: invite.roomId }
     }
 
     if (
@@ -229,41 +231,56 @@ async function redeemRoomInvite(event) {
       userId: decodedToken.uid,
     })
 
-    return invite.roomId
+    return { joinedNow: true, roomId: invite.roomId }
   })
 }
 
 exports.handler = async function handler(event) {
+  const diagnostics = createRequestDiagnostics({
+    event,
+    service: 'room-invites',
+  })
   let corsHeaders
   try {
     corsHeaders = getCorsHeaders(event)
     if (event.httpMethod === 'OPTIONS') {
-      return { body: '', headers: corsHeaders, statusCode: 204 }
+      return diagnostics.complete(
+        { body: '', headers: corsHeaders, statusCode: 204 },
+        { operation: 'cors_preflight' },
+      )
     }
     if (event.httpMethod !== 'POST') {
       throw new InviteError('method-not-allowed', 405)
     }
 
-    const roomId = await redeemRoomInvite(event)
-    return jsonResponse(200, { roomId }, corsHeaders)
+    const result = await redeemRoomInvite(event)
+    return diagnostics.complete(jsonResponse(200, result, corsHeaders), {
+      operation: 'redeem_invite',
+    })
   } catch (error) {
     const knownError =
       error instanceof InviteError || error instanceof AppCheckRequestError
-    if (!knownError) console.error('Room invite redemption failed:', error)
+    if (!knownError) {
+      diagnostics.recordError(error, { operation: 'redeem_invite' })
+    }
 
     const headers = corsHeaders ?? {
       'Cache-Control': 'no-store, max-age=0',
       'Content-Type': 'application/json; charset=utf-8',
     }
-    return jsonResponse(
-      knownError ? error.statusCode : 500,
-      {
-        error: knownError ? error.code : 'server-error',
-        ...(error instanceof AppCheckRequestError
-          ? { message: error.message }
-          : {}),
-      },
-      headers,
+    const errorCode = knownError ? error.code : 'server-error'
+    return diagnostics.complete(
+      jsonResponse(
+        knownError ? error.statusCode : 500,
+        {
+          error: errorCode,
+          ...(error instanceof AppCheckRequestError
+            ? { message: error.message }
+            : {}),
+        },
+        headers,
+      ),
+      { errorCode, operation: 'redeem_invite' },
     )
   }
 }

@@ -1,6 +1,7 @@
 export {
   getAuthErrorMessage,
   saveAnonymousUserWithEmail,
+  signInAsGuest,
   signInWithYandex,
   signOutCurrentUser,
 } from './api/auth'

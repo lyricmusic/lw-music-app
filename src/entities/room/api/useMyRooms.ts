@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useSession } from '@/entities/session'
 import { db } from '@/shared/api/firebase'
+import { reportOperationalError } from '@/shared/lib/telemetry'
 import {
   collection,
   collectionGroup,
@@ -135,7 +136,7 @@ export function useMyRooms(enabled = true) {
       })
       .catch(reason => {
         if (disposed) return
-        console.error('Не удалось загрузить список своих комнат:', reason)
+        reportOperationalError('rooms_memberships', reason)
         setState({
           error: 'Не удалось загрузить ваши комнаты.',
           loading: false,

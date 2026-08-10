@@ -1,5 +1,10 @@
-import { useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useEffect, useState } from 'react'
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router'
 import {
   useCurrentRoomMember,
   useRealtimeRoomAccess,
@@ -15,6 +20,7 @@ import {
 } from '@/features/manage-room'
 import { ReportDialog } from '@/features/report-content'
 import { routes } from '@/shared/config/routes'
+import { trackProductEvent } from '@/shared/lib/telemetry'
 import { RoomChat } from '@/widgets/room-chat'
 import { SyncedRutubePlayer } from '@/widgets/synced-rutube-player'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
@@ -55,6 +61,7 @@ function RoomEntryState({
 }
 
 export function RoomPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { roomId = 'demo-room' } = useParams<{ roomId: string }>()
@@ -82,6 +89,59 @@ export function RoomPage() {
       room.access?.status === 'active',
   )
   useRoomPresence(realtimeAccessStatus === 'ready' ? roomId : '')
+
+  const locationState = location.state as { roomEntrySource?: unknown } | null
+  const requestedSource = locationState?.roomEntrySource
+  const roomEntrySource =
+    requestedSource === 'catalog' ||
+    requestedSource === 'created' ||
+    requestedSource === 'invite'
+      ? requestedSource
+      : inviteId
+        ? 'invite'
+        : 'direct_link'
+  const userKind = user?.isAnonymous ? 'guest' : 'registered'
+  const roomReady =
+    room.exists === true &&
+    membership.status === 'joined' &&
+    currentMember?.status === 'active' &&
+    room.access?.status === 'active' &&
+    realtimeAccessStatus === 'ready'
+
+  useEffect(() => {
+    if (
+      membership.status !== 'joined' ||
+      !membership.joinedNow ||
+      (roomEntrySource !== 'catalog' && roomEntrySource !== 'invite')
+    ) {
+      return
+    }
+
+    trackProductEvent(
+      {
+        name: 'room_joined',
+        properties: { source: roomEntrySource, user_kind: userKind },
+      },
+      `room_joined:${location.key}`,
+    )
+  }, [
+    location.key,
+    membership.joinedNow,
+    membership.status,
+    roomEntrySource,
+    userKind,
+  ])
+
+  useEffect(() => {
+    if (!roomReady) return
+    trackProductEvent(
+      {
+        name: 'room_opened',
+        properties: { source: roomEntrySource, user_kind: userKind },
+      },
+      `room_opened:${location.key}`,
+    )
+  }, [location.key, roomEntrySource, roomReady, userKind])
 
   const leaveRoomEntry = () =>
     navigate(user?.isAnonymous ? routes.signIn : routes.rooms, {
