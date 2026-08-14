@@ -15,6 +15,7 @@ const elements = {
   authenticatedLayout: <span data-route="authenticated-layout" />,
   directRoomRoute: <span data-route="direct-room-guard" />,
   guestOnlyRoute: <span data-route="guest-only-guard" />,
+  homePage: <span data-route="home" />,
   joinPage: <span data-route="join" />,
   notFoundPage: <span data-route="not-found" />,
   protectedRoute: <span data-route="protected-guard" />,
@@ -31,6 +32,10 @@ function matchingElements(url: string) {
 }
 
 describe('declarative route contract', () => {
+  it('serves the public landing page at the home URL', () => {
+    expect(matchingElements('/')).toEqual([elements.homePage])
+  })
+
   it('keeps public invite links outside authentication guards', () => {
     const matches = matchingElements('/join/invite-123?source=share#preview')
 

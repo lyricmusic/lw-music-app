@@ -7,6 +7,7 @@ interface AppRouteElements {
   authenticatedLayout: ReactElement
   directRoomRoute: ReactElement
   guestOnlyRoute: ReactElement
+  homePage: ReactElement
   joinPage: ReactElement
   notFoundPage: ReactElement
   protectedRoute: ReactElement
@@ -31,6 +32,7 @@ export function createAppRouteElements(
         <Route element={route.element} key={route.path} path={route.path} />
       ))}
 
+      <Route element={elements.homePage} path={routes.home} />
       <Route element={elements.joinPage} path={routes.joinPattern} />
 
       <Route element={elements.guestOnlyRoute}>
@@ -54,10 +56,6 @@ export function createAppRouteElements(
         </Route>
       </Route>
 
-      <Route
-        element={<Navigate replace to={routes.signIn} />}
-        path={routes.home}
-      />
       <Route element={elements.notFoundPage} path="*" />
     </>
   )

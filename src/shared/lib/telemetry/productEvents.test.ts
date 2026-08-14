@@ -6,6 +6,12 @@ describe('product event schema', () => {
   it('accepts the approved funnel vocabulary', () => {
     expect(
       isProductEvent({
+        name: 'landing_cta_clicked',
+        properties: { destination: 'sign_up', placement: 'hero' },
+      }),
+    ).toBe(true)
+    expect(
+      isProductEvent({
         name: 'room_opened',
         properties: { source: 'invite', user_kind: 'guest' },
       }),
@@ -23,6 +29,16 @@ describe('product event schema', () => {
   })
 
   it('rejects identifiers and unexpected properties', () => {
+    expect(
+      isProductEvent({
+        name: 'landing_cta_clicked',
+        properties: {
+          destination: 'sign_up',
+          placement: 'hero',
+          user_id: 'firebase-id',
+        },
+      }),
+    ).toBe(false)
     expect(
       isProductEvent({
         name: 'room_opened',

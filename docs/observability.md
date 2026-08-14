@@ -74,14 +74,15 @@ Raw body, headers, URL, UID и тексты ошибок не логируютс
 
 ## Словарь продуктовых событий
 
-| Event            | Когда                                                 | Допустимые свойства                 |
-| ---------------- | ----------------------------------------------------- | ----------------------------------- |
-| `auth_completed` | успешная регистрация/вход/сохранение гостя            | `action`, `method`, `account_state` |
-| `guest_sign_in`  | успешный anonymous auth                               | `source=direct_link                 | invite` |
-| `room_created`   | сервер подтвердил создание                            | `visibility`, `category_count=1..3` |
-| `room_joined`    | успешное присоединение из каталога или по приглашению | `source`, `user_kind`               |
-| `room_opened`    | комната, membership и realtime access готовы          | `source`, `user_kind`               |
-| `room_left`      | сервер подтвердил явный выход участника               | `role`, `user_kind`                 |
+| Event                 | Когда                                                 | Допустимые свойства                 |
+| --------------------- | ----------------------------------------------------- | ----------------------------------- |
+| `landing_cta_clicked` | переход с CTA публичного лендинга                     | `placement`, `destination`          |
+| `auth_completed`      | успешная регистрация/вход/сохранение гостя            | `action`, `method`, `account_state` |
+| `guest_sign_in`       | успешный anonymous auth                               | `source=direct_link                 | invite` |
+| `room_created`        | сервер подтвердил создание                            | `visibility`, `category_count=1..3` |
+| `room_joined`         | успешное присоединение из каталога или по приглашению | `source`, `user_kind`               |
+| `room_opened`         | комната, membership и realtime access готовы          | `source`, `user_kind`               |
+| `room_left`           | сервер подтвердил явный выход участника               | `role`, `user_kind`                 |
 
 Любое лишнее свойство отклоняется runtime-схемой. Идентификаторы пользователей и
 комнат не используются даже в хешированном виде: для этой минимальной воронки

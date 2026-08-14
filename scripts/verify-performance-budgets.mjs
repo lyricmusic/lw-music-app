@@ -123,6 +123,7 @@ const allJavaScriptFiles = new Set(
 )
 
 const routeSources = {
+  home: 'src/pages/home/index.ts',
   join: 'src/pages/join/index.ts',
   notFound: 'src/pages/not-found/index.ts',
   room: 'src/pages/room/index.ts',
@@ -150,6 +151,12 @@ const routeJavaScript = Object.fromEntries(
       ),
     ]
   }),
+)
+const routeStylesheet = Object.fromEntries(
+  Object.entries(routeGraphs).map(([route, routeGraph]) => [
+    route,
+    measureFiles(collectFiles(subtractGraph(routeGraph, initialGraph), 'css')),
+  ]),
 )
 const routeColdJavaScript = Object.fromEntries(
   Object.entries(routeGraphs).map(([route, routeGraph]) => [
@@ -190,6 +197,7 @@ const report = {
   largestJavaScript: largestFile(allJavaScriptFiles),
   routeColdJavaScript,
   routeJavaScript,
+  routeStylesheet,
   totalJavaScript: measureFiles(allJavaScriptFiles),
 }
 
@@ -255,6 +263,18 @@ if (!reportOnly) {
       budget,
     )
   }
+
+  for (const [route, budget] of Object.entries(budgets.routeStylesheetGzip)) {
+    assert.ok(
+      report.routeStylesheet[route],
+      `Unknown route stylesheet budget: ${route}.`,
+    )
+    assertWithinBudget(
+      `${route} incremental stylesheet (gzip)`,
+      report.routeStylesheet[route].gzip,
+      budget,
+    )
+  }
 }
 
 if (jsonOutput) {
@@ -281,7 +301,7 @@ if (jsonOutput) {
   )
   for (const [route, metrics] of Object.entries(report.routeJavaScript)) {
     console.log(
-      `${route}: ${format(report.routeColdJavaScript[route].gzip)} gzip cold route, +${format(metrics.gzip)} incremental (${metrics.files} files)`,
+      `${route}: ${format(report.routeColdJavaScript[route].gzip)} gzip cold route, +${format(metrics.gzip)} JS and +${format(report.routeStylesheet[route].gzip)} CSS (${metrics.files} JS files)`,
     )
   }
   console.log(

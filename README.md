@@ -16,8 +16,8 @@ src/
   shared/    # Firebase, конфигурация, библиотеки и базовый UI
 ```
 
-Публичные маршруты авторизации: `/sign-in` и `/sign-up`. Старый `/register`
-перенаправляет на `/sign-up`. Комнаты доступны по `/rooms` и
+Публичный лендинг доступен по `/`, маршруты авторизации — `/sign-in` и
+`/sign-up`. Старый `/register` перенаправляет на `/sign-up`. Комнаты доступны по `/rooms` и
 `/rooms/:roomId`, а ссылки-приглашения открываются по `/join/:inviteToken`.
 
 ## Что уже работает
@@ -410,7 +410,7 @@ pnpm verify:production-artifact
 
 Production build всегда создаёт Vite manifest, а локальная проверка считает
 воспроизводимые raw, gzip и Brotli-размеры стартового графа, каждой холодной
-маршрутной загрузки, общего JavaScript и крупных assets:
+маршрутной JS-загрузки, маршрутных CSS, общего JavaScript и крупных assets:
 
 ```bash
 pnpm build

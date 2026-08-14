@@ -1,10 +1,19 @@
 type AuthAction = 'sign_in' | 'sign_up'
 type AuthMethod = 'email' | 'yandex'
 type EntrySource = 'catalog' | 'created' | 'direct_link' | 'invite'
+type LandingDestination = 'rooms' | 'sign_in' | 'sign_up'
+type LandingPlacement = 'final' | 'header' | 'hero'
 type RoomRole = 'host' | 'member' | 'moderator' | 'owner'
 type UserKind = 'guest' | 'registered'
 
 export type ProductEvent =
+  | {
+      name: 'landing_cta_clicked'
+      properties: {
+        destination: LandingDestination
+        placement: LandingPlacement
+      }
+    }
   | {
       name: 'auth_completed'
       properties: {
@@ -41,6 +50,10 @@ export type ProductEvent =
     }
 
 const EVENT_PROPERTY_VALUES = {
+  landing_cta_clicked: {
+    destination: ['rooms', 'sign_in', 'sign_up'],
+    placement: ['final', 'header', 'hero'],
+  },
   auth_completed: {
     account_state: ['existing', 'guest_upgraded', 'new'],
     action: ['sign_in', 'sign_up'],

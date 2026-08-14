@@ -7,6 +7,7 @@
   "authBackgroundRaw": 275000,
   "totalArtifactRaw": 11300000,
   "routeJavaScriptGzip": {
+    "home": 6000,
     "join": 112000,
     "notFound": 1000,
     "room": 145000,
@@ -15,11 +16,15 @@
     "signUp": 55000
   },
   "routeColdJavaScriptGzip": {
+    "home": 325000,
     "join": 435000,
     "notFound": 325000,
     "room": 470000,
     "rooms": 445000,
     "signIn": 380000,
     "signUp": 380000
+  },
+  "routeStylesheetGzip": {
+    "home": 4000
   }
 }

@@ -26,7 +26,7 @@
     "migrate:room-membership-index": "node scripts/migrate-room-membership-index.mjs",
     "migrate:security-boundaries": "node scripts/migrate-security-boundaries.mjs",
     "preview": "vite preview",
-    "test:routing": "vitest run src/app/router src/features/auth/model/getAuthDestination.test.ts",
+    "test:routing": "vitest run src/app/router src/pages/home src/features/auth/model/getAuthDestination.test.ts",
     "test:observability": "vitest run src/shared/lib/telemetry src/app/ErrorBoundary.test.tsx",
     "typecheck": "tsc -b --pretty false",
     "verify:app-check": "firebase emulators:exec --only auth,firestore,database --project demo-lwmusic \"node scripts/verify-app-check.mjs\"",
