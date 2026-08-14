@@ -30,7 +30,7 @@ const features = [
   {
     symbol: '▶',
     title: 'Один плеер для всех',
-    text: 'Пауза, перемотка и смена клипа синхронизируются для участников комнаты.',
+    text: 'Смена клипа синхронизируется для всей комнаты — участники смотрят и слушают его одновременно.',
   },
   {
     symbol: '↗',
@@ -40,7 +40,7 @@ const features = [
   {
     symbol: '✦',
     title: 'Персонаж с характером',
-    text: 'Выбирайте внешность и танец, чтобы проживать музыку вместе с компанией.',
+    text: 'Настройте внешность персонажа и выберите танец, чтобы выразить настроение в комнате.',
   },
   {
     symbol: '≡',
@@ -294,7 +294,7 @@ export function HomePage() {
       <footer className="landing-footer">
         <div className="landing-container landing-footer__inner">
           <img alt="Syncly" height="52" src={logo} width="167" />
-          <p>Музыка, которая происходит вместе.</p>
+          <p>Вместе музыка звучит ярче.</p>
           {!user && <Link to={routes.signIn}>Войти в аккаунт</Link>}
         </div>
       </footer>
