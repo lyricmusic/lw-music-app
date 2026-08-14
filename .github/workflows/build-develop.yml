@@ -5,6 +5,12 @@ on:
     branches:
       - develop
   workflow_dispatch:
+    inputs:
+      apply_nginx_config:
+        description: Apply the tracked Syncly Nginx configuration
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,6 +98,8 @@ jobs:
           tar -czf dist.tar.gz -C dist .
           cp deploy/release-syncly.sh deploy-release.sh
           cp deploy/ensure-syncly-https.sh ensure-syncly-https.sh
+          cp deploy/apply-syncly-nginx.sh apply-syncly-nginx.sh
+          cp deploy/nginx/syncly.lyricweb.ru.conf syncly.lyricweb.ru.conf
 
       - name: Upload release to server
         uses: appleboy/scp-action@v1
@@ -100,7 +108,7 @@ jobs:
           username: ${{ env.DEPLOY_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
-          source: dist.tar.gz,deploy-release.sh,ensure-syncly-https.sh
+          source: dist.tar.gz,deploy-release.sh,ensure-syncly-https.sh,apply-syncly-nginx.sh,syncly.lyricweb.ru.conf
           target: ${{ env.DEPLOY_PATH }}
           overwrite: true
 
@@ -108,16 +116,21 @@ jobs:
         uses: appleboy/ssh-action@v1.2.5
         env:
           SUDO_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          APPLY_NGINX_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_nginx_config || false }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           fingerprint: ${{ env.DEPLOY_FINGERPRINT }}
-          envs: SUDO_PASSWORD
+          envs: SUDO_PASSWORD,APPLY_NGINX_CONFIG
           command_timeout: 2m
           script: |
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/deploy-release.sh"
-            printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/ensure-syncly-https.sh"
+            if [ "$APPLY_NGINX_CONFIG" = "true" ]; then
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/apply-syncly-nginx.sh"
+            else
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S bash "${{ env.DEPLOY_PATH }}/ensure-syncly-https.sh"
+            fi
 
       - name: Notify Telegram
         if: ${{ always() }}

@@ -40,6 +40,11 @@ for (const workflow of [
   assert.match(source, /pnpm verify:routing-config/)
 }
 
+const deploymentWorkflow = read('.github/workflows/build-develop.yml')
+assert.match(deploymentWorkflow, /apply_nginx_config:/)
+assert.match(deploymentWorkflow, /apply-syncly-nginx\.sh/)
+assert.match(deploymentWorkflow, /syncly\.lyricweb\.ru\.conf/)
+
 assert.match(read('Dockerfile'), /^FROM node:22\.22\.0 AS builder/m)
 
 const firebaseJson = JSON.parse(read('firebase.json'))
@@ -69,6 +74,12 @@ for (const deploymentScript of [
   )
   assert.match(source, /ln -s "\$\{previous_asset\}" "\$\{legacy_asset\}"/)
 }
+
+const nginxDeploymentScript = read('deploy/apply-syncly-nginx.sh')
+assert.match(nginxDeploymentScript, /backup_file=/)
+assert.match(nginxDeploymentScript, /rollback_on_error/)
+assert.match(nginxDeploymentScript, /nginx -t/)
+assert.match(nginxDeploymentScript, /ensure-syncly-https\.sh/)
 
 for (const sourceFile of listSourceFiles(path.join(repositoryRoot, 'src'))) {
   assert.doesNotMatch(
