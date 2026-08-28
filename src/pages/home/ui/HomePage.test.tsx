@@ -1,13 +1,21 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const session = vi.hoisted(() => ({
+  user: null as { isAnonymous: boolean } | null,
+}))
 
 vi.mock('@/entities/session', () => ({
-  useSession: () => ({ loading: false, profile: null, user: null }),
+  useSession: () => ({ loading: false, profile: null, user: session.user }),
 }))
 vi.mock('@/shared/lib/telemetry', () => ({ trackProductEvent: vi.fn() }))
 
 import { HomePage } from './HomePage'
+
+afterEach(() => {
+  session.user = null
+})
 
 describe('HomePage', () => {
   it('explains the product and exposes the public conversion paths', () => {
@@ -35,5 +43,19 @@ describe('HomePage', () => {
     expect(markup).toContain(
       '\u0432\u044b\u0440\u0430\u0437\u0438\u0442\u044c \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0438\u0435 \u0432 \u043a\u043e\u043c\u043d\u0430\u0442\u0435',
     )
+  })
+
+  it('keeps an anonymous guest on public conversion paths', () => {
+    session.user = { isAnonymous: true }
+
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    )
+
+    expect(markup).toContain('href="/sign-up"')
+    expect(markup).toContain('href="/sign-in"')
+    expect(markup).not.toContain('href="/rooms"')
   })
 })

@@ -9,6 +9,7 @@ interface GuardSession {
 
 export type DirectRoomRouteDecision = 'allow' | 'error' | 'loading'
 export type GuestOnlyRouteDecision = 'allow' | 'redirect-rooms' | 'loading'
+export type HomeRouteDecision = 'landing' | 'redirect-rooms' | 'loading'
 export type ProtectedRouteDecision = 'allow' | 'redirect-sign-in' | 'loading'
 
 export function getProtectedRouteDecision({
@@ -33,4 +34,12 @@ export function getGuestOnlyRouteDecision({
 }: GuardSession): GuestOnlyRouteDecision {
   if (loading) return 'loading'
   return user && !user.isAnonymous ? 'redirect-rooms' : 'allow'
+}
+
+export function getHomeRouteDecision({
+  loading,
+  user,
+}: GuardSession): HomeRouteDecision {
+  if (loading) return 'loading'
+  return user && !user.isAnonymous ? 'redirect-rooms' : 'landing'
 }

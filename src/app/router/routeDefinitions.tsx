@@ -8,6 +8,7 @@ interface AppRouteElements {
   directRoomRoute: ReactElement
   guestOnlyRoute: ReactElement
   homePage: ReactElement
+  homeRoute: ReactElement
   joinPage: ReactElement
   notFoundPage: ReactElement
   protectedRoute: ReactElement
@@ -32,7 +33,9 @@ export function createAppRouteElements(
         <Route element={route.element} key={route.path} path={route.path} />
       ))}
 
-      <Route element={elements.homePage} path={routes.home} />
+      <Route element={elements.homeRoute} path={routes.home}>
+        <Route element={elements.homePage} index />
+      </Route>
       <Route element={elements.joinPage} path={routes.joinPattern} />
 
       <Route element={elements.guestOnlyRoute}>

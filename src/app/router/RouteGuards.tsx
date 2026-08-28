@@ -10,14 +10,33 @@ import { Button, CircularProgress, Typography } from '@mui/material'
 import {
   getDirectRoomRouteDecision,
   getGuestOnlyRouteDecision,
+  getHomeRouteDecision,
   getProtectedRouteDecision,
 } from './guardDecisions'
 
 function SessionLoadingScreen() {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-brand-color">
-      <CircularProgress sx={{ color: '#B79EFF' }} />
-    </div>
+    <main
+      aria-busy="true"
+      className="flex min-h-dvh items-center justify-center bg-brand-color"
+      role="status"
+    >
+      <CircularProgress aria-label="Загрузка" sx={{ color: '#B79EFF' }} />
+      <span className="sr-only">Восстанавливаем сессию…</span>
+    </main>
+  )
+}
+
+export function HomeRoute() {
+  const { loading, user } = useSession()
+  const decision = getHomeRouteDecision({ loading, user })
+
+  if (decision === 'loading') return <SessionLoadingScreen />
+
+  return decision === 'redirect-rooms' ? (
+    <Navigate replace to={routes.rooms} />
+  ) : (
+    <Outlet />
   )
 }
 

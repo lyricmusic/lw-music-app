@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getDirectRoomRouteDecision,
   getGuestOnlyRouteDecision,
+  getHomeRouteDecision,
   getProtectedRouteDecision,
 } from './guardDecisions'
 
@@ -59,5 +60,21 @@ describe('route guard decisions', () => {
     expect(getGuestOnlyRouteDecision({ loading: false, user: null })).toBe(
       'allow',
     )
+  })
+
+  it('shows the landing only to signed-out and anonymous sessions', () => {
+    expect(getHomeRouteDecision({ loading: true, user: null })).toBe('loading')
+    expect(
+      getHomeRouteDecision({ loading: true, user: registeredUser }),
+    ).toBe('loading')
+    expect(getHomeRouteDecision({ loading: false, user: null })).toBe(
+      'landing',
+    )
+    expect(
+      getHomeRouteDecision({ loading: false, user: anonymousUser }),
+    ).toBe('landing')
+    expect(
+      getHomeRouteDecision({ loading: false, user: registeredUser }),
+    ).toBe('redirect-rooms')
   })
 })

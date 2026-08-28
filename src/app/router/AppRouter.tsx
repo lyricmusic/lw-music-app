@@ -4,7 +4,12 @@ import { Routes } from 'react-router'
 import { routes } from '@/shared/config/routes'
 import { CircularProgress } from '@mui/material'
 
-import { DirectRoomRoute, GuestOnlyRoute, ProtectedRoute } from './RouteGuards'
+import {
+  DirectRoomRoute,
+  GuestOnlyRoute,
+  HomeRoute,
+  ProtectedRoute,
+} from './RouteGuards'
 import { lazyRoute } from './lazyRoute'
 import { createAppRouteElements } from './routeDefinitions'
 
@@ -87,6 +92,7 @@ export function AppRouter() {
             directRoomRoute: <DirectRoomRoute />,
             guestOnlyRoute: <GuestOnlyRoute />,
             homePage: <HomePage />,
+            homeRoute: <HomeRoute />,
             joinPage: <JoinPage />,
             notFoundPage: <NotFoundPage />,
             protectedRoute: <ProtectedRoute />,

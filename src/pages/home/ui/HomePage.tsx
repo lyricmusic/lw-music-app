@@ -64,9 +64,10 @@ function trackLandingCta(
 
 export function HomePage() {
   const { user } = useSession()
-  const primaryRoute = user ? routes.rooms : routes.signUp
-  const primaryDestination = user ? 'rooms' : 'sign_up'
-  const primaryLabel = user ? 'Открыть комнаты' : 'Создать комнату'
+  const isRegisteredUser = Boolean(user && !user.isAnonymous)
+  const primaryRoute = isRegisteredUser ? routes.rooms : routes.signUp
+  const primaryDestination = isRegisteredUser ? 'rooms' : 'sign_up'
+  const primaryLabel = isRegisteredUser ? 'Открыть комнаты' : 'Создать комнату'
 
   return (
     <main className="landing-page">
@@ -82,7 +83,7 @@ export function HomePage() {
           </nav>
 
           <div className="landing-header__actions">
-            {!user && (
+            {!isRegisteredUser && (
               <Link
                 className="landing-header__login"
                 onClick={() => trackLandingCta('header', 'sign_in')}
@@ -96,7 +97,7 @@ export function HomePage() {
               onClick={() => trackLandingCta('header', primaryDestination)}
               to={primaryRoute}
             >
-              {user ? 'К комнатам' : 'Начать'}
+              {isRegisteredUser ? 'К комнатам' : 'Начать'}
             </Link>
           </div>
         </div>
@@ -295,7 +296,9 @@ export function HomePage() {
         <div className="landing-container landing-footer__inner">
           <img alt="Syncly" height="52" src={logo} width="167" />
           <p>Вместе музыка звучит ярче.</p>
-          {!user && <Link to={routes.signIn}>Войти в аккаунт</Link>}
+          {!isRegisteredUser && (
+            <Link to={routes.signIn}>Войти в аккаунт</Link>
+          )}
         </div>
       </footer>
     </main>
