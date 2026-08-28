@@ -1,5 +1,22 @@
 # Repository instructions
 
+## Project-scoped agent skills
+
+- The repository vendors its Codex skills under `.agents/skills`. Keep this directory tracked in Git so a fresh clone or pull receives the same skill instructions without a separate installation step.
+- Codex may activate these skills implicitly when a task matches their descriptions. For deterministic use, invoke the required skill explicitly by name (for example, `$firebase-security-rules-auditor`). If newly pulled skills are not discovered, restart Codex.
+- Use the following skills when their scope matches the task:
+  - `firebase-firestore` for Firestore data modeling, queries, indexes, SDK integration, and security-rule-aware client work. This is the current upstream replacement for the former `firebase-firestore-standard` skill.
+  - `firebase-security-rules-auditor` for a red-team review whenever `firestore.rules` or Firestore write behavior changes, before handing the work off.
+  - `firebase-auth-basics` for Firebase Authentication, anonymous accounts, provider linking, custom-token flows, and auth-dependent rules.
+  - `firebase-hosting-basics` for Firebase Hosting configuration, SPA rewrites, caching headers, preview channels, and hosting diagnostics. The repository deployment runbook and approval requirements still take precedence.
+  - `vercel-react-best-practices` when writing, reviewing, refactoring, or performance-tuning React code.
+  - `vercel-composition-patterns` when designing reusable React APIs, context providers, shared state, compound components, or React 19 component architecture.
+  - `frontend-design` for new or changed UI. Adapt its design guidance to the established Syncly visual identity and the mandatory dark-purple, responsive requirements below.
+  - `webapp-testing` for local browser-based verification, screenshots, console inspection, and multi-step UI smoke tests when the changed workflow warrants browser coverage.
+- Repository instructions, the existing product design system, and explicit user requirements override generic skill guidance when they conflict.
+- Treat the vendored skills as reviewed snapshots. Do not refresh or replace them from upstream unless the user requests an update; review any such update as a normal dependency change.
+- Upstream sources are `firebase/agent-skills`, `vercel-labs/agent-skills`, and `anthropics/skills` on GitHub.
+
 ## UI and responsive design
 
 - Make all new functionality responsive across mobile, tablet, and desktop layouts.
