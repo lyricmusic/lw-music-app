@@ -17,6 +17,21 @@
 - Treat the vendored skills as reviewed snapshots. Do not refresh or replace them from upstream unless the user requests an update; review any such update as a normal dependency change.
 - Upstream sources are `firebase/agent-skills`, `vercel-labs/agent-skills`, and `anthropics/skills` on GitHub.
 
+## Multi-agent delivery workflow
+
+- The primary agent is the orchestrator and owns scope control, user communication, approvals, the final verification decision, and the final handoff.
+- For non-trivial implementation work, delegate sequentially to the project-scoped custom agents named `analyst`, `developer`, and `tester`. Do not begin the developer stage until the analyst handoff is available, and do not begin the tester stage until implementation is ready for independent verification.
+- Treat work as non-trivial when it adds or changes user-visible behavior, changes a UI workflow, touches Firebase/Auth/Firestore/Hosting, spans multiple runtime modules, changes shared architecture or data contracts, addresses a bug with an uncertain cause, or carries meaningful security or regression risk.
+- A direct user request for a full role cycle always overrides the trivial-task exception.
+- For documentation-only edits, wording changes, obvious one-line maintenance, status questions, explanations, and other low-risk work, the primary agent may work directly. Use only `analyst` for analysis-only requests and only `tester` for review- or verification-only requests when that is sufficient.
+- The analyst is read-only. Pass it the original request and ask for evidence-backed affected areas, assumptions, acceptance criteria, risks, applicable skills, and a verification plan.
+- Pass the original request together with the analyst handoff to the developer. The developer owns implementation and targeted checks, but not independent approval, deployment, Git publishing, or the final response unless explicitly assigned by the primary agent.
+- Pass the original request, analyst handoff, developer handoff, and exact resulting diff to the tester. The tester must independently inspect and verify the change and must not edit application source files.
+- If the tester reports a correctness, security, regression, acceptance-criteria failure, or a failed required check caused by the change, return the findings to the developer and then run the tester again. Repeat until the tester returns `PASS` or a genuine blocker requiring user input or external-state authorization is reached.
+- Do not describe a non-trivial implementation as complete until the tester has returned `PASS` and the repository-required checks have passed, or until any pre-existing or environment-only failures have been clearly separated and reported.
+- Subagents must preserve unrelated working-tree changes and may not commit, push, deploy, publish, delete material data, or change external state unless the primary agent explicitly delegates an action already authorized by the user.
+- Keep role handoffs concise and evidence-based. The primary agent should return a consolidated result rather than raw subagent logs.
+
 ## UI and responsive design
 
 - Make all new functionality responsive across mobile, tablet, and desktop layouts.
