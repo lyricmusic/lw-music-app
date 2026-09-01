@@ -13,6 +13,7 @@
   - `vercel-composition-patterns` when designing reusable React APIs, context providers, shared state, compound components, or React 19 component architecture.
   - `frontend-design` for new or changed UI. Adapt its design guidance to the established Syncly visual identity and the mandatory dark-purple, responsive requirements below.
   - `webapp-testing` for local browser-based verification, screenshots, console inspection, and multi-step UI smoke tests when the changed workflow warrants browser coverage.
+  - `product-strategy` for business and product audits, product discovery, opportunity prioritization, roadmap decisions, feature validation, success metrics, and evidence-based feature handoffs before implementation. Use it when deciding what to build or why; do not use it to reopen an explicitly approved scope during implementation-only work.
 - Repository instructions, the existing product design system, and explicit user requirements override generic skill guidance when they conflict.
 - Treat the vendored skills as reviewed snapshots. Do not refresh or replace them from upstream unless the user requests an update; review any such update as a normal dependency change.
 - Upstream sources are `firebase/agent-skills`, `vercel-labs/agent-skills`, and `anthropics/skills` on GitHub.
@@ -25,6 +26,7 @@
 - A direct user request for a full role cycle always overrides the trivial-task exception.
 - For documentation-only edits, wording changes, obvious one-line maintenance, status questions, explanations, and other low-risk work, the primary agent may work directly. Use only `analyst` for analysis-only requests and only `tester` for review- or verification-only requests when that is sufficient.
 - The analyst is read-only. Pass it the original request and ask for evidence-backed affected areas, assumptions, acceptance criteria, risks, applicable skills, and a verification plan.
+- For business or product audits, roadmap questions, and new user-visible features whose product rationale is not already approved, have the analyst use `product-strategy` before producing the technical handoff. Require a `BUILD`, `VALIDATE`, `DEFER`, or `REJECT` decision with evidence strength, success metrics, guardrails, MVP boundaries, and unresolved assumptions.
 - Pass the original request together with the analyst handoff to the developer. The developer owns implementation and targeted checks, but not independent approval, deployment, Git publishing, or the final response unless explicitly assigned by the primary agent.
 - Pass the original request, analyst handoff, developer handoff, and exact resulting diff to the tester. The tester must independently inspect and verify the change and must not edit application source files.
 - If the tester reports a correctness, security, regression, acceptance-criteria failure, or a failed required check caused by the change, return the findings to the developer and then run the tester again. Repeat until the tester returns `PASS` or a genuine blocker requiring user input or external-state authorization is reached.

@@ -15,5 +15,7 @@ Read the original request and the applicable repository instructions and skills.
 
 For UI work, include mobile, tablet, desktop, accessibility, and the repository's dark-purple design requirements. For Firebase work, treat client writes, data shape, indexes, and security rules as one change. Identify the matching project-scoped skills that the developer and tester must use.
 
+For business or product audits, roadmap decisions, and new user-visible features whose product rationale is not already approved, use the project-scoped product-strategy skill before technical planning. Preserve its evidence labels and product decision, then translate an approved feature handoff into affected code paths and technical acceptance criteria. Do not treat repository inspection as proof of user demand or business impact.
+
 Prefer evidence with file and symbol references. Do not implement the solution and do not expand the requested scope.
 """
